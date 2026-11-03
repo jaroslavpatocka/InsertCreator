@@ -240,13 +240,16 @@ test('expanding a drawer leaves outside manual modules movable for automatic rec
 test('touch selection scrolls normally until explicit move mode enables pointer capture',()=>{
   const before=saved().modules.map(m=>[m.id,m.x,m.y]),svg=$('#board-svg'),group=$('#board-svg [data-module]');let points=0,captured=0;
   svg.createSVGPoint=()=>{points++;throw Error('Touch selection must not start a drag');};
-  const down=new win.PointerEvent('pointerdown',{pointerType:'touch',pointerId:1,clientX:30,clientY:40,bubbles:true,cancelable:true});group.dispatchEvent(down);
+  const down=new win.PointerEvent('pointerdown',{pointerType:'touch',pointerId:1,isPrimary:true,clientX:30,clientY:40,bubbles:true,cancelable:true});group.dispatchEvent(down);
   group.dispatchEvent(new win.PointerEvent('pointermove',{pointerType:'touch',pointerId:1,clientX:80,clientY:120,bubbles:true}));
   assert.equal(points,0);assert.equal(down.defaultPrevented,false);group.dispatchEvent(new win.MouseEvent('click',{bubbles:true}));
-  assert.ok($('#app [data-scope=tool][data-field=name]'),'A normal tap still selects the tool');assert.deepEqual(saved().modules.map(m=>[m.id,m.x,m.y]),before);
+  assert.ok(!$('#app [data-scope=tool][data-field=name]'),'A tap on the module background selects the module without selecting its tool');
+  assert.ok($('#app .module-sizing'));assert.deepEqual(saved().modules.map(m=>[m.id,m.x,m.y]),before);
+  const hit=$('#board-svg .tool-outline');hit.dispatchEvent(new win.PointerEvent('pointerdown',{pointerType:'touch',pointerId:3,isPrimary:true,bubbles:true,cancelable:true}));
+  hit.dispatchEvent(new win.MouseEvent('click',{bubbles:true}));assert.ok($('#app [data-scope=tool][data-field=name]'),'A direct tap on a tool still opens its properties');
   action('move-mode');const moving=$('#board-svg');assert.ok(moving.classList.contains('moving'));
   moving.createSVGPoint=()=>({x:0,y:0,matrixTransform(){return{x:this.x,y:this.y};}});moving.getScreenCTM=()=>({inverse:()=>({})});moving.setPointerCapture=()=>captured++;
-  const dragDown=new win.PointerEvent('pointerdown',{pointerType:'touch',pointerId:2,clientX:30,clientY:40,bubbles:true,cancelable:true});$('#board-svg [data-module]').dispatchEvent(dragDown);
+  const dragDown=new win.PointerEvent('pointerdown',{pointerType:'touch',pointerId:2,isPrimary:true,clientX:30,clientY:40,bubbles:true,cancelable:true});$('#board-svg [data-module]').dispatchEvent(dragDown);
   assert.equal(dragDown.defaultPrevented,true);assert.equal(captured,1);moving.dispatchEvent(new win.PointerEvent('pointerup',{pointerType:'touch',pointerId:2,bubbles:true}));
   action('move-mode');assert.ok(!$('#board-svg').classList.contains('moving'));assert.deepEqual(saved().modules.map(m=>[m.id,m.x,m.y]),before);action('drawer-tab');
 });

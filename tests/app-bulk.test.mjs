@@ -121,7 +121,7 @@ test('dragging one selected module moves the full bulk selection and shared sibl
   assert.equal($('#app [data-action="undo"]').disabled,true,'multiple pointer moves form one undo step');
   startDrag('mb');pointer('pointermove',board(),{x:10,y:52});pointer('pointerup',board(),{x:10,y:52});
   assert.equal(saved().modules.find(m=>m.id==='mb').y,42,'an unselected grabbed module retains ordinary single-module dragging');
-  assert.deepEqual(saved().tools.filter(t=>['one','three','four'].includes(t.id)),before.tools.filter(t=>['one','three','four'].includes(t.id)));assert.deepEqual(checked(),['one','three']);sameAfterUndo(before);
+  assert.deepEqual(saved().tools.filter(t=>['one','three','four'].includes(t.id)),before.tools.filter(t=>['one','three','four'].includes(t.id)));assert.deepEqual(checked(),[],'working with a different module clears the previous tool selection');sameAfterUndo(before);
 });
 
 test('bulk drag collision or outside target rolls every selected module back atomically',()=>{

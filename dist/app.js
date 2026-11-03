@@ -51,7 +51,7 @@ if(!Array.isArray(library))library=localizeDemo(createDemoProject()).tools.map(t
 library=library.flatMap(t=>{try{return[validateProject({...blankProject(),tools:[t]}).tools[0]];}catch{return[];}});
 let selected=project.tools[0]?.id||null,selectedModule=null,inspectorTab='drawer',view='2d',zoom=1,snap=true,showGrid=true,showLabels=true,tipVisible=!readLocal('suplik-hide-tip',false);
 let bulkSelection=new Set();
-let undoStack=[],redoStack=[],drag=null,storageFailed=false,moveMode=false;
+let undoStack=[],redoStack=[],drag=null,storageFailed=false,moveMode=false,boardSelectionGesture=null;
 let camera3D=createCamera3D(),cameraFrame={width:1000,height:600,zoom:1},viewControls=null,pan2D={x:0,y:0};
 let smartLayoutRun=null;
 const smartModeKey='suplik-studio-smart-mode';
@@ -409,8 +409,9 @@ function moduleMembersPanel(m){
 }
 function boardToolFromTarget(target,m){
   const id=target.closest('[data-tool]')?.dataset.tool,own=m?project.tools.filter(t=>t.moduleId===m.id):[];
-  return own.find(t=>t.id===id)||(own.length===1?own[0]:null);
+  return own.find(t=>t.id===id)||null;
 }
+function selectBoardTarget(module,tool=null){bulkSelection.clear();selected=tool?.id||null;selectedModule=tool?null:module.id;inspectorTab='tool';}
 function moduleKindNote(m){const shared=project.tools.some(t=>t.moduleId===m.id);return tr(shared?(m.locked?'Společný modul · zamčená poloha':'Společný modul · volná poloha'):(m.locked?'Výplňový modul · zamčená poloha':'Výplňový modul · volná poloha'));}
 function storageVariantOptions(value){return STORAGE_VARIANTS.map(([id,label])=>`<option value="${id}" ${id===value?'selected':''}>${tr(label)}</option>`).join('');}
 function openSetPlacement(){
@@ -964,17 +965,18 @@ const actions={
  delete:()=>{const t=tool(),m=moduleFor();if(!t&&!m)return;commit(()=>{if(t){removeToolSetMember(t.id);project.tools=project.tools.filter(x=>x.id!==t.id);project.modules=project.modules.filter(x=>x.id!==t.moduleId||project.tools.some(o=>o.moduleId===x.id));selected=project.tools[0]?.id||null;}else project.modules=project.modules.filter(x=>x.id!==m.id);selectedModule=null;},tr('Odstraněno ze sestavy. Akci můžete vrátit tlačítkem Zpět.'));}
 };
 $('#app').addEventListener('click',e=>{
-  if(drag||resizeDrag){e.preventDefault();return;}
+  if(drag||resizeDrag||boardSelectionGesture){e.preventDefault();return;}
   const open=e.target.closest('[data-drawer-open]'),remove=e.target.closest('[data-drawer-remove]');
   if(remove){removeDrawer(remove.dataset.drawerRemove);return;}
   if(open){const p=projects.find(p=>p.id===open.dataset.drawerOpen);if(p&&p.id!==project.id)switchProject(p);return;}
   const sel=e.target.closest('[data-select]');
   if(sel){if(e.shiftKey||e.ctrlKey||e.metaKey){toggleToolSelection(sel.dataset.select);return;}bulkSelection.clear();selected=sel.dataset.select;selectedModule=null;inspectorTab='tool';render();return;}
   const group=e.target.closest('[data-module]');
-  if(group&&(view==='3d'||!moveMode||e.target.closest('[data-tool]'))){
+  if(group){
     const m=project.modules.find(m=>m.id===group.dataset.module),t=boardToolFromTarget(e.target,m);
-    if(e.shiftKey||e.ctrlKey||e.metaKey){if(t&&e.target.closest('[data-tool]')){toggleToolSelection(t.id);return;}const members=project.tools.filter(t=>t.moduleId===m?.id),remove=members.every(t=>bulkSelection.has(t.id));for(const t of members)remove?bulkSelection.delete(t.id):bulkSelection.add(t.id);render();return;}
-    bulkSelection.clear();selected=t?.id||null;selectedModule=t?null:m?.id;inspectorTab='tool';render();return;
+    if(!m)return;
+    if((e.shiftKey||e.ctrlKey||e.metaKey)&&t){toggleToolSelection(t.id);return;}
+    selectBoardTarget(m,t);render();return;
   }
   const a=e.target.closest('[data-action]');if(a){e.preventDefault();try{actions[a.dataset.action]?.(a.dataset.value);}catch(error){toast(errorText(error));}}
 });
@@ -1025,14 +1027,25 @@ $('#app').addEventListener('change',e=>{
   else commit(()=>project[field]=value);
 });
 $('#app').addEventListener('pointerdown',e=>{
-  if(e.shiftKey||e.ctrlKey||e.metaKey)return;
+  // Selection changes obey the same pointer/button ownership as geometry gestures.
+  if(e.button!==0||e.isPrimary===false||resizeDrag||drag||boardSelectionGesture)return;
+  if(e.shiftKey||e.ctrlKey||e.metaKey){
+    const group=e.target.closest('[data-module]'),m=project.modules.find(m=>m.id===group?.dataset.module);
+    if(m&&!e.target.closest('[data-tool]')){selectBoardTarget(m);render();}
+    return;
+  }
   // A second finger cannot start anything while a drag or resize is running (one active pointer at a time).
-  if(view==='3d'||e.button!==0||resizeDrag||drag)return;
+  if(view==='3d'){
+    const group=e.target.closest('[data-module]'),m=project.modules.find(m=>m.id===group?.dataset.module);
+    if(e.target.closest('#board-svg'))boardSelectionGesture={pointer:e.pointerId,moduleId:m?.id||null,projectId:project.id,x:e.clientX,y:e.clientY,moved:false};
+    return;
+  }
   // Resize handles work for mouse, pen and touch (no Move mode needed): they are explicit targets.
   const handle=e.target.closest('[data-resize-of]');
   if(handle){
     const svg=$('#board-svg'),m=project.modules.find(x=>x.id===handle.dataset.resizeOf);if(!svg||!m)return;e.preventDefault();
-    if(m.locked||!handle.dataset.resize){toast(tr(LOCKED_RESIZE));return;}
+    selectBoardTarget(m);
+    if(m.locked||!handle.dataset.resize){render();toast(tr(LOCKED_RESIZE));return;}
     const point=svg.createSVGPoint();point.x=e.clientX;point.y=e.clientY;
     resizeDrag={pointer:e.pointerId,id:m.id,dir:handle.dataset.resize,start:point.matrixTransform(svg.getScreenCTM().inverse()),snapshot:clone(project),moved:false,label:resizeLabel(m)};
     try{svg.setPointerCapture(e.pointerId);}catch{}renderBoard();return;
@@ -1040,17 +1053,21 @@ $('#app').addEventListener('pointerdown',e=>{
   if(e.pointerType==='touch'&&!moveMode)return;
   const group=e.target.closest('[data-module]'),svg=$('#board-svg');if(!group||!svg)return;
   const m=project.modules.find(m=>m.id===group.dataset.module);if(!m)return;
-  const t=boardToolFromTarget(e.target,m);selected=t?.id||null;selectedModule=t?null:m.id;inspectorTab='tool';
-  const chosen=selectedIds(),movingSelection=chosen.length>1&&project.tools.some(t=>t.moduleId===m.id&&bulkSelection.has(t.id));
+  const t=boardToolFromTarget(e.target,m),chosen=selectedIds(),keepBulk=!!t&&bulkSelection.has(t.id);
+  if(!keepBulk)bulkSelection.clear();
+  selected=t?.id||null;selectedModule=t?null:m.id;inspectorTab='tool';
+  const movingSelection=keepBulk&&chosen.length>1;let blocked=false;
   if(movingSelection){
     const chosenSet=new Set(chosen),moduleIds=new Set(project.tools.filter(t=>chosenSet.has(t.id)).map(t=>t.moduleId));
-    if(project.modules.some(m=>moduleIds.has(m.id)&&m.locked)||project.tools.some(t=>(chosenSet.has(t.id)||moduleIds.has(t.moduleId))&&t.locked)){render();toast(tr('Nejprve odemkněte polohu modulu.'));return;}
+    blocked=project.modules.some(m=>moduleIds.has(m.id)&&m.locked)||project.tools.some(t=>(chosenSet.has(t.id)||moduleIds.has(t.moduleId))&&t.locked);
   }
-  if(view==='3d'||m.locked){render();if(m.locked)toast(tr('Poloha modulu je zamčená. Odemkněte ji ve vlastnostech.'));return;}
+  if(m.locked&&!movingSelection){selectBoardTarget(m,t);render();toast(tr('Poloha modulu je zamčená. Odemkněte ji ve vlastnostech.'));return;}
   e.preventDefault();const point=svg.createSVGPoint();point.x=e.clientX;point.y=e.clientY;const p=point.matrixTransform(svg.getScreenCTM().inverse());
-  drag={pointer:e.pointerId,id:m.id,start:p,x:m.x,y:m.y,snapshot:clone(project),moved:false,...(movingSelection?{toolIds:chosen}:{})};svg.setPointerCapture(e.pointerId);renderBoard();
+  drag={pointer:e.pointerId,id:m.id,selectionToolId:t?.id||null,start:p,x:m.x,y:m.y,snapshot:clone(project),moved:false,...(movingSelection?{toolIds:chosen}:{}),...(blocked?{blocked:true,error:tr('Nejprve odemkněte polohu modulu.')}:{})};svg.setPointerCapture(e.pointerId);renderBoard();
+  if(blocked)toast(drag.error);
 });
 $('#app').addEventListener('pointermove',e=>{
+  if(boardSelectionGesture&&e.pointerId===boardSelectionGesture.pointer&&Math.hypot(e.clientX-boardSelectionGesture.x,e.clientY-boardSelectionGesture.y)>=3)boardSelectionGesture.moved=true;
   if(view!=='3d'&&resizeDrag&&e.pointerId===resizeDrag.pointer){
     const svg=$('#board-svg'),p=svg.createSVGPoint();p.x=e.clientX;p.y=e.clientY;const q=p.matrixTransform(svg.getScreenCTM().inverse()),dx=q.x-resizeDrag.start.x,dy=q.y-resizeDrag.start.y;
     if(!resizeDrag.moved&&Math.hypot(dx,dy)<1)return;resizeDrag.moved=true;
@@ -1061,6 +1078,7 @@ $('#app').addEventListener('pointermove',e=>{
   }
   if(view==='3d'||!drag||e.pointerId!==drag.pointer)return;const svg=$('#board-svg'),p=svg.createSVGPoint();p.x=e.clientX;p.y=e.clientY;const q=p.matrixTransform(svg.getScreenCTM().inverse());const m=project.modules.find(m=>m.id===drag.id);if(!m)return;
   const dx=q.x-drag.start.x,dy=q.y-drag.start.y;if(Math.hypot(dx,dy)<2&&!drag.moved)return;drag.moved=true;
+  if(drag.blocked)return;
   if(drag.toolIds){
     const grid=drag.snapshot.grid,x=snap?Math.round(dx/grid)*grid:dx,y=snap?Math.round(dy/grid)*grid:dy;
     try{project=bulk.bulkMove(drag.snapshot,drag.toolIds,{dx:x,dy:y});drag.error=null;}
@@ -1076,8 +1094,21 @@ function endResize(){
   if(r.moved&&before&&after&&same([before.x,before.y,before.width,before.height])!==same([after.x,after.y,after.width,after.height])){undoStack.push(r.snapshot);if(undoStack.length>40)undoStack.shift();redoStack=[];const note=releaseUniformSet(r.id);persist();render();toast(tr('Velikost modulu: {size}',{size:fmtSize(after.width,after.height,{unit:moduleUnit(after)})})+note);}
   else{project=r.snapshot;render();}
 }
+function finishBoardSelection(e){
+  if(boardSelectionGesture&&e.pointerId===boardSelectionGesture.pointer){
+    const finished=boardSelectionGesture;boardSelectionGesture=null;
+    const module=project.modules.find(m=>m.id===finished.moduleId);
+    if(!finished.moved&&finished.projectId===project.id&&module){selectBoardTarget(module);render();}
+  }
+}
 function endDrag(e){
   const active=resizeDrag||drag;if(!active||e.pointerId!==active.pointer)return;if(resizeDrag)return endResize();
+  if(!drag.moved){
+    const finished=drag;drag=null;project=finished.snapshot;
+    const module=project.modules.find(m=>m.id===finished.id),tool=project.tools.find(t=>t.id===finished.selectionToolId);
+    if(module)selectBoardTarget(module,tool);
+    render();return;
+  }
   if(drag.toolIds){
     const finished=drag;drag=null;
     if(finished.error){project=finished.snapshot;render();toast(finished.error);return;}
@@ -1089,14 +1120,17 @@ function endDrag(e){
 }
 // Unfinished edits are previews only. Losing capture/focus restores them without saving or adding history.
 function cancelEditGesture(e){
+  if(boardSelectionGesture&&(e?.pointerId===undefined||e.pointerId===boardSelectionGesture.pointer))boardSelectionGesture=null;
   const active=resizeDrag||drag;if(!active||(e?.pointerId!==undefined&&e.pointerId!==active.pointer))return;
   project=active.snapshot;resizeDrag=null;drag=null;
   // Clear the state before releasing capture: the resulting lostpointercapture must not cancel twice.
   try{$('#board-svg')?.releasePointerCapture?.(active.pointer);}catch{}
   render();
 }
+// Resolve an unmoved 3D pick before its camera controller releases capture at the SVG target.
+$('#app').addEventListener('pointerup',finishBoardSelection,true);
 $('#app').addEventListener('pointerup',endDrag);$('#app').addEventListener('pointercancel',cancelEditGesture);$('#app').addEventListener('lostpointercapture',cancelEditGesture);window.addEventListener('blur',cancelEditGesture);
-$('#app').addEventListener('keydown',e=>{const group=e.target.closest('[data-module]');if(group&&(e.key==='Enter'||e.key===' ')){e.preventDefault();const m=project.modules.find(m=>m.id===group.dataset.module),t=boardToolFromTarget(e.target,m);bulkSelection.clear();selected=t?.id||null;selectedModule=t?null:m.id;inspectorTab='tool';render();}});
+$('#app').addEventListener('keydown',e=>{const group=e.target.closest('[data-module]');if(group&&(e.key==='Enter'||e.key===' ')){e.preventDefault();const m=project.modules.find(m=>m.id===group.dataset.module),t=boardToolFromTarget(e.target,m);if(!m)return;if((e.shiftKey||e.ctrlKey||e.metaKey)&&t)toggleToolSelection(t.id);else{selectBoardTarget(m,t);render();}}});
 document.addEventListener('keydown',e=>{if(e.target.matches('input,textarea,select')||$('#modal-root').children.length)return;if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='z'){e.preventDefault();e.shiftKey?redo():undo();}else if(e.altKey&&e.shiftKey&&!e.ctrlKey&&!e.metaKey&&{ArrowRight:1,ArrowLeft:1,ArrowDown:1,ArrowUp:1}[e.key]){if(moduleFor()){e.preventDefault();stepModule({ArrowRight:'w+',ArrowLeft:'w-',ArrowDown:'h+',ArrowUp:'h-'}[e.key]);}}else if(!e.ctrlKey&&!e.metaKey&&!e.altKey&&e.key.toLowerCase()==='r'){e.preventDefault();try{actions.rotate();}catch(error){toast(errorText(error));}}else if(e.key==='Delete'||e.key==='Backspace'){e.preventDefault();actions.delete();}else if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='s'){e.preventDefault();actions['save-project']();}});
 $('#project-file').addEventListener('change',async e=>{const file=e.target.files[0];e.target.value='';if(!file)return;if(file.size>12*1024*1024)return toast(tr('Projekt je příliš velký. Maximum je 12 MB.'));try{const data=JSON.parse(await file.text());if(data.schemaVersion&&data.schemaVersion!==1)throw i18nError('Tato verze projektu zatím není podporovaná.');const imported=validateProject(data);imported.id=uid();switchProject(imported);toast(tr('Projekt otevřen. Původní projekty zůstaly uložené.'));}catch(error){toast(tr('Projekt nelze otevřít: {error}',{error:errorText(error)}));}});
 document.addEventListener('keydown',e=>{

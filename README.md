@@ -65,7 +65,9 @@ Referenční principy ukazují [Ernst Wrench Trays](https://www.ernstmfg.com/Wre
 
 ## Hromadné úpravy
 
-Více nástrojů vyberete zaškrtávacími políčky v seznamu nebo pomocí **Shift/Ctrl/Cmd+klepnutí** na konkrétní obrys či položku nástroje. Všechny označené obrysy, řádky a členové modulu mají stejné zvýraznění. Obyčejné klepnutí bez modifikátoru ukončí hromadný výběr a otevře vlastnosti jednotlivého nástroje. **Ctrl/Cmd+A** vybere všechny nástroje a **Esc** výběr zruší. **R** otočí výběr o 90°, **Delete/Backspace** jej smaže. Zkratky nezasahují do psaní v poli ani do otevřeného dialogu.
+Více nástrojů vyberete zaškrtávacími políčky v seznamu nebo pomocí **Shift/Ctrl/Cmd+klepnutí** na konkrétní obrys či položku nástroje. Všechny označené obrysy, řádky a členové modulu mají stejné zvýraznění. Obyčejné klepnutí bez modifikátoru na nástroj ukončí hromadný výběr a otevře jeho vlastnosti. **Ctrl/Cmd+A** vybere všechny nástroje a **Esc** výběr zruší. **R** otočí výběr o 90°, **Delete/Backspace** jej smaže. Zkratky nezasahují do psaní v poli ani do otevřeného dialogu.
+
+Klepnutí na pozadí modulu odznačí nástroje a vybere samotný modul, i když obsahuje jediný nástroj; Ctrl/Shift přidává do výběru pouze konkrétní nástroj. Při práci s dalším modulem se předchozí výběr nepřenáší a samotná změna výběru nemění projekt ani historii **Zpět**.
 
 Panel výběru je nahoře v pravé nabídce a zůstává dostupný při posouvání nastavení. Hned nabízí **Otočit o 90°**, **Úhel otočení…**, **Přesunout vybrané** a **Smazat vybrané**. Nabídka **Další úpravy** obsahuje otočení o 180°, zarovnání a rozestupy, společnou hloubku kapes, výřezy pro prsty, zámky a vytvoření sady. Při hromadném výběru pravý panel ukazuje jeho skutečné členy; klepnutím na jméno přejdete k vlastnostem tohoto nástroje.
 
