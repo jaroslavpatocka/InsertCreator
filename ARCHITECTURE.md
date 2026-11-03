@@ -21,7 +21,8 @@ Aktivní projekt je v tomto adresáři. ZIP se zdroji a dva deployment archivy v
 | Neuronová inference | `dist/neural.js`, `dist/neural-worker.js`, `dist/neural-core.js` | Sdílený worker, fronta inference, ONNX session, preprocessing a masky |
 | Geometrie a výroba | `dist/geometry.js` | Transformace, rozvržení, validace sestavy, SVG/DXF/ZIP a rozhraní STL |
 | Konstrukce pro tisk — souběžný vývoj | `dist/print-geometry.js` | Konstrukce sítě, konfigurace tisku, kontrola tiskové plochy, objem a binární STL |
-| Náhled sítě — souběžný vývoj | `dist/preview3d.js` | Izometrická SVG projekce skutečné exportované STL sítě a její cache |
+| Náhled sítě | `dist/preview3d.js` | Ortografická 3D kamera, projekce skutečné STL sítě, viditelnost stěn a cache geometrie |
+| Ovládání kamery | `dist/view-controls.js` | Levé tažení pro orbit, pravé pro posun a kolečko pro zoom kolem kurzoru |
 | Šablona 1:1 — souběžný vývoj | `dist/fit-sheet.js` | Vektorové PDF A4 s měřítkem a dlaždicovým rozdělením velkého modulu |
 | Offline režim | `dist/sw.js`, `dist/manifest.webmanifest` | Service worker, cache a instalovatelná aplikace |
 | Spuštění a kontrola | `serve.mjs`, `check.mjs`, `package.json`, `.openai/hosting.json` | Lokální HTTP server, statické kontroly, příkazy a cílový adresář hostingu |
@@ -35,6 +36,7 @@ flowchart TD
     MODEL --> GRIP
     APP --> GEO[geometry.js / rozvržení a exporty]
     APP --> PREVIEW[preview3d.js / náhled sítě]
+    APP --> CONTROLS[view-controls.js / ovládání kamery]
     PREVIEW --> GEO
     APP --> PDF[fit-sheet.js / PDF 1:1]
     PDF --> GEO
@@ -60,6 +62,8 @@ Klasická analýza má také přímou cestu bez workeru pro prostředí, která 
 ## Stav, data a ukládání
 
 `app.js` drží aktuální projekt, seznam projektů, knihovnu nástrojů, výběr, pohled a historii v proměnných modulu. Typická editace prochází cestou `commit → remember → persist → render`. UI se převážně překresluje sestavením HTML řetězců; plocha i 3D náhled jsou SVG. Události jsou z velké části delegované. Neexistuje samostatný store ani router.
+
+3D kamera používá samostatný dočasný stav `{yaw, pitch, zoom, panX, panY}`. Nezapisuje do projektu ani jeho historie. Při přepnutí 2D/3D se zachová; při změně šuplíku nebo obnovení výchozího pohledu se resetuje. Cache náhledu drží celé STL trojúhelníky a BSP strom pro správné zakrývání stěn. BSP rozděluje pouze vykreslované polygony, nikoli výrobní geometrii; viditelnost a pořadí vykreslení se odvozují od aktuální kamery. Stabilní prostorový rám a poměr stran plochy oddělují otáčení od zoomu. Ovládání dávkuje překreslení přes `requestAnimationFrame` a zachovává projekční bod pod kurzorem při zoomu; obsluha myši se připojuje pouze k 3D ploše.
 
 Projekt obsahuje rozměry šuplíku, rastr, vůli, stěnu, dno, výšku a pole `modules` a `tools`. Všechny výrobní délky jsou v milimetrech:
 

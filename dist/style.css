@@ -31,6 +31,7 @@
 .fit-check p{font-size:12px;color:#77836b}
 .board-svg{touch-action:pan-y pinch-zoom}
 .board-svg.moving{touch-action:none}
+.board-svg.view-3d{cursor:grab;touch-action:none}.board-svg.view-3d.is-navigating{cursor:grabbing}.view-3d-hint{position:absolute;left:10px;right:10px;bottom:9px;width:fit-content;max-width:calc(100% - 20px);margin:auto;padding:5px 8px;border-radius:5px;background:#fbfcf9e8;color:#75816d;font-size:10px;line-height:1.5;text-align:center;pointer-events:none}
 .drawer-dimensions{display:inline-flex;align-items:center;flex-wrap:wrap;gap:7px;max-width:100%;min-height:44px;margin-top:8px;padding:8px 10px;border:1px solid var(--line);border-radius:6px;background:#fff;color:#5d6c54;font-size:12px;text-align:left}
 .drawer-dimensions .icon{width:16px;height:16px}.drawer-dimensions small{font-size:11px;color:var(--muted)}
 #drawer-settings{scroll-margin-top:16px}
