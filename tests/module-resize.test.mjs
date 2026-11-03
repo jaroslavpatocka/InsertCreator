@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import {Window} from 'happy-dom';
 import {bounds,validateLayout} from '../dist/geometry.js';
+import {getToolDimensions} from '../dist/tool-dimensions.js';
 
 const win=new Window({url:'http://localhost:5173'});
 const html=await fs.readFile(new URL('../dist/index.html',import.meta.url),'utf8');
@@ -173,7 +174,8 @@ test('inspector quick buttons and the dialog step buttons',()=>{
   action('undo');assert.deepEqual(saved().modules,before.modules);
 });
 
-test('tool scale in % and by longest side in any unit, undoable',()=>{
+test('proportional scale and independent tool length accept any unit and are undoable',()=>{
+  const original=saved().id;createDrawerFromUI('Nezávislé rozměry nástroje',588,420);addRect(40,80);
   click('.tool-row');const before=saved(),t=before.tools.at(-1),b=bounds(t),cx=b.x+b.width/2,cy=b.y+b.height/2;
   change('#app [data-field=toolScale]','110');
   let s=saved().tools.at(-1),nb=bounds(s);
@@ -181,12 +183,13 @@ test('tool scale in % and by longest side in any unit, undoable',()=>{
   const m=saved().modules.find(x=>x.id===s.moduleId);assert.deepEqual(issuesFor(saved(),s.id),[],'The auto module follows the outline');
   assert.ok(m);action('undo');assert.deepEqual(saved().tools,before.tools);assert.deepEqual(saved().modules,before.modules);
   change('#app [data-field=toolLength]','200 mm');s=saved().tools.at(-1);nb=bounds(s);
-  assert.ok(Math.abs(Math.max(nb.width,nb.height)-200)<1e-6);assert.ok(Math.abs(nb.width/nb.height-b.width/b.height)<1e-6,'Uniform scale');
+  assert.ok(Math.abs(getToolDimensions(s).length-200)<1e-6);assert.ok(Math.abs(getToolDimensions(s).width-getToolDimensions(t).width)<1e-6,'Length retains the transverse width');
   action('undo');
-  change('#app [data-field=toolLength]','8 in');nb=bounds(saved().tools.at(-1));assert.ok(Math.abs(Math.max(nb.width,nb.height)-203.2)<1e-6);
+  change('#app [data-field=toolLength]','8 in');assert.ok(Math.abs(getToolDimensions(saved().tools.at(-1)).length-203.2)<1e-6);
   action('undo');assert.deepEqual(saved().tools,before.tools);
   change('#app [data-field=toolScale]','9000');assert.deepEqual(saved().tools,before.tools);assert.match($('#toast').textContent,/měřítko/i);
   assert.ok(Number.isFinite(cx+cy));
+  action('projects');click(`[data-open="${original}"]`);
 });
 
 test('tool scale respects locked modules and keeps the centre when the module is manual',()=>{

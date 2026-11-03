@@ -1,4 +1,5 @@
 import { detectPaper, rectifyImage, calibrateSegment } from './trace.js';
+import { calibrateRulers, rectifyRulers } from './ruler-calibration.js';
 import { recognizeTools } from './recognize.js';
 import { icon, esc, openModal } from './ui.js';
 import { t, plural, i18nError, errorText } from './i18n.js';
@@ -46,10 +47,11 @@ function info(contour,scale){
 }
 
 export function openCapture({onAdd,toast=()=>{}}){
-  let closed=false,controller=null,observer=null;
-  const state={step:0,reference:'a4',mode:'portrait',image:null,imageCanvas:null,corners:[],ruler:[],rulerMm:100,activePoint:0,detected:false,busy:false,work:null,scale:1,result:null,items:[],showMask:false,error:'',progress:0,message:'Načítám fotografii…'};
+  let closed=false,controller=null,observer=null,cancelCalibration=null;
+  const state={step:0,reference:'a4',mode:'portrait',image:null,imageCanvas:null,corners:[],ruler:[],rulerMm:100,rulerSecond:false,rulerSecondMm:100,rulerPointer:null,referencePoints:[],activePoint:0,detected:false,busy:false,work:null,scale:1,result:null,items:[],showMask:false,error:'',progress:0,message:'Načítám fotografii…'};
   // state.message, quality reasons and worker errors stay Czech source text; t()/errorText() translate them on display.
-  const modal=openModal({title:t('Vyfoťte. Obrys připravíme my.'),subtitle:t('Automatické měřítko, rozpoznání nástroje i čisté hrany. Bez kreslení bodů.'),wide:true,body:'',footer:'',onClose:()=>{closed=true;controller?.abort();observer?.disconnect();}});
+  const blurCalibration=()=>cancelCalibration?.();window.addEventListener('blur',blurCalibration);
+  const modal=openModal({title:t('Vyfoťte. Obrys připravíme my.'),subtitle:t('Automatické měřítko, rozpoznání nástroje i čisté hrany. Bez kreslení bodů.'),wide:true,body:'',footer:'',onClose:()=>{closed=true;controller?.abort();observer?.disconnect();cancelCalibration?.();window.removeEventListener('blur',blurCalibration);}});
   const steps=()=>`<div class="capture-steps"><span class="${state.step===0?'active':'done'}">1 · ${t('Fotografie')}</span><span class="${state.step===1||state.step===3?'active':state.step===2?'done':''}">2 · ${t('Automatické rozpoznání')}</span><span class="${state.step===2?'active':''}">3 · ${t('Hotový obrys')}</span></div>`;
   const errorHTML=()=>`<div id="capture-error" role="alert" class="form-error" ${state.error?'':'hidden'}>${esc(state.error)}</div>`;
   function setError(text){state.error=text;const el=modal.body.querySelector('#capture-error');if(el){el.textContent=text;el.hidden=!text;}}
@@ -100,7 +102,7 @@ export function openCapture({onAdd,toast=()=>{}}){
     state.image=image;state.imageCanvas=canvasFromImage(image);state.error='';state.items=[];state.result=null;
     const corners=detectPaper(image);state.detected=!!corners;
     state.corners=corners||[{x:image.width*.1,y:image.height*.1},{x:image.width*.9,y:image.height*.1},{x:image.width*.9,y:image.height*.9},{x:image.width*.1,y:image.height*.9}];
-    state.ruler=[{x:image.width*.3,y:image.height*.65},{x:image.width*.7,y:image.height*.65}];
+    state.ruler=[{x:image.width*.3,y:image.height*.65},{x:image.width*.7,y:image.height*.65},{x:image.width*.8,y:image.height*.3},{x:image.width*.8,y:image.height*.7}];state.activePoint=0;state.rulerPointer=null;
     state.mode=state.reference==='ruler'?'ruler':'portrait';
     if(state.reference==='a4'&&corners){
       const width=(Math.hypot(corners[1].x-corners[0].x,corners[1].y-corners[0].y)+Math.hypot(corners[2].x-corners[3].x,corners[2].y-corners[3].y))/2;
@@ -115,11 +117,14 @@ export function openCapture({onAdd,toast=()=>{}}){
     state.busy=true;state.step=3;state.progress=.02;state.message='Narovnávám papír a určuju skutečné rozměry…';render();
     try{
       await frame();await frame();if(!current())return;
-      if(state.mode==='ruler'){state.scale=calibrateSegment(state.ruler[0],state.ruler[1],state.rulerMm);state.work=state.image;}
+      if(state.mode==='ruler'){
+        if(state.rulerSecond){const calibrated=rectifyRulers(state.image,state.ruler,[state.rulerMm,state.rulerSecondMm]);state.work=calibrated.imageData;state.scale=calibrated.pxPerMm;state.referencePoints=calibrated.points;}
+        else{state.scale=calibrateSegment(state.ruler[0],state.ruler[1],state.rulerMm);state.work=state.image;state.referencePoints=state.ruler.slice(0,2);}
+      }
       else{const r=rectifyImage(state.image,state.corners,state.mode==='portrait'?210:297,state.mode==='portrait'?297:210,1100);state.work=r.imageData;state.scale=r.pxPerMm;}
       const result=await recognizeTools(state.work,{pxPerMm:state.scale,kind:state.mode==='ruler'?'reference':'paper',signal:run.signal,onProgress:event=>{if(current())progress(event);}});
       if(!current())return;state.result=result;
-      state.items=state.result.contours.map((contour,i)=>({contour,info:info(contour,state.scale),checked:!(state.mode==='ruler'&&state.ruler.every(p=>inside(p,contour.points))),name:t('Nástroj {n}',{n:i+1})})).filter(item=>item.info.width>=2&&item.info.height>=2);
+      state.items=state.result.contours.map((contour,i)=>({contour,info:info(contour,state.scale),checked:!(state.mode==='ruler'&&[0,2].some(j=>state.referencePoints[j]&&state.referencePoints.slice(j,j+2).every(p=>inside(p,contour.points)))),name:t('Nástroj {n}',{n:i+1})})).filter(item=>item.info.width>=2&&item.info.height>=2);
       state.step=2;state.busy=false;state.showMask=false;render();
     }catch(error){
       if(!current()||error.name==='AbortError')return;
@@ -151,22 +156,38 @@ export function openCapture({onAdd,toast=()=>{}}){
       modal.footer.innerHTML=`<span class="footnote">${t('Bez správného měřítka nelze vytvořit přesný inzert.')}</span><button class="btn btn-light" id="capture-cancel">${t('Zavřít')}</button>`;
       modal.body.querySelector('#retake-missing').onclick=reset;modal.body.querySelector('#use-ruler').onclick=()=>{state.mode='ruler';render();};modal.footer.querySelector('#capture-cancel').onclick=modal.close;return;
     }
-    modal.body.innerHTML=steps()+`<div class="capture-grid"><div class="capture-canvas"><canvas id="calibration-canvas" tabindex="0" role="img" aria-label="${esc(t('Měřítko: tažením přesuňte dva body na známé značky pravítka. Klávesy 1 a 2 vyberou bod, šipky jej posunou.'))}"></canvas></div><div class="capture-sidebar"><h3>${t('Jen měřítko. Obrys uděláme sami.')}</h3><p>${t('Přesuňte body 1 a 2 na dvě značky pravítka. Čím dál jsou od sebe, tím lépe. Nástroj vyfoťte kolmo k podkladu.')}</p><label class="field"><span>${t('Skutečná vzdálenost mezi značkami')}</span><div class="input-wrap"><input id="ruler-distance" type="text" inputmode="decimal" autocomplete="off" spellcheck="false" value="${Number.isFinite(state.rulerMm)?inputValue(state.rulerMm):''}"><em>${unit()}</em></div></label>${errorHTML()}</div></div>`;
+    const count=state.rulerSecond?4:2;state.activePoint=Math.min(state.activePoint,count-1);
+    modal.body.innerHTML=steps()+`<div class="capture-grid"><div class="capture-canvas"><canvas id="calibration-canvas" tabindex="0" role="img" aria-label="${esc(t('Měřítko: vyberte bod tlačítkem nebo klávesou 1 až 4 a umístěte jej na značku. Šipky bod posunou, Shift zpřesnění zrychlí.'))}"></canvas></div><div class="capture-sidebar"><h3>${t('Jen měřítko. Obrys uděláme sami.')}</h3><p>${t('Přesuňte body 1 a 2 na dvě značky pravítka. Čím dál jsou od sebe, tím lépe. Nástroj vyfoťte kolmo k podkladu.')}</p><p class="muted-note">${t('Vyberte bod a klikněte přesně na značku. Prázdný střed kříže nechává značku viditelnou; šipky posouvají bod po pixelu, Shift po deseti.')}</p><div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:14px" role="group" aria-label="${esc(t('Kalibrační body'))}">${Array.from({length:count},(_,i)=>`<button class="btn btn-light" type="button" data-ruler-point="${i}" aria-pressed="${state.activePoint===i}">${t('Bod {n}',{n:i+1})}</button>`).join('')}</div><label class="field"><span>${t('Skutečná vzdálenost mezi značkami')}</span><div class="input-wrap"><input id="ruler-distance" type="text" inputmode="decimal" autocomplete="off" spellcheck="false" value="${Number.isFinite(state.rulerMm)?inputValue(state.rulerMm):''}"><em>${unit()}</em></div></label><label class="check-row" style="margin:16px 0"><input id="ruler-second" type="checkbox" ${state.rulerSecond?'checked':''}>${t('Druhé kolmé pravítko (volitelné)')}</label>${state.rulerSecond?`<label class="field"><span>${t('Vzdálenost mezi body 3 a 4')}</span><div class="input-wrap"><input id="ruler-second-distance" type="text" inputmode="decimal" autocomplete="off" spellcheck="false" value="${Number.isFinite(state.rulerSecondMm)?inputValue(state.rulerSecondMm):''}"><em>${unit()}</em></div></label><p class="muted-note">${t('Body 3 a 4 označují druhý známý úsek, který je na stejném podkladu fyzicky kolmý k prvnímu. Obě pravítka opraví rozdílné měřítko délky a šířky i zešikmení; plnou perspektivu nenahrazují. Pro silnou perspektivu použijte A4 nebo novou fotku shora.')}</p>`:''}${errorHTML()}</div></div>`;
     modal.footer.innerHTML=`<button class="btn btn-light" id="capture-back">${t('Jiná fotka')}</button><span class="footnote">${t('Pravítko slouží jen jako měřítko, konturu načteme automaticky.')}</span><button class="btn btn-primary" id="capture-continue">${t('Rozpoznat automaticky')} →</button>`;
-    modal.body.querySelector('#ruler-distance').oninput=e=>state.rulerMm=parseLength(e.target.value); // any unit: "100", "4 in", "10 cm"
-    const canvas=modal.body.querySelector('#calibration-canvas');canvas.width=state.image.width;canvas.height=state.image.height;let dragging=false;
-    const pos=e=>{const r=canvas.getBoundingClientRect();return{x:Math.max(0,Math.min(canvas.width-1,(e.clientX-r.left)*canvas.width/r.width)),y:Math.max(0,Math.min(canvas.height-1,(e.clientY-r.top)*canvas.height/r.height))};};
-    canvas.onpointerdown=e=>{if(e.button!==0||!e.isPrimary)return;e.preventDefault();canvas.focus();const p=pos(e);state.activePoint=Math.hypot(p.x-state.ruler[0].x,p.y-state.ruler[0].y)<Math.hypot(p.x-state.ruler[1].x,p.y-state.ruler[1].y)?0:1;state.ruler[state.activePoint]=p;dragging=true;canvas.setPointerCapture(e.pointerId);drawCalibration();};
-    canvas.onpointermove=e=>{if(dragging){state.ruler[state.activePoint]=pos(e);drawCalibration();}};canvas.onpointerup=()=>dragging=false;canvas.onpointercancel=()=>dragging=false;
-    canvas.onkeydown=e=>{if(e.key==='1'||e.key==='2')state.activePoint=Number(e.key)-1;else if(e.key.startsWith('Arrow')){e.preventDefault();const p=state.ruler[state.activePoint],d=e.shiftKey?10:1;p.x=Math.max(0,Math.min(canvas.width-1,p.x+(e.key==='ArrowLeft'?-d:e.key==='ArrowRight'?d:0)));p.y=Math.max(0,Math.min(canvas.height-1,p.y+(e.key==='ArrowUp'?-d:e.key==='ArrowDown'?d:0)));}else return;drawCalibration();};
+    modal.body.querySelector('#ruler-distance').oninput=e=>{state.rulerMm=parseLength(e.target.value);setError('');}; // any unit: "100", "4 in", "10 cm"
+    modal.body.querySelector('#ruler-second-distance')?.addEventListener('input',e=>{state.rulerSecondMm=parseLength(e.target.value);setError('');});
+    modal.body.querySelector('#ruler-second').onchange=e=>{state.rulerSecond=e.target.checked;state.activePoint=state.rulerSecond?2:0;state.rulerPointer=null;setError('');render();modal.body.querySelector('#calibration-canvas').focus();};
+    const canvas=modal.body.querySelector('#calibration-canvas');canvas.width=state.image.width;canvas.height=state.image.height;canvas.style.cursor='crosshair';canvas.style.touchAction='none';let dragging=null;
+    const pos=e=>{const r=canvas.getBoundingClientRect();return{x:Math.max(0,Math.min(canvas.width-1,(e.clientX-r.left)*canvas.width/(r.width||canvas.width))),y:Math.max(0,Math.min(canvas.height-1,(e.clientY-r.top)*canvas.height/(r.height||canvas.height)))};};
+    const finish=(cancel=false)=>{if(!dragging)return;const previous=dragging;dragging=null;if(cancel)state.ruler[previous.index]=previous.before;if(!canvas.hasPointerCapture||canvas.hasPointerCapture(previous.id))canvas.releasePointerCapture?.(previous.id);drawCalibration();};
+    const selectPoint=index=>{finish(true);state.activePoint=index;state.rulerPointer=null;canvas.focus();drawCalibration();};
+    modal.body.querySelectorAll('[data-ruler-point]').forEach(button=>button.onclick=()=>selectPoint(Number(button.dataset.rulerPoint)));
+    canvas.onpointerdown=e=>{if(e.button!==0||e.isPrimary===false||dragging)return;e.preventDefault();canvas.focus();const p=pos(e),scale=canvas.width/(canvas.getBoundingClientRect().width||canvas.width);let nearest=state.activePoint,distance=20*scale;for(let i=0;i<count;i++){const d=Math.hypot(p.x-state.ruler[i].x,p.y-state.ruler[i].y);if(d<distance){nearest=i;distance=d;}}state.activePoint=nearest;dragging={id:e.pointerId,index:nearest,before:{...state.ruler[nearest]}};state.ruler[nearest]=p;state.rulerPointer=p;canvas.setPointerCapture?.(e.pointerId);setError('');drawCalibration();};
+    canvas.onpointermove=e=>{if(dragging&&e.pointerId!==dragging.id)return;if(dragging&&e.buttons===0){state.rulerPointer=null;finish(true);return;}if(!dragging&&e.isPrimary===false)return;const p=pos(e);state.rulerPointer=p;if(dragging)state.ruler[dragging.index]=p;drawCalibration();};
+    canvas.onpointerup=e=>{if(dragging&&e.pointerId===dragging.id)finish();};
+    canvas.onpointercancel=e=>{if(dragging&&e.pointerId===dragging.id){state.rulerPointer=null;finish(true);}};
+    canvas.onlostpointercapture=e=>{if(dragging&&e.pointerId===dragging.id){state.rulerPointer=null;finish(true);}};
+    canvas.onpointerleave=()=>{if(!dragging){state.rulerPointer=null;drawCalibration();}};
+    canvas.onblur=()=>{state.rulerPointer=null;finish(true);drawCalibration();};
+    cancelCalibration=canvas.onblur;
+    canvas.onkeydown=e=>{if(/^[1-4]$/.test(e.key)&&Number(e.key)<=count){e.preventDefault();selectPoint(Number(e.key)-1);}else if(['ArrowLeft','ArrowRight','ArrowUp','ArrowDown'].includes(e.key)){e.preventDefault();finish(true);state.rulerPointer=null;const p=state.ruler[state.activePoint],d=e.shiftKey?10:1;p.x=Math.max(0,Math.min(canvas.width-1,p.x+(e.key==='ArrowLeft'?-d:e.key==='ArrowRight'?d:0)));p.y=Math.max(0,Math.min(canvas.height-1,p.y+(e.key==='ArrowUp'?-d:e.key==='ArrowDown'?d:0)));setError('');drawCalibration();}else if(e.key==='Escape'&&dragging){e.preventDefault();e.stopPropagation();state.rulerPointer=null;finish(true);}};
     modal.footer.querySelector('#capture-back').onclick=reset;
-    modal.footer.querySelector('#capture-continue').onclick=()=>{if(!(state.rulerMm>=1&&state.rulerMm<=5000))return setError(t('Zadejte skutečnou vzdálenost mezi značkami od {min} do {max}.',{min:fmtLen(1),max:fmtLen(5000)}));try{calibrateSegment(state.ruler[0],state.ruler[1],state.rulerMm);processPhoto();}catch(error){setError(errorText(error));}};
+    modal.footer.querySelector('#capture-continue').onclick=()=>{finish(true);if(!(state.rulerMm>=1&&state.rulerMm<=5000)||state.rulerSecond&&!(state.rulerSecondMm>=1&&state.rulerSecondMm<=5000))return setError(t('Zadejte skutečnou vzdálenost mezi značkami od {min} do {max}.',{min:fmtLen(1),max:fmtLen(5000)}));try{if(state.rulerSecond)calibrateRulers(state.image,state.ruler,[state.rulerMm,state.rulerSecondMm]);else calibrateSegment(state.ruler[0],state.ruler[1],state.rulerMm);processPhoto();}catch(error){setError(errorText(error));}};
     drawCalibration();
   }
   function drawCalibration(){
-    const canvas=modal.body.querySelector('#calibration-canvas');if(!canvas)return;const c=canvas.getContext('2d'),scale=canvas.width/Math.max(250,canvas.clientWidth||550);
-    c.putImageData(state.image,0,0);c.beginPath();c.moveTo(state.ruler[0].x,state.ruler[0].y);c.lineTo(state.ruler[1].x,state.ruler[1].y);c.strokeStyle='#efb649';c.lineWidth=2*scale;c.stroke();
-    state.ruler.forEach((p,i)=>{c.beginPath();c.arc(p.x,p.y,12*scale,0,Math.PI*2);c.fillStyle=i===state.activePoint?'#efb649':'white';c.fill();c.strokeStyle='#81602b';c.lineWidth=1.5*scale;c.stroke();c.fillStyle='#483c26';c.font=`bold ${11*scale}px system-ui`;c.textAlign='center';c.textBaseline='middle';c.fillText(String(i+1),p.x,p.y);});
+    const canvas=modal.body.querySelector('#calibration-canvas');if(!canvas)return;const c=canvas.getContext('2d'),scale=canvas.width/(canvas.getBoundingClientRect().width||canvas.clientWidth||550),count=state.rulerSecond?4:2;
+    c.putImageData(state.image,0,0);
+    for(let j=0;j<count;j+=2){const a=state.ruler[j],b=state.ruler[j+1],length=Math.hypot(b.x-a.x,b.y-a.y),gap=Math.min(8*scale,length/3),dx=(b.x-a.x)/(length||1),dy=(b.y-a.y)/(length||1);c.beginPath();c.moveTo(a.x+dx*gap,a.y+dy*gap);c.lineTo(b.x-dx*gap,b.y-dy*gap);c.strokeStyle='#fff';c.lineWidth=3*scale;c.stroke();c.strokeStyle=j?'#237ca0':'#8c620a';c.lineWidth=1.25*scale;c.stroke();}
+    const cross=(p,active=false)=>{const arm=(active?21:12)*scale,gap=3*scale;c.beginPath();c.moveTo(p.x-arm,p.y);c.lineTo(p.x-gap,p.y);c.moveTo(p.x+gap,p.y);c.lineTo(p.x+arm,p.y);c.moveTo(p.x,p.y-arm);c.lineTo(p.x,p.y-gap);c.moveTo(p.x,p.y+gap);c.lineTo(p.x,p.y+arm);c.strokeStyle='#fff';c.lineWidth=3*scale;c.stroke();c.strokeStyle=active?'#111':'#5b4a2e';c.lineWidth=1.2*scale;c.stroke();};
+    state.ruler.slice(0,count).forEach((p,i)=>{cross(p,i===state.activePoint);const lx=Math.max(11*scale,Math.min(canvas.width-11*scale,p.x+18*scale)),ly=Math.max(11*scale,Math.min(canvas.height-11*scale,p.y-18*scale));c.fillStyle=i===state.activePoint?'#efb649':'#fff';c.fillRect(lx-8*scale,ly-8*scale,16*scale,16*scale);c.strokeStyle='#473b25';c.lineWidth=scale;c.strokeRect(lx-8*scale,ly-8*scale,16*scale,16*scale);c.fillStyle='#30291c';c.font=`bold ${11*scale}px system-ui`;c.textAlign='center';c.textBaseline='middle';c.fillText(String(i+1),lx,ly);});
+    if(state.rulerPointer)cross(state.rulerPointer,true);
+    modal.body.querySelectorAll('[data-ruler-point]').forEach(button=>{const active=Number(button.dataset.rulerPoint)===state.activePoint;button.setAttribute('aria-pressed',String(active));button.classList.toggle('btn-primary',active);button.classList.toggle('btn-light',!active);});
   }
   function renderResult(){
     const quality=state.result?.quality||{status:'retake',reasons:[]},ready=quality.status==='ready'&&state.items.length>0;
@@ -201,7 +222,7 @@ export function openCapture({onAdd,toast=()=>{}}){
     if(state.result?.quality.status==='ready')for(const [i,item] of state.items.entries()){ctx.beginPath();item.contour.points.forEach((p,j)=>j?ctx.lineTo(p.x,p.y):ctx.moveTo(p.x,p.y));ctx.closePath();ctx.fillStyle=item.checked?'#efb74e22':'#ffffff60';ctx.fill();ctx.strokeStyle=item.checked?'#e3a62e':'#9caa97';ctx.lineWidth=(item.checked?1.5:1)*scale;ctx.stroke();const p=item.info.center;ctx.beginPath();ctx.arc(p.x,p.y,10*scale,0,Math.PI*2);ctx.fillStyle='#efb74e';ctx.fill();ctx.fillStyle='#384830';ctx.font=`bold ${10*scale}px system-ui`;ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText(String(i+1),p.x,p.y);}
   }
   function render(){
-    if(closed)return;observer?.disconnect();
+    if(closed)return;cancelCalibration?.();cancelCalibration=null;observer?.disconnect();
     if(state.step===0)renderUpload();else if(state.step===1)renderCalibration();else if(state.step===3)renderProcessing();else renderResult();
     const canvas=modal.body.querySelector('canvas');if(canvas&&typeof ResizeObserver==='function'&&state.step!==3){observer=new ResizeObserver(()=>{if(!closed)state.step===1?drawCalibration():drawResult();});observer.observe(canvas);}
   }

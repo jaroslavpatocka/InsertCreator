@@ -1,6 +1,7 @@
 // English translations for the core area. Key = exact Czech source text passed to t()/plural()/i18nError().
 // Keep {placeholders} identical in both languages.
 export default {
+  'Neznámý tvar modulů pro chytré rozvržení.':'Unknown module shape for smart layout.',
   'Model nelze bezpečně vytisknout. Zkuste nástroje rozdělit do samostatných modulů.':'The model cannot be printed safely. Try splitting the tools into separate modules.',
   // model.js — import/validation
   'Neplatná hodnota: {label} ({range}).':'Invalid value: {label} ({range}).',
@@ -171,4 +172,18 @@ export default {
   'Vedle kapsy není dost bezpečného místa pro čitelný tiskový popisek.':'There is not enough safe space beside the pocket for a legible printed label.',
   'Nad dnem není dost materiálu pro bezpečně vyrytý popisek.':'There is not enough material above the base to engrave the label safely.',
   'Bez platného obrysu kapsy nelze popisek bezpečně umístit.':'The label cannot be safely placed without a valid pocket outline.',
+  'Nástroj nemá platnou konturu pro změnu rozměrů.':'The tool has no valid outline for dimension editing.',
+  'Zadejte platnou délku a šířku nástroje.':'Enter a valid tool length and width.',
+  'Rozměry nástroje musí být od {min} do {max}.':'Tool dimensions must be between {min} and {max}.',
+  'Zadané rozměry by změnily podélnou osu nástroje. Zvolte delší nebo užší obrys.':'These dimensions would change the tool longitudinal axis. Choose a longer or narrower outline.',
+  'Výřezy pro prsty by po změně rozměrů nebyly platné. Upravte jejich polohu nebo průměr.':'The finger bays would be invalid after resizing. Adjust their position or diameter.',
+  'Schodový modul musí tvořit souvislé buňky rastru bez otvorů.':'A stepped module must consist of connected grid cells without holes.',
+  'Kapsa nástroje nemá uvnitř schodového modulu dost místa na stěnu.':'The tool pocket has insufficient wall space inside the stepped module.',
+  'Podkladová mřížka':'Baseplate',
+  'Podkladová mřížka má více než 400 polí. Náhled ukazuje její obrys; STL exportujte po dílech.':'The baseplate has more than 400 cells. The preview shows its outline; export STL in tiles.',
+  'Podkladovou mřížku nelze zobrazit: {error}':'Cannot display the baseplate: {error}',
+  'Pro podkladovou mřížku zadejte platné rozměry šuplíku od 42 do 3000 mm.':'Enter valid drawer dimensions from 42 to 3000 mm for the baseplate.',
+  'Díl podkladové mřížky musí obsahovat celá pole uvnitř šuplíku.':'A baseplate tile must contain whole cells inside the drawer.',
+  'Podkladová mřížka má příliš mnoho polí pro jeden STL. Exportujte ji po dílech nejvýše 400 polí.':'The baseplate has too many cells for one STL. Export tiles of at most 400 cells.',
+  'Podkladová mřížka potřebuje tiskovou plochu alespoň {size}.':'The baseplate needs a print bed of at least {size}.',
 };

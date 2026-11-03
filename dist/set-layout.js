@@ -3,8 +3,9 @@ import {automaticFingerGrips} from './finger-grip.js';
 import {analyzeToolShape,findToolSets,setCoherence} from './tool-sets.js';
 import {orderTools} from './tool-size.js';
 import {addToolGroup} from './set-module.js';
+import {moduleOutline,moduleIntersects,steppedModuleFootprint} from './module-footprint.js';
 
-const EPS=.001,copy=value=>structuredClone(value),area=m=>(m.width-.5)*(m.height-.5);
+const EPS=.001,copy=value=>structuredClone(value),area=m=>{if(!m.cells)return(m.width-.5)*(m.height-.5);const grid=m.width/(Math.max(...m.cells.map(cell=>cell.x))+1),poly=moduleOutline(m,grid,{inset:.25});return Math.abs(poly.reduce((sum,p,index)=>{const q=poly[(index+1)%poly.length];return sum+p.x*q.y-q.x*p.y;},0)/2);};
 const bounds=points=>{let x=Infinity,y=Infinity,maxX=-Infinity,maxY=-Infinity;for(const p of points){x=Math.min(x,p.x);y=Math.min(y,p.y);maxX=Math.max(maxX,p.x);maxY=Math.max(maxY,p.y);}return{x,y,maxX,maxY,width:maxX-x,height:maxY-y};};
 const polygonArea=points=>Math.abs(points.reduce((s,p,i)=>{const q=points[(i+1)%points.length];return s+p.x*q.y-q.x*p.y;},0)/2);
 const inside=(m,p)=>m.x>=-EPS&&m.y>=-EPS&&m.x+m.width<=p.width+EPS&&m.y+m.height<=p.height+EPS;
@@ -21,17 +22,27 @@ function planOptions(project,set,allocate){
   const ordered=set.arrangement||set.order?orderTools(source,set.order||'asc'):[...source].sort((a,b)=>analyzeToolShape(b).length-analyzeToolShape(a).length||a.id.localeCompare(b.id));
   const ids=new Map(source.map(t=>[t.id,allocate(`set-${hash(JSON.stringify([set.id,'uniform',t.id]))}`)])),sharedId=allocate(`set-${hash(JSON.stringify([set.id,'shared',set.toolIds.slice().sort()]))}`);
   const options=[];
-  for(const layout of set.layout==='auto'?['uniform','shared']:[set.layout]){
+  for(const layout of set.layout==='auto'?['auto','shared']:[set.layout]){
     let tools=ordered.map(copy);
+    if(layout==='auto'){
+      try{
+        const result=addToolGroup({...project,tools:[],modules:[],toolSets:[]},tools,{name:set.name,moduleId:sharedId,arrangement:set.arrangement||'ordered',order:set.order||'asc',toolSet:{id:set.id,name:set.name,layout:'auto'}});
+        if(result.placed){
+          for(const tool of result.project.tools){const module=result.project.modules.find(module=>module.id===tool.moduleId);module.id=ids.get(tool.id);tool.moduleId=module.id;}
+          const b=bounds(result.project.modules.flatMap(module=>[{x:module.x,y:module.y},{x:module.x+module.width,y:module.y+module.height}]));options.push({set,layout,heading:0,width:b.width,height:b.height,modules:result.project.modules,tools:result.project.tools,cost:result.project.modules.reduce((sum,module)=>sum+area(module),0)});
+        }
+      }catch{}
+      continue;
+    }
     if(layout==='shared'){
       try{tools=tools.map(t=>Object.hasOwn(t,'fingerGrips')?t:{...t,fingerGrips:automaticFingerGrips(t,{radius:9})});}
       catch{continue;}
       if(tools.some(t=>!t.fingerGrips?.length||polygonArea(pocketOutline(t,project.clearance))-polygonArea(transformedPoints(t,project.clearance))<6))continue;
       // The shared packer nests actual pockets (including grips) while retaining nominal size order.
       // Keep the regular shelf alternatives below as well: a different footprint may fit a free bay better.
-      if(set.arrangement){
+      {
         try{
-          const result=addToolGroup({...project,tools:[],modules:[],toolSets:[]},tools,{name:set.name,moduleId:sharedId,arrangement:set.arrangement,order:set.order||'asc',toolSet:{id:set.id,name:set.name,layout:'shared'}});
+          const arrangement=set.arrangement||'compact',result=addToolGroup({...project,tools:[],modules:[],toolSets:[]},tools,{name:set.name,moduleId:sharedId,arrangement,order:set.order||'asc',alternate:arrangement==='compact',separation:Math.max(project.wall,project.gap),toolSet:{id:set.id,name:set.name,layout:'shared'}});
           const module=result.project.modules.find(m=>m.id===result.moduleId);
           if(result.placed){
             const old=project.modules.find(m=>m.id===source[0].moduleId);
@@ -73,12 +84,12 @@ function planOptions(project,set,allocate){
   // Explicit order is a requirement, including nested compact rows. Do not rank a visually reversed shelf as coherent.
   if(set.arrangement||set.order)for(let i=options.length-1;i>=0;i--)if(!setCoherence({...project,tools:options[i].tools,modules:options[i].modules},[set]).satisfied.includes(set.id))options.splice(i,1);
   options.sort((a,b)=>a.cost-b.cost||a.width*a.height-b.width*b.height||a.heading-b.heading||a.width-b.width);
-  const retained=options.slice(0,10);for(const layout of ['uniform','shared'])for(const heading of [0,90]){const option=options.find(p=>p.layout===layout&&p.heading===heading);if(option&&!retained.includes(option))retained.push(option);}
+  const retained=options.slice(0,10);for(const layout of ['auto','uniform','shared'])for(const heading of [0,90]){const option=options.find(p=>p.layout===layout&&p.heading===heading);if(option&&!retained.includes(option))retained.push(option);}
   return retained;
 }
 
 /** Coherent sets keep nominal order when requested. Explicit compact sets may use opposing 180° rows. */
-export async function arrangeToolSets(project,{onProgress,signal,compactArrange}={}){
+export async function arrangeToolSets(project,{onProgress,signal,compactArrange,moduleShape='rectangular'}={}){
   const source=copy(project),abort=()=>{if(signal?.aborted)throw new DOMException('Rozvržení sad bylo zrušeno.','AbortError');};
   let lastProgress=0;
   const progress=(value,message)=>{abort();lastProgress=Math.max(lastProgress,value);try{onProgress?.({stage:'sets',progress:lastProgress,message});}catch{}abort();};
@@ -87,7 +98,7 @@ export async function arrangeToolSets(project,{onProgress,signal,compactArrange}
   const finish=()=>{
     const result={tools:best.tools,modules:best.modules},after=metric({...source,...result},sets),coherence=setCoherence({...source,...result},sets);
     const beforeCoherence=setCoherence(source,sets),setSummary=sets.map(set=>{const satisfied=coherence.satisfied.includes(set.id),shared=new Set(result.tools.filter(t=>set.toolIds.includes(t.id)).map(t=>t.moduleId)).size===1;
-      return{id:set.id,name:set.name,toolIds:set.toolIds,requested:set.layout,applied:satisfied?(shared?'shared':'uniform'):null,status:satisfied?(beforeCoherence.satisfied.includes(set.id)?'preserved':'applied'):'unavailable',...(!satisfied?{reason:warnings.find(w=>w.includes(set.name))||(manufacturingFailures.has(set.id)?manufacturingFailures.get(set.id)+' Sestava zůstává zachovaná.':'Celá sada se bezpečně nevejde do dostupného prostoru.')}:{})};});
+      return{id:set.id,name:set.name,toolIds:set.toolIds,requested:set.layout,applied:satisfied?(shared?'shared':set.layout==='uniform'?'uniform':'auto'):null,status:satisfied?(beforeCoherence.satisfied.includes(set.id)?'preserved':'applied'):'unavailable',...(!satisfied?{reason:warnings.find(w=>w.includes(set.name))||(manufacturingFailures.has(set.id)?manufacturingFailures.get(set.id)+' Sestava zůstává zachovaná.':'Celá sada se bezpečně nevejde do dostupného prostoru.')}:{})};});
     for(const summary of setSummary)if(summary.applied==='uniform'&&manufacturingFailures.has(summary.id))warnings.push(manufacturingFailures.get(summary.id)+' Použity stejně velké samostatné moduly.');
     for(const summary of setSummary)if(summary.status==='unavailable'&&!warnings.some(w=>w.includes(summary.name)))warnings.push(`${summary.name}: ${summary.reason}`);
     progress(1,'Rozvržení sad je připravené.');
@@ -107,7 +118,7 @@ export async function arrangeToolSets(project,{onProgress,signal,compactArrange}
   const own=m=>source.tools.filter(t=>t.moduleId===m.id),protectedIds=new Set(source.modules.filter(m=>m.locked||m.sizeMode==='manual'||!own(m).length||own(m).some(t=>t.locked)||(!m.grouped&&m.setLayout!=='uniform'&&own(m).length>1)).map(m=>m.id));
   const blocked=new Set();for(const set of sets)if(set.toolIds.some(id=>protectedIds.has(source.tools.find(t=>t.id===id)?.moduleId))){blocked.add(set.id);warnings.push(`${set.name}: zamčené nebo ručně rozměrované moduly zůstaly zachované.`);}
   const usedIds=new Set(source.modules.map(m=>m.id)),allocate=id=>{let next=id,n=2;while(usedIds.has(next))next=`${id}-${n++}`;usedIds.add(next);return next;};
-  const families=sets.filter(s=>!blocked.has(s.id)).map(set=>{const options=planOptions(source,set,allocate);if(!options.length)warnings.push(`${set.name}: požadované uspořádání celé sady se nevejde do šuplíku, případně chybí přístup pro prsty.`);return{set,options};});
+  const families=sets.filter(s=>!blocked.has(s.id)).map(set=>{const options=planOptions(source,set,allocate);if(moduleShape==='stepped'&&set.layout!=='uniform')for(const option of options){option.modules=option.modules.map(module=>steppedModuleFootprint({...source,tools:option.tools},module));const b=bounds(option.modules.flatMap(module=>[{x:module.x,y:module.y},{x:module.x+module.width,y:module.y+module.height}]));option.width=b.width;option.height=b.height;option.cost=option.modules.reduce((sum,module)=>sum+area(module),0);}if(!options.length)warnings.push(`${set.name}: požadované uspořádání celé sady se nevejde do šuplíku, případně chybí přístup pro prsty.`);return{set,options};});
   let beams=[[]];for(const family of families){beams=beams.flatMap(choices=>[null,...family.options].map(option=>[...choices,option])).sort((a,b)=>b.reduce((s,p)=>s+(p?p.set.toolIds.length:0),0)-a.reduce((s,p)=>s+(p?p.set.toolIds.length:0),0)||a.reduce((s,p)=>s+(p?.cost||0),0)-b.reduce((s,p)=>s+(p?.cost||0),0)).slice(0,24);}
   // Also try each family alone so one blocked bay cannot prevent other sets.
   for(let i=0;i<families.length;i++){const alternatives=new Set(families[i].options.slice(0,3));for(const layout of ['uniform','shared']){const option=families[i].options.find(p=>p.layout===layout);if(option)alternatives.add(option);}for(const option of alternatives){const choices=families.map(()=>null);choices[i]=option;beams.push(choices);}}
@@ -132,7 +143,7 @@ export async function arrangeToolSets(project,{onProgress,signal,compactArrange}
     for(const t of candidate.tools)if(!reservedIds.has(t.id)&&!activeIds.has(t.id)){t.moduleId=null;}
     let fits=true;
     for(const plan of [...active].sort((a,b)=>b.width*b.height-a.width*a.height||a.set.id.localeCompare(b.set.id))){
-      let position=null;for(let y=0;y+plan.height<=source.height+EPS&&!position;y+=source.grid)for(let x=0;x+plan.width<=source.width+EPS;x+=source.grid){if(!candidate.modules.some(m=>intersects({x,y,width:plan.width,height:plan.height},m))){position={x,y};break;}}
+      let position=null;for(let y=0;y+plan.height<=source.height+EPS&&!position;y+=source.grid)for(let x=0;x+plan.width<=source.width+EPS;x+=source.grid){if(!plan.modules.some(module=>{const moved={...module,x:module.x+x,y:module.y+y};return candidate.modules.some(m=>intersects(moved,m)&&moduleIntersects(moved,m,source.grid));})){position={x,y};break;}}
       if(!position){fits=false;break;}
       candidate.modules.push(...plan.modules.map(m=>({...m,x:m.x+position.x,y:m.y+position.y})));
       for(const t of plan.tools)Object.assign(candidate.tools.find(next=>next.id===t.id),copy(t),{x:t.x+position.x,y:t.y+position.y});
@@ -149,7 +160,7 @@ export async function arrangeToolSets(project,{onProgress,signal,compactArrange}
     const pinned=copy(best),moduleIds=new Set(pinned.modules.map(m=>m.id)),held=pinned.tools.filter(t=>familyIds.has(t.id)&&!moduleIds.has(t.moduleId));
     pinned.tools=pinned.tools.filter(t=>!held.some(h=>h.id===t.id));
     const locks=new Map(pinned.modules.filter(m=>protectedIds.has(m.id)||pinned.tools.some(t=>t.moduleId===m.id&&familyIds.has(t.id))).map(m=>[m.id,m.locked]));for(const m of pinned.modules)if(locks.has(m.id))m.locked=true;
-    const result=await compactArrange(pinned,{signal,onProgress:event=>progress(.82+.16*(event.progress||0),'Dokončuji prostor pro ostatní nástroje…')});
+    const result=await compactArrange(pinned,{signal,moduleShape,onProgress:event=>progress(.82+.16*(event.progress||0),'Dokončuji prostor pro ostatní nástroje…')});
     const resultTools=new Map([...result.tools,...held].map(t=>[t.id,t])),candidate={...source,...result,tools:source.tools.map(t=>resultTools.get(t.id))};for(const m of candidate.modules)if(locks.has(m.id))m.locked=locks.get(m.id);await consider(candidate);
   }
   return finish();

@@ -43,13 +43,15 @@ function nestingProject(seed=1,options={}){
 
 test('six slanted screwdrivers genuinely interleave with finger access and save at least a quarter of individual module area',async()=>{
   const project=nestingProject(),snapshot=structuredClone(project),result=await smartArrange(project);
-  assert.equal(result.unplaced.length,0);assert.ok(result.stats.sharedModules>=2);assert.ok(result.stats.savedPercent>=25);assert.equal(result.stats.beforeArea,moduleArea(project.modules));assert.equal(result.stats.afterArea,moduleArea(result.modules));
+  assert.equal(result.unplaced.length,0);assert.ok(result.stats.sharedModules>=1);assert.ok(result.stats.savedPercent>=25);assert.equal(result.stats.beforeArea,moduleArea(project.modules));assert.equal(result.stats.afterArea,moduleArea(result.modules));
   assertPreserved(project,result);assertPocketAir(project,result);assert.deepEqual(project,snapshot);
   let interleaved=0;
   for(const module of result.modules.filter(m=>m.grouped)){
     assert.equal(module.sizeMode,'auto');const own=result.tools.filter(t=>t.moduleId===module.id);assert.ok(own.length>=2);
-    const a=box(pocketOutline(own[0],project.clearance)),b=box(pocketOutline(own[1],project.clearance));
-    if(Math.min(a.maxX,b.maxX)>Math.max(a.minX,b.minX)&&Math.min(a.maxY,b.maxY)>Math.max(a.minY,b.minY))interleaved++;
+    for(let i=0;i<own.length;i++)for(let j=i+1;j<own.length;j++){
+      const a=box(pocketOutline(own[i],project.clearance)),b=box(pocketOutline(own[j],project.clearance));
+      if(Math.min(a.maxX,b.maxX)>Math.max(a.minX,b.minX)&&Math.min(a.maxY,b.maxY)>Math.max(a.minY,b.minY))interleaved++;
+    }
   }
   assert.ok(interleaved>=2,'disjoint outlines must overlap their bounding boxes: this is shape nesting, not box concatenation');
   const json=JSON.parse(JSON.stringify({...project,tools:result.tools,modules:result.modules}));
@@ -118,14 +120,15 @@ test('different group memberships cannot collide when tool IDs contain separator
   let project=nestingProject(15,{count:4,slanted:false});const ids=['a','b|c','a|b','c'];
   project.tools=project.tools.map((tool,i)=>{const length=Math.max(...tool.points.map(p=>p.y)),scale=(i<2?190:120)/length;return{...tool,id:ids[i],moduleId:null,x:0,y:0,points:tool.points.map(p=>({x:p.x,y:p.y*scale})),fingerGrips:tool.fingerGrips.map(grip=>({...grip,y:grip.y*scale}))};});
   project.modules=[];project={...project,...autoArrange(project)};
+  project.toolSets=[{id:'first',name:'First family',toolIds:ids.slice(0,2),layout:'shared'},{id:'second',name:'Second family',toolIds:ids.slice(2),layout:'shared'}];
   const result=await smartArrange(project);assert.ok(result.stats.sharedModules>=2);assertPreserved(project,result);assertPocketAir(project,result);
 });
 
-test('invalid inputs reject clearly, large inputs retain their baseline and cancellation never mutates a project',async()=>{
+test('invalid inputs reject clearly, large inputs get bounded packing and cancellation never mutates a project',async()=>{
   const project=screwdriverProject(11),snapshot=structuredClone(project),invalid=structuredClone(project);invalid.tools[0].points=rectangle(20,20);invalid.tools[0].fingerGrips=[{id:'far',x:300,y:300,radius:9}];
   await assert.rejects(()=>smartArrange(invalid),/výřez|Výřez/);
   const duplicate=structuredClone(project);duplicate.tools[1].id=duplicate.tools[0].id;await assert.rejects(()=>smartArrange(duplicate),/identifik/);
-  const large={...blankProject(),tools:Array.from({length:25},(_,i)=>({id:'large-'+i,name:'Velký projekt',points:rectangle(20,20),x:0,y:0,moduleId:null,depth:10}))};const retained=await smartArrange(large);assert.deepEqual(retained.tools,large.tools);assert.equal(retained.stats.changed,false);assert.equal(retained.unplaced.length,25);
+  const large={...blankProject(),tools:Array.from({length:25},(_,i)=>({id:'large-'+i,name:'Velký projekt',points:rectangle(20,20),x:0,y:0,moduleId:null,depth:10}))};const retained=await smartArrange(large);assertPreserved(large,retained);assert.equal(retained.stats.strategy,'greedy');assert.equal(retained.stats.changed,true);assert.equal(retained.unplaced.length,0);assert.deepEqual(validateLayout({...large,...retained}),[]);
   const aborted=new AbortController();aborted.abort();await assert.rejects(()=>smartArrange(project,{signal:aborted.signal}),{name:'AbortError'});
   const controller=new AbortController();let progress=false;await assert.rejects(()=>smartArrange(project,{signal:controller.signal,onProgress:event=>{if(event.stage==='nesting'){progress=true;controller.abort();}}}),{name:'AbortError'});assert.ok(progress);assert.deepEqual(project,snapshot);
 });

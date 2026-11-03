@@ -97,7 +97,7 @@ test('"Přidat sadu" adds ONE module with every tool by default, registered as a
   assert.ok(!(u.toolSets||[]).some(s=>s.name==='Sada klíčků'));
 });
 
-test('"Samostatný modul pro každý nástroj" restores one module per tool (uniform tool set) and is remembered',async()=>{
+test('"Samostatný modul pro každý nástroj" adds individually minimal modules and remembers the choice',async()=>{
   const before=saved(),old=ids(before);
   await openSets();
   chooseLayout('key-set','each');
@@ -106,10 +106,10 @@ test('"Samostatný modul pro každý nástroj" restores one module per tool (uni
   const p=saved(),added=newOf(old,p);
   assert.equal(added.length,3);assert.equal(new Set(added.map(t=>t.moduleId)).size,3,'n modules');
   const set=(p.toolSets||[]).find(s=>s.toolIds.includes(added[0].id));
-  assert.equal(set?.layout,'uniform');
+  assert.equal(set?.layout,'auto');
   const own=p.modules.filter(m=>added.some(t=>t.moduleId===m.id));
-  assert.equal(new Set(own.map(m=>m.width+'x'+m.height)).size,1,'all set modules have equal dimensions');
-  assert.deepEqual(setCoherence(p,[set]).satisfied,[set.id],'equal modules and headings are immediately coherent');
+  assert.ok(new Set(own.map(m=>m.width+'x'+m.height)).size>1,'each module follows its own pocket instead of the largest sibling');
+  assert.deepEqual(setCoherence(p,[set]).satisfied,[set.id],'individual modules and headings are immediately coherent');
   await openSets();
   assert.equal($('[data-set-layout="key-set"]').value,'each','choice remembered for the session');
   chooseLayout('key-set','group');
@@ -142,8 +142,8 @@ test('footer batch passes exact collection ranges and scales once, and rejects a
   const {tools,options}=calls[0];
   assert.equal(tools.length,6);
   assert.deepEqual(options.collections,[
-    {start:1,count:2,name:'Sada klíčků',unit:'mm',layout:'uniform',arrangement:'ordered',order:'asc'},
-    {start:3,count:3,name:'Sada imbusů',unit:'mm',layout:'uniform',arrangement:'ordered',order:'asc'}
+    {start:1,count:2,name:'Sada klíčků',unit:'mm',layout:'auto',arrangement:'ordered',order:'asc'},
+    {start:3,count:3,name:'Sada imbusů',unit:'mm',layout:'auto',arrangement:'ordered',order:'asc'}
   ]);
   assert.deepEqual(tools.map(t=>t.name),['Imbus 4 mm','Klíček 8 mm','Klíček 13 mm','Imbus 2 mm','Imbus 3 mm','Imbus 4 mm']);
   for(const [i,width] of [112.5,101.2,123.2,56,64,72].entries())assert.ok(Math.abs(bbox(tools[i].points).w-width)<.001,`scaled tool ${i}`);
@@ -169,7 +169,7 @@ test('footer adds two separately scaled sets with the chosen layout in one undo 
       assert.equal(p.toolSets.length,2);
       assert.equal(p.modules.length,layout==='group'?3:6,'standalone outline plus one or one-per-member module for each set');
       for(const set of p.toolSets){
-        assert.equal(set.layout,layout==='group'?'shared':'uniform');
+        assert.equal(set.layout,layout==='group'?'shared':'auto');
         assert.deepEqual(setCoherence(p,[set]).satisfied,[set.id]);
         const members=p.tools.filter(t=>set.toolIds.includes(t.id));
         const widths=members.map(t=>bbox(t.points).w);
@@ -344,7 +344,7 @@ test('a catalogue set larger than the saved bed is placed as one module with no 
   }finally{setCatalogSource(source);}
 });
 
-test('uniform catalogue insertion is limited by drawer space only and keeps printer preferences',async()=>{
+test('individual minimal catalogue insertion is limited by drawer space only and keeps printer preferences',async()=>{
   setCatalogSource(null);
   try{
     const before=freshDrawer(),old=ids(before);
@@ -353,7 +353,7 @@ test('uniform catalogue insertion is limited by drawer space only and keeps prin
     assert.ok($('[data-fit="nobed"]')===null);assert.ok($('[data-fit="bed"]')===null);
     finishDrawer();
     const p=saved(),addedIds=new Set(newOf(old,p).map(t=>t.id)),modules=p.modules.filter(m=>p.tools.some(t=>addedIds.has(t.id)&&t.moduleId===m.id));
-    assert.equal(modules.length,12);assert.equal(new Set(modules.map(m=>m.width+'x'+m.height)).size,1);assert.ok(modules.some(m=>!onBed(m)));
+    assert.equal(modules.length,12);assert.ok(new Set(modules.map(m=>m.width+'x'+m.height)).size>1);assert.ok(modules.some(m=>!onBed(m)));
     assert.equal(unplacedOf(p,addedIds),0);assert.deepEqual(toolIssues(p,addedIds),[]);assert.deepEqual([p.limitToBed,p.bedWidth,p.bedHeight],[true,220,220]);
     click('#app [data-action="undo"]');assert.equal(saved().tools.length,before.tools.length);assert.deepEqual([saved().width,saved().height],[before.width,before.height]);
     chooseLayoutReset();

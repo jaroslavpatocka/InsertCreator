@@ -3,6 +3,7 @@ import Clipper from './vendor/clipper.js';
 import {i18nError} from './i18n.js';
 import {fmtLen,fmtSize} from './units.js';
 import {planSizeLabels} from './size-labels.js';
+import {moduleOutline,validateModuleFootprint,containsPocketWalls} from './module-footprint.js';
 
 const SCALE=10000,EPS=1e-7;
 const number=(value,fallback)=>Number.isFinite(+value)?+value:fallback;
@@ -68,7 +69,7 @@ export function validatePrintBed(project,modules){
 export function buildPrintTriangles(project,modules,tools,origin={x:0,y:0},{fit=false}={}){
   const cfg=printConfig(fit?{...project,bottomMode:'plain'}:project),triangles=[];
   const labelPlan=fit?{labels:[],skipped:[]}:planSizeLabels(project,modules,tools);
-  const cellCount=modules.reduce((sum,m)=>sum+Math.round(m.width/42)*Math.round(m.height/42),0);
+  const cellCount=modules.reduce((sum,m)=>sum+(validateModuleFootprint(m,number(project.grid,42)).cells?.length??Math.round(m.width/42)*Math.round(m.height/42)),0);
   if(!fit&&cfg.bottomMode==='grid'&&cellCount>400)throw i18nError('Najednou lze vytvořit nejvýše 400 Gridfinity patek. Exportujte sestavu po jednotlivých modulech.');
   if(tools.reduce((sum,t)=>sum+t.poly.length,0)>20000)throw i18nError('Kontury jsou pro jeden export příliš složité. Exportujte jednotlivé moduly.');
   const v=(p,z)=>[round(p.x-origin.x),round(p.y-origin.y),round(z)];
@@ -143,14 +144,18 @@ export function buildPrintTriangles(project,modules,tools,origin={x:0,y:0},{fit=
   }
   for(const m of modules){
     const start=triangles.length;
+    const footprint=validateModuleFootprint(m,number(project.grid,42));
     if(cfg.bottomMode==='grid'&&!fit&&[m.x,m.y,m.width,m.height].some(value=>Math.abs(value/42-Math.round(value/42))>.0001))throw i18nError('Modul „{name}“ musí mít rozměry i polohu v násobcích 42 mm pro Gridfinity patky.',{name:m.name||m.id});
-    const own=tools.filter(t=>t.moduleId===m.id),outer=cfg.bottomMode==='grid'&&!fit?roundedRect(m.x+.25,m.y+.25,m.width-.5,m.height-.5,3.75):rect(m.x+.25,m.y+.25,m.width-.5,m.height-.5);
+    const own=tools.filter(t=>t.moduleId===m.id),outer=footprint.cells?moduleOutline(m,number(project.grid,42),{inset:.25}):cfg.bottomMode==='grid'&&!fit?roundedRect(m.x+.25,m.y+.25,m.width-.5,m.height-.5,3.75):rect(m.x+.25,m.y+.25,m.width-.5,m.height-.5);
     const pockets=own.map(t=>({...t,poly:signedArea(t.poly)>0?t.poly:[...t.poly].reverse()}));
+    if(footprint.cells&&pockets.some(tool=>!containsPocketWalls(m,tool.poly,cfg.wall,number(project.grid,42))))throw i18nError('Kapsa nástroje nemá uvnitř schodového modulu dost místa na stěnu.');
     const rings=union(pockets.flatMap(t=>subtract(offset(t.poly,Math.max(1.2,cfg.wall)),[t.poly])));
     if(fit){if(rings.length)slabs([0,1],[rings]);continue;}
     let feet=[];
     if(cfg.bottomMode==='grid'){
+      const occupied=footprint.cells?new Set(footprint.cells.map(cell=>`${cell.x},${cell.y}`)):null;
       for(let y=0;y<m.height-1;y+=42)for(let x=0;x<m.width-1;x+=42){
+        if(occupied&&!occupied.has(`${Math.round(x/42)},${Math.round(y/42)}`))continue;
         const cx=m.x+x+21,cy=m.y+y+21,a=roundedRect(cx-17.8,cy-17.8,35.6,35.6,.8),b=roundedRect(cx-18.6,cy-18.6,37.2,37.2,1.6),c=roundedRect(cx-20.75,cy-20.75,41.5,41.5,3.75);
         face([a],0,false);loft(a,b,0,.8);loft(b,b,.8,2.6);loft(b,c,2.6,4.75);feet.push(c);
       }
@@ -161,7 +166,20 @@ export function buildPrintTriangles(project,modules,tools,origin={x:0,y:0},{fit=
     if(cfg.bottomMode==='magnet'){
       const r=cfg.magnetDiameter/2,edge=Math.max(1.2,cfg.wall),inset=r+edge;
       if(Math.min(m.width-.5,m.height-.5)<2*cfg.magnetDiameter+2*edge+.5)throw i18nError('Modul „{name}“ je příliš malý pro čtyři bezpečně oddělené magnetové kapsy.',{name:m.name||m.id});
-      for(const x of [m.x+.25+inset,m.x+m.width-.25-inset])for(const y of [m.y+.25+inset,m.y+m.height-.25-inset])magnets.push(circle(x,y,r));
+      if(!footprint.cells)for(const x of [m.x+.25+inset,m.x+m.width-.25-inset])for(const y of [m.y+.25+inset,m.y+m.height-.25-inset])magnets.push(circle(x,y,r));
+      else{
+        const candidates=[],seen=new Set(),grid=number(project.grid,42);
+        const consider=(x,y)=>{const id=`${round(x)},${round(y)}`;if(seen.has(id))return;seen.add(id);const poly=circle(x,y,r);if(containsPocketWalls(m,poly,edge,grid))candidates.push({x,y,poly});};
+        for(const x of [m.x+.25+inset,m.x+m.width-.25-inset])for(const y of [m.y+.25+inset,m.y+m.height-.25-inset])consider(x,y);
+        for(const cell of footprint.cells){const x=m.x+cell.x*grid,y=m.y+cell.y*grid;consider(x+grid/2,y+grid/2);for(const dx of [.25+inset,grid-.25-inset])for(const dy of [.25+inset,grid-.25-inset])consider(x+dx,y+dy);}
+        const chosen=[];
+        while(chosen.length<4){
+          const eligible=candidates.filter(p=>chosen.every(q=>Math.hypot(p.x-q.x,p.y-q.y)>=2*r+edge+.5-EPS));
+          eligible.sort((a,b)=>{const score=p=>chosen.length?Math.min(...chosen.map(q=>Math.hypot(p.x-q.x,p.y-q.y))):Math.hypot(p.x-(m.x+m.width/2),p.y-(m.y+m.height/2));return score(b)-score(a)||a.y-b.y||a.x-b.x;});
+          if(!eligible.length)throw i18nError('Modul „{name}“ je příliš malý pro čtyři bezpečně oddělené magnetové kapsy.',{name:m.name||m.id});chosen.push(eligible[0]);
+        }
+        magnets=chosen.map(p=>p.poly);
+      }
     }
     const labels=labelPlan.labels.filter(label=>label.moduleId===m.id);
     if(!disjointComponents(outer,pockets,labels,bottom,baseTop,H,magnets,feet)){

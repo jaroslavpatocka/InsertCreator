@@ -1,4 +1,5 @@
 import {exportSVG,pocketOutline} from './geometry.js';
+import {moduleOutline} from './module-footprint.js';
 import {t as tr,i18nError} from './i18n.js';
 import {fmtLen,fmtSize,unit} from './units.js';
 
@@ -32,7 +33,7 @@ export function exportFitPDF(project,options={}){
     content+=`q ${num(PT)} 0 0 ${num(-PT)} ${num(10*PT)} ${num((pageHeight-35)*PT)} cm\n0 0 190 240 re W n\n`;
     const shift=q=>({x:q.x-m.x-p.x,y:q.y-m.y-p.y});
     const outline=points=>points.map((q,i)=>{const s=shift(q);return `${num(s.x)} ${num(s.y)} ${i?'l':'m'}`;}).join('\n')+'\nh S\n';
-    content+='0.6 0.6 0.6 RG 0.18 w\n'+outline([{x:m.x+.25,y:m.y+.25},{x:m.x+m.width-.25,y:m.y+.25},{x:m.x+m.width-.25,y:m.y+m.height-.25},{x:m.x+.25,y:m.y+m.height-.25}]);
+    content+='0.6 0.6 0.6 RG 0.18 w\n'+outline(moduleOutline(m,project.grid,{inset:.25}));
     content+='0 0 0 RG 0.25 w\n';
     for(const t of project.tools.filter(t=>t.moduleId===m.id))content+=outline(pocketOutline(t,project.clearance));
     content+='Q\n';

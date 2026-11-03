@@ -1,5 +1,6 @@
 import {validateFingerGrips} from './finger-grip.js';
 import {validateToolSets} from './tool-sets.js';
+import {validateModuleFootprint} from './module-footprint.js';
 import {t,t as tr,i18nError} from './i18n.js';
 import {fmtLen} from './units.js';
 
@@ -28,10 +29,10 @@ export function validateProject(input){
     const id=text(m.id||uid());if(ids.has(id))throw i18nError('Duplicitní identifikátor modulu.');ids.add(id);
     let setFields={};
     if(Object.hasOwn(m,'setId')||Object.hasOwn(m,'setLayout')){
-      if(typeof m.setId!=='string'||!m.setId.trim()||m.setId.length>100||!['uniform','shared'].includes(m.setLayout))throw i18nError('Modul sady musí mít platný identifikátor sady a způsob uspořádání.');
+      if(typeof m.setId!=='string'||!m.setId.trim()||m.setId.length>100||!['auto','uniform','shared'].includes(m.setLayout))throw i18nError('Modul sady musí mít platný identifikátor sady a způsob uspořádání.');
       setFields={setId:m.setId,setLayout:m.setLayout};
     }
-    return{id,name:text(m.name||t('Modul')),x:finite(m.x,0,4000,'pozice X'),y:finite(m.y,0,4000,'pozice Y'),width:finite(m.width,5,3000,'šířka modulu'),height:finite(m.height,5,3000,'hloubka modulu'),...(['mm','in'].includes(m.unit)?{unit:m.unit}:{}),locked:!!m.locked,sizeMode:m.sizeMode==='manual'?'manual':'auto',...(m.grouped===true?{grouped:true}:{}),...setFields};
+    return{id,name:text(m.name||t('Modul')),x:finite(m.x,0,4000,'pozice X'),y:finite(m.y,0,4000,'pozice Y'),width:finite(m.width,5,3000,'šířka modulu'),height:finite(m.height,5,3000,'hloubka modulu'),...(['mm','in'].includes(m.unit)?{unit:m.unit}:{}),locked:!!m.locked,sizeMode:m.sizeMode==='manual'?'manual':'auto',...(m.grouped===true?{grouped:true}:{}),...setFields,...validateModuleFootprint(m,out.grid)};
   });
   const toolIds=new Set();
   out.tools=p.tools.map(t=>{

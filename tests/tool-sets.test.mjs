@@ -91,5 +91,6 @@ test('optional set schema, module tags, singleton cleanup and JSON preserve lega
 test('invalid duplicate memberships, set IDs, layouts and incomplete module tags reject clearly',()=>{
   const project={...blankProject(),tools:familyTools()},row={id:'set',name:'Sada',toolIds:['a'],layout:'auto'};
   for(const toolSets of [null,{},[{...row,id:''}],[row,row],[row,{...row,id:'other'}],[{...row,layout:'bad'}],[{...row,toolIds:[17]}]])assert.throws(()=>validateProject({...project,toolSets}));
-  for(const fields of [{setId:'x'},{setLayout:'uniform'},{setId:'x',setLayout:'auto'},{setId:'',setLayout:'shared'}])assert.throws(()=>validateProject({...project,modules:[{id:'m',x:0,y:0,width:42,height:42,...fields}]}),/sady/);
+  for(const fields of [{setId:'x'},{setLayout:'uniform'},{setId:'x',setLayout:'bad'},{setId:'',setLayout:'shared'}])assert.throws(()=>validateProject({...project,modules:[{id:'m',x:0,y:0,width:42,height:42,...fields}]}),/sady/);
+  assert.equal(validateProject({...project,modules:[{id:'m',x:0,y:0,width:42,height:42,setId:'x',setLayout:'auto'}]}).modules[0].setLayout,'auto');
 });

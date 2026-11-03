@@ -90,7 +90,7 @@ test('explicit membership overrides similarity and protects locks and manually s
 
 test('explicitly deleted grips remain deleted and cannot silently enable a shared family',async()=>{
   const p=screwdriverProject(11);p.tools.forEach(t=>t.fingerGrips=[]);
-  const r=await smartArrange(p,{mode:'sets'});coherent(p,r,6);assert.ok(r.modules.every(m=>m.setLayout==='uniform'));assert.ok(r.tools.every(t=>t.fingerGrips.length===0));
+  const r=await smartArrange(p,{mode:'sets'});coherent(p,r,6);assert.ok(r.modules.every(m=>m.setLayout==='auto'));assert.ok(r.tools.every(t=>t.fingerGrips.length===0));
 });
 
 test('raster-derived photo contours form a complete set with mixed pocket depths and legacy grip absence',async()=>{
@@ -106,8 +106,8 @@ test('raster-derived photo contours form a complete set with mixed pocket depths
   for(const printMode of ['solid','light'])inspectSTL(exportSTL({...next,printMode},{checkBed:false}));
 });
 
-test('set mode cancellation is abortable and the bounded limit leaves the source unchanged',async()=>{
+test('set mode cancellation is abortable and large families use bounded greedy packing without changing their source',async()=>{
   const p=screwdriverProject(),snapshot=structuredClone(p),controller=new AbortController();
   await assert.rejects(smartArrange(p,{mode:'sets',signal:controller.signal,onProgress:()=>controller.abort()}),{name:'AbortError'});assert.deepEqual(p,snapshot);
-  const large=screwdriverProject(13,{count:25,width:1260,height:1260}),r=await smartArrange(large,{mode:'sets'});assert.deepEqual(logical(r),logical(large));assert.ok(r.stats.warnings.length);
+  const large=screwdriverProject(13,{count:25,width:1260,height:1260}),original=structuredClone(large),r=await smartArrange(large,{mode:'sets'});assert.equal(r.stats.strategy,'greedy');assert.deepEqual(r.unplaced,[]);assert.deepEqual(validateLayout({...large,...r}),[]);preserved(large,r);assert.deepEqual(large,original);
 });

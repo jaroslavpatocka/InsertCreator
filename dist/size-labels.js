@@ -2,6 +2,7 @@
 import Clipper from './vendor/clipper.js';
 import {pocketOutline} from './finger-grip.js';
 import {sizeText} from './tool-size.js';
+import {containsPocketWalls} from './module-footprint.js';
 
 const SCALE=10000,DEPTH=.35,PAD=.8,CELL=.5,CLEAR=.6;
 const round=v=>Math.round(v*SCALE)/SCALE;
@@ -136,6 +137,7 @@ export function planSizeLabels(project,modules=project.modules||[],tools=project
       let chosen=null;
       for(const candidate of candidates){
         const plate=rect(candidate.x,candidate.y,candidate.width,candidate.height),bounds=box(plate),near=blocked.filter(item=>overlap(bounds,item.bounds));
+        if(module.cells&&!containsPocketWalls(module,plate,margin,number(project.grid,42),{inset:0}))continue;
         if(near.length&&clip([plate],near.map(item=>item.poly),Clipper.ClipType.ctIntersection).some(p=>Math.abs(area(p))>1e-7))continue;
         chosen={...candidate,plate};break;
       }

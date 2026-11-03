@@ -141,14 +141,14 @@ test('smart layout UI uses real workers and applies only valid, reversible resul
     sameToolGeometry(before,after);assert.deepEqual(validateLayout(after),[]);
   });
 
-  await t.test('the real bounded-search limit explains the unchanged result without saving it',async()=>{
-    open('smart-limited');const count=realResults.length,snapshot=start();await completed();
-    assert.ok(realResults.length>count);assert.equal(realResults.at(-1).stats.changed,false);
-    assert.match($('.smart-layout-result').textContent,/příliš velká|rychlé vnoření/,'the user must see the actual search limit rather than a generic failure');
-    unchanged(snapshot);assert.equal(saved().tools.length,25);
+  await t.test('a real worker uses the lightweight path above24 tools and applies its valid improvement',async()=>{
+    open('smart-limited');const count=realResults.length,before=saved();start();await completed();
+    assert.ok(realResults.length>count);assert.equal(realResults.at(-1).stats.strategy,'greedy');assert.equal(realResults.at(-1).stats.changed,true);
+    assert.doesNotMatch($('.smart-layout-result').textContent,/nepodařilo/);assert.equal(saved().tools.length,25);sameToolGeometry(before,saved());assert.deepEqual(validateLayout(saved()),[]);
+    assert.notDeepEqual(logical(saved()),logical(before));click('[data-smart-close]');action('undo');assert.deepEqual(logical(saved()),logical(before));
   });
 
-  await t.test('a partial improvement places more tools even when its physical module area increases',async()=>{
+  await t.test('a partial improvement fills available drawer space and reports actual area changes',async()=>{
     open('smart-partial');const before=saved();
     const placed=p=>{
       const modules=p.modules.filter(m=>m.x>=0&&m.y>=0&&m.x+m.width<=p.width+1e-6&&m.y+m.height<=p.height+1e-6),ids=new Set(modules.map(m=>m.id));
@@ -157,12 +157,13 @@ test('smart layout UI uses real workers and applies only valid, reversible resul
     const originalPlaced=placed(before);assert.equal(originalPlaced.tools.length,1);
     start();await completed();const after=saved(),newPlaced=placed(after);
     assert.ok(newPlaced.tools.length>originalPlaced.tools.length,'the real improvement must be applied rather than rejected for its remaining outside module; '+$('.modal-body').textContent);
-    assert.ok(newPlaced.tools.length<after.tools.length,'this fixture must exercise a partial result with an unplaced remainder');
-    assert.ok(area(after)>area(before),'placing more tools takes priority over a smaller module area');
+    assert.ok(newPlaced.tools.length<=after.tools.length,'the optimizer may now reclaim enough space for the complete assembly');
+    assert.ok(Number.isFinite(area(after)),'area remains measurable even when reclaim also reduces existing modules');
     for(const tool of originalPlaced.tools)assert.ok(newPlaced.tools.some(t=>t.id===tool.id),'a formerly placed tool must never be lost');
     assert.equal(after.tools.length,before.tools.length);sameToolGeometry(before,after);
     assert.deepEqual(validateLayout({...after,modules:newPlaced.modules,tools:newPlaced.tools}),[],'every actually placed pocket and module must be valid');
-    assert.match($('.smart-layout-result').textContent,new RegExp(`${originalPlaced.tools.length} → ${newPlaced.tools.length}`));assert.match($('.smart-layout-result').textContent,/Plocha modulů vzrostla/);assert.doesNotMatch($('.smart-layout-result h3').textContent,/Úspora/);
+    assert.match($('.smart-layout-result').textContent,new RegExp(`${originalPlaced.tools.length} → ${newPlaced.tools.length}`));
+    if(area(after)>area(before)+1e-6){assert.match($('.smart-layout-result').textContent,/Plocha modulů vzrostla/);assert.doesNotMatch($('.smart-layout-result h3').textContent,/Úspora/);}
     click('[data-smart-close]');action('undo');assert.deepEqual(logical(saved()),logical(before));assert.equal(history().undo,true,'the whole partial improvement must be one reversible edit');
   });
 

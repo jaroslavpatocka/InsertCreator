@@ -1,12 +1,12 @@
 // Atomic whole-module edits. Printer dimensions are checked only by final STL export.
 import {clone,uid,validateProject} from './model.js';
 import {bounds,validateLayout} from './geometry.js';
+import {moduleIntersects} from './module-footprint.js';
 import {i18nError,t} from './i18n.js';
 
 const EPS=.001;
 const angle=value=>((value%360)+360)%360;
 const issueError=issue=>Object.assign(Error(issue.message),{i18n:issue.i18n});
-const intersects=(a,b)=>a.x<b.x+b.width-EPS&&a.x+a.width>b.x+EPS&&a.y<b.y+b.height-EPS&&a.y+a.height>b.y+EPS;
 function select(project,moduleId){
   validateProject(project);
   const next=clone(project),module=next.modules.find(item=>item.id===moduleId);
@@ -48,6 +48,10 @@ export function rotateModule(project,moduleId,degrees=90){
   if(![0,90,180,270].includes(turn))throw i18nError('Modul lze otáčet pouze po 90°.');
   if(!turn)return next;
   unlocked(module,tools);
+  if(module.cells){
+    const cols=Math.round(module.width/next.grid),rows=Math.round(module.height/next.grid);
+    module.cells=module.cells.map(({x,y})=>turn===90?{x:rows-1-y,y:x}:turn===180?{x:cols-1-x,y:rows-1-y}:{x:y,y:cols-1-x});
+  }
   const cx=module.x+module.width/2,cy=module.y+module.height/2;
   if(turn===90||turn===270)[module.width,module.height]=[module.height,module.width];
   const nx=module.x+module.width/2,ny=module.y+module.height/2;
@@ -71,11 +75,11 @@ export function duplicateModule(project,moduleId){
   const allocate=()=>{let id;do{id=uid();}while(used.has(id));used.add(id);return id;};
   let spot=null;
   for(let y=0;y+source.height<=next.height+EPS&&!spot;y+=grid)for(let x=0;x+source.width<=next.width+EPS;x+=grid){
-    const candidate={x,y,width:source.width,height:source.height};
-    if(!next.modules.some(module=>intersects(candidate,module))){spot=candidate;break;}
+    const candidate={...source,x,y};
+    if(!next.modules.some(module=>moduleIntersects(candidate,module,grid))){spot=candidate;break;}
   }
   if(!spot)throw i18nError('Pro kopii modulu není v šuplíku volné místo.');
-  const copyName=name=>(String(name||'')+' · '+t('kopie')).slice(0,100),module={...source,id:allocate(),name:copyName(source.name),x:spot.x,y:spot.y,locked:false};
+  const copyName=name=>(String(name||'')+' · '+t('kopie')).slice(0,100),module={...clone(source),id:allocate(),name:copyName(source.name),x:spot.x,y:spot.y,locked:false};
   delete module.setId;delete module.setLayout;
   const toolIds=new Map(),dx=module.x-source.x,dy=module.y-source.y;
   const tools=sourceTools.map(sourceTool=>{

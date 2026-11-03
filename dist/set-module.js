@@ -7,6 +7,7 @@ import {uid} from './model.js';
 import {t,i18nError} from './i18n.js';
 import {fmtLen} from './units.js';
 import {compareToolSize,orderTools} from './tool-size.js';
+import {moduleIntersects} from './module-footprint.js';
 
 const EPS=1e-7,SCALE=10000,CELL=1,MAX_SIZE=3000;
 const copy=value=>JSON.parse(JSON.stringify(value));
@@ -183,7 +184,7 @@ function begin(project,tools,opts,{forceLayout=null,maxModules=1}={}){
   if(!['asc','desc'].includes(order))throw i18nError('Zvolte vzestupné nebo sestupné pořadí velikostí.');
   const logicalOrder=arrangement!==null||opts.order!=null||toolSet?.order!=null,regular=arrangement==='ordered';
   const preferences={...(arrangement!==null?{arrangement}:{}),...(logicalOrder?{order}:{})};
-  const addedModules=toolSet?.layout==='uniform'?tools.length:maxModules;
+  const addedModules=['auto','uniform'].includes(toolSet?.layout)?tools.length:maxModules;
   if(next.tools.length+tools.length>300||next.modules.length+addedModules>400)throw i18nError('Projekt je příliš velký. Limit je 300 nástrojů a 400 modulů.');
   const name=String(opts.name||toolSet?.name||t('Sada nástrojů')).slice(0,100);
   let setId=null;
@@ -192,7 +193,7 @@ function begin(project,tools,opts,{forceLayout=null,maxModules=1}={}){
     setId=base;for(let i=2;setIds.has(setId);i++)setId=`${base}-${i}`;
   }
   const clearance=num(next.clearance,.8),wall=num(next.wall,2.4),grid=Math.max(1,num(next.grid,42)),padding=wall+.25;
-  const separation=wall+.05,gap=separation+CELL+.01;
+  const separation=Math.max(wall,num(opts.separation,wall))+.05,gap=separation+CELL+.01;
   const usedModules=new Set(next.modules.map(m=>m.id));
   const allocate=base=>{base=String(base).slice(0,90);let id=base;for(let i=2;usedModules.has(id);i++)id=`${base}-${i}`;usedModules.add(id);return id;};
   const unit=['mm','in'].includes(opts.unit)?opts.unit:null;
@@ -202,7 +203,7 @@ function begin(project,tools,opts,{forceLayout=null,maxModules=1}={}){
   const freeSpot=(width,height)=>{
     for(let y=0;y+height<=H+EPS;y+=grid)for(let x=0;x+width<=W+EPS;x+=grid){
       const r={x,y,width,height};
-      if(!next.modules.some(m=>intersects(r,m)))return{x,y};
+      if(!next.modules.some(m=>intersects(r,m)&&moduleIntersects(r,m,grid)))return{x,y};
     }
     return null;
   };
@@ -225,7 +226,7 @@ function begin(project,tools,opts,{forceLayout=null,maxModules=1}={}){
   const register=toolIds=>{if(toolSet)next.toolSets=[...(next.toolSets||[]),{id:setId,name:String(toolSet.name||name).slice(0,100),toolIds,layout:toolSet.layout,...preferences}];};
   // Only geometric problems of the module itself count here (pocket depth is the editor's business).
   const geometryOk=(module,own)=>!validateLayout({...next,width:Math.max(module.width,W),height:Math.max(module.height,H),modules:[{...module,x:0,y:0}],tools:own.map(t=>({...t,x:t.x-module.x,y:t.y-module.y}))}).some(issue=>issue.type==='overlap'||issue.type==='outside');
-  const meshCache=new Map(),checkManufacturing=logicalOrder||next.sizeLabels===true;
+  const meshCache=new Map(),checkManufacturing=(logicalOrder||next.sizeLabels===true)&&opts.checkManufacturing!==false;
   const candidateOk=(module,own)=>{
     if(!geometryOk(module,own))return false;
     if(!checkManufacturing)return true;
@@ -313,25 +314,26 @@ export function addToolGroup(project,tools,opts={}){
   const source=ctx.logicalOrder?orderTools(copy(tools),ctx.order):copy(tools);
   const finish=(placed,more)=>({project:next,...more,placed,reason:placed?'ok':'drawer',...extra});
 
-  if(toolSet?.layout==='uniform'){
+  if(['auto','uniform'].includes(toolSet?.layout)){
     // Equal footprints for every member and one common heading; the smaller cell fitting the drawer wins.
     const cells=[90,0].map(heading=>{
       const items=source.map((tool,index)=>prepareOne(tool,index,ctx,{heading}));
       const width=Math.ceil((Math.max(...items.map(i=>i.bounds.width))+2*ctx.padding-EPS)/grid)*grid,height=Math.ceil((Math.max(...items.map(i=>i.bounds.height))+2*ctx.padding-EPS)/grid)*grid;
-      return{items,width,height,area:width*height,inDrawer:inDrawer(width,height)};
+      const sizes=items.map(item=>toolSet.layout==='uniform'?{width,height}:{width:Math.ceil((item.bounds.width+2*ctx.padding-EPS)/grid)*grid,height:Math.ceil((item.bounds.height+2*ctx.padding-EPS)/grid)*grid});
+      return{items,width,height,sizes,area:sizes.reduce((sum,size)=>sum+size.width*size.height,0),inDrawer:sizes.every(size=>inDrawer(size.width,size.height))};
     }).sort((a,b)=>b.inDrawer-a.inDrawer||a.area-b.area);
-    const cell=cells.find(cell=>cell.items.every(item=>{
-      const module={id:'uniform-check',x:0,y:0,width:cell.width,height:cell.height},tool={...item.tool,moduleId:module.id,rotation:item.normal.rotation,x:(cell.width-item.bounds.width)/2-item.bounds.minX,y:(cell.height-item.bounds.height)/2-item.bounds.minY};
+    const cell=cells.find(cell=>cell.items.every((item,index)=>{
+      const {width,height}=cell.sizes[index],module={id:'uniform-check',x:0,y:0,width,height},tool={...item.tool,moduleId:module.id,rotation:item.normal.rotation,x:(width-item.bounds.width)/2-item.bounds.minX,y:(height-item.bounds.height)/2-item.bounds.minY};
       return ctx.candidateOk(module,[tool]);
     }));
     if(!cell)throw i18nError('Model nelze bezpečně vytisknout. Zkuste nástroje rozdělit do samostatných modulů.');
-    if(cell.width>MAX_SIZE||cell.height>MAX_SIZE)throw i18nError('Sada je pro jeden modul příliš velká (nejvýše {max} v každém směru).',{max:fmtLen(MAX_SIZE)});
+    if(cell.sizes.some(size=>size.width>MAX_SIZE||size.height>MAX_SIZE))throw i18nError('Sada je pro jeden modul příliš velká (nejvýše {max} v každém směru).',{max:fmtLen(MAX_SIZE)});
     const base=opts.moduleId||`set-${tools[0].id}`,moduleIds=[],own=[];let all=true;
-    for(const item of cell.items){
-      const spot=cell.inDrawer?freeSpot(cell.width,cell.height):null;if(!spot)all=false;
-      const id=allocate(cell.items.length>1?`${base}-${item.index+1}`:base),position=spot||park(cell.width,cell.height);
-      const module={id,name:String(item.tool.name||name).slice(0,100),...position,width:cell.width,height:cell.height,locked:false,sizeMode:'auto',setId,setLayout:'uniform',...(unit?{unit}:{})};
-      const tool={...item.tool,moduleId:id,rotation:item.normal.rotation,x:position.x+(cell.width-item.bounds.width)/2-item.bounds.minX,y:position.y+(cell.height-item.bounds.height)/2-item.bounds.minY};
+    for(const [index,item] of cell.items.entries()){
+      const {width,height}=cell.sizes[index],spot=inDrawer(width,height)?freeSpot(width,height):null;if(!spot)all=false;
+      const id=allocate(cell.items.length>1?`${base}-${item.index+1}`:base),position=spot||park(width,height);
+      const module={id,name:String(item.tool.name||name).slice(0,100),...position,width,height,locked:false,sizeMode:'auto',setId,setLayout:toolSet.layout,...(unit?{unit}:{})};
+      const tool={...item.tool,moduleId:id,rotation:item.normal.rotation,x:position.x+(width-item.bounds.width)/2-item.bounds.minX,y:position.y+(height-item.bounds.height)/2-item.bounds.minY};
       next.modules.push(module);next.tools.push(tool);own.push(tool);moduleIds.push(id);
     }
     if(all)return finish(true,{moduleId:moduleIds[0],moduleIds});

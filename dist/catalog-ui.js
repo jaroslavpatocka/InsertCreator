@@ -5,6 +5,7 @@ import {esc,icon,toast} from './ui.js';
 import {t,plural,errorText,getLang,fmtNum,i18nError} from './i18n.js';
 import {unitFor,fmtSize,fmtLen,inputValue,parseLength} from './units.js';
 import {scaleTool} from './set-module.js';
+import {automaticFingerGrips,validateFingerGrips} from './finger-grip.js';
 
 const defaultSource=async()=>{const m=await import('./catalog/index.js');return{categories:m.CATEGORIES,items:m.catalogItems(),sets:typeof m.catalogSets==='function'?m.catalogSets():[],setsCategory:m.SETS_CATEGORY};};
 let source=defaultSource,loaded=null;
@@ -60,7 +61,9 @@ function haystack(item){
 /** Tool object (no id; the caller assigns one) created from a catalogue item, named in the current language. */
 export function catalogTool(item){
   const name=localName(item),code=name.match(/\b(PH|PZ|TX|T)\s*(\d+)\b/i),nonMetricCode=code&&/^(PH|PZ)$/i.test(code[1]);
-  return{name,points:item.points.map(p=>({x:Number(p.x),y:Number(p.y)})),depth:Number(item.depth)||12,...(item.unit==='mm'||item.unit==='in'?{unit:item.unit}:{}),...(code?{sizeLabel:code[1].toUpperCase()+code[2]}:{}),...(!nonMetricCode&&typeof item.size==='number'&&Number.isFinite(item.size)&&item.size>0&&['mm','in'].includes(item.unit)?{nominalSize:{value:item.size,unit:item.unit}}:{}),x:0,y:0,rotation:0};
+  const tool={name,points:item.points.map(p=>({x:Number(p.x),y:Number(p.y)})),depth:Number(item.depth)||12,...(item.unit==='mm'||item.unit==='in'?{unit:item.unit}:{}),...(code?{sizeLabel:code[1].toUpperCase()+code[2]}:{}),...(!nonMetricCode&&typeof item.size==='number'&&Number.isFinite(item.size)&&item.size>0&&item.size<=3000&&['mm','in'].includes(item.unit)?{nominalSize:{value:item.size,unit:item.unit}}:{}),x:0,y:0,rotation:0};
+  tool.fingerGrips=Object.hasOwn(item,'fingerGrips')?validateFingerGrips(item.fingerGrips):automaticFingerGrips({...tool,id:item.id});
+  return tool;
 }
 // ---- Scale ("Měřítko") ----
 export const SCALE_MIN=.2,SCALE_MAX=5;
@@ -320,13 +323,13 @@ export function mountLibraryFolders(modal,{mine,onAdd,onSave}){
         const members=setTools(set),start=tools.length;
         tools.push(...members);
         const p=preferences(set);
-        if(members.length>1)collections.push({start,count:members.length,name:localName(set),unit:set.unit==='in'?'in':'mm',layout:p.layout==='group'?'shared':'uniform',arrangement:p.layout==='each'?'ordered':p.arrangement,order:p.order});
+        if(members.length>1)collections.push({start,count:members.length,name:localName(set),unit:set.unit==='in'?'in':'mm',layout:p.layout==='group'?'shared':'auto',arrangement:p.layout==='each'?'ordered':p.arrangement,order:p.order});
       }
       add(()=>tools,{collections});
     }catch(error){toast(errorText(error));}
   };
   // set: the added tools become one project tool set; group: ONE module for them (default layout).
-  const setAddOpts=(set,n)=>{const p=preferences(set),info={name:localName(set),unit:set.unit==='in'?'in':'mm',arrangement:p.layout==='each'?'ordered':p.arrangement,order:p.order};return n>1?{set:info,...(p.layout==='group'?{group:info}:{})}:{};};
+  const setAddOpts=(set,n)=>{const p=preferences(set),info={name:localName(set),unit:set.unit==='in'?'in':'mm',arrangement:p.layout==='each'?'ordered':p.arrangement,order:p.order};return n>1?{set:{...info,layout:p.layout==='group'?'shared':'auto'},...(p.layout==='group'?{group:info}:{})}:{};};
   panel.addEventListener('click',e=>{
     if(state.folder!=='catalog')return;
     const summary=e.target.closest('.catalog-scale > summary');

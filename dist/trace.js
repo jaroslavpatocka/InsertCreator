@@ -287,7 +287,8 @@ export function rectifyImage(imageData, corners, widthMm = 210, heightMm = 297, 
 
 /** Pixels per millimetre for two ruler marks; perspective must already be near-normal. */
 export function calibrateSegment(a, b, distanceMm) {
+  if(!a||!b||![a.x,a.y,b.x,b.y,distanceMm].every(Number.isFinite)||distanceMm<1||distanceMm>5000)throw new Error('Označte dvě různé značky pravítka a zadejte jejich skutečnou vzdálenost.');
   const distance = Math.hypot(b.x - a.x, b.y - a.y);
-  if (!Number.isFinite(distance) || distance < 2 || !(distanceMm > 0) || !Number.isFinite(distanceMm)) throw new Error('Označte dvě různé značky pravítka a zadejte jejich skutečnou vzdálenost.');
+  if (distance < 12) throw new Error('Značky pravítka jsou příliš blízko. Použijte delší úsek alespoň 12 pixelů.');
   return distance / distanceMm;
 }

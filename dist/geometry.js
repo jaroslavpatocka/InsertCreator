@@ -1,3 +1,4 @@
+import {moduleOutline} from './module-footprint.js';
 import Clipper from './vendor/clipper.js';
 import {buildPrintTriangles,encodeSTL,trianglesVolume,printConfig,validatePrintBed} from './print-geometry.js';
 import {pocketOutline} from './finger-grip.js';
@@ -5,6 +6,7 @@ export {pocketOutline} from './finger-grip.js';
 import {t as tr,i18nError} from './i18n.js';
 import {fmtLen} from './units.js';
 import {orderTools} from './tool-size.js';
+import {moduleIntersects,containsPocketWalls,validateModuleFootprint} from './module-footprint.js';
 
 const EPS = 1e-7;
 const copy = value => JSON.parse(JSON.stringify(value));
@@ -58,6 +60,7 @@ export function bounds(tool) {
   return p.length ? box(p) : {x:n(tool.x),y:n(tool.y),minX:n(tool.x),minY:n(tool.y),maxX:n(tool.x),maxY:n(tool.y),width:0,height:0};
 }
 const intersectsRect=(a,b,epsilon=EPS)=>a.x<b.x+b.width-epsilon&&a.x+a.width>b.x+epsilon&&a.y<b.y+b.height-epsilon&&a.y+a.height>b.y+epsilon;
+const intersectsModules=(a,b,grid,epsilon=.001)=>intersectsRect(a,b,epsilon)&&((a.cells||b.cells)?moduleIntersects(a,b,grid):true);
 function pointInside(p,poly) {
   let inside=false;
   for(let i=0,j=poly.length-1;i<poly.length;j=i++) {
@@ -118,13 +121,16 @@ export function resizeModule(project,moduleId,{width,height,mode='manual'}={}) {
   width=Number(width);height=Number(height);
   if(!Number.isFinite(width)||!Number.isFinite(height)||width<5||height<5||width>3000||height>3000)throw i18nError('Rozměry modulu musí být od {min} do {max}.',{min:fmtLen(5),max:fmtLen(3000)});
   module.width=width;module.height=height;module.sizeMode=mode;
+  // Explicit box resizing defines a rectangular container; old cell indices no
+  // longer describe it, and centering tools must not retain an obsolete notch.
+  delete module.shape;delete module.cells;
   if(content){
     const dx=module.x+(width-content.width)/2-content.x,dy=module.y+(height-content.height)/2-content.y;
     for(const tool of tools){tool.x=n(tool.x)+dx;tool.y=n(tool.y)+dy;}
   }
   const problem=validateLayout({...next,modules:[module],tools})[0];
   if(problem)throw issueError(problem);
-  const collision=next.modules.find(m=>m.id!==moduleId&&intersectsRect(module,m,.001));
+  const collision=next.modules.find(m=>m.id!==moduleId&&intersectsModules(module,m,n(next.grid,42)));
   if(collision)throw i18nError('Modul „{name}“ by se překrýval s modulem „{other}“.',{name:module.name||module.id,other:collision.name||collision.id});
   if(next.bottomMode==='grid'){
     if(Math.abs(n(next.grid,42)-42)>.001)throw i18nError('Gridfinity patky vyžadují rastr přesně 42 mm.');
@@ -133,9 +139,37 @@ export function resizeModule(project,moduleId,{width,height,mode='manual'}={}) {
   return next;
 }
 
+/** Tighten occupied modules without changing their contours or relative tool placement.
+ * Manual sizes are considered only when explicitly requested; every result is shrink-only.
+ * Explicit uniform set cells, locks and empty filler modules remain user constraints. */
+export function refitModules(project,{includeManual=false,moduleIds=null}={}) {
+  const next=copy(project),resizedModules=[],selected=moduleIds===null?null:new Set(moduleIds);
+  const grid=n(next.grid,42),padding=n(next.wall,2.4)+.25;
+  if(!(grid>0&&padding>.25))return{project:next,resizedModules};
+  for(const module of next.modules||[]){
+    const own=(next.tools||[]).filter(tool=>tool.moduleId===module.id);
+    if(selected&&!selected.has(module.id)||module.locked||!own.length||own.some(tool=>tool.locked)||module.cells||module.sizeMode==='manual'&&!includeManual)continue;
+    if(module.sizeMode==='manual'&&[module.x,module.y,module.width,module.height].some(value=>Math.abs(value/grid-Math.round(value/grid))>.0001))continue;
+    if(module.setLayout==='uniform'&&(next.toolSets||[]).some(set=>set.layout==='uniform'&&(set.id===module.setId||own.some(tool=>set.toolIds?.includes(tool.id)))))continue;
+    let content;try{content=box(own.flatMap(tool=>pocketOutline(tool,n(next.clearance,.8))));}catch{continue;}
+    const width=Math.ceil((content.width+2*padding-EPS)/grid)*grid,height=Math.ceil((content.height+2*padding-EPS)/grid)*grid;
+    if(![width,height].every(value=>Number.isFinite(value)&&value>=5&&value<=3000)||width>module.width+EPS||height>module.height+EPS||width>=module.width-EPS&&height>=module.height-EPS)continue;
+    const dx=module.x+(width-content.width)/2-content.x,dy=module.y+(height-content.height)/2-content.y;
+    const fitted={...module,x:0,y:0,width,height},moved=own.map(tool=>({...tool,x:n(tool.x)+dx-module.x,y:n(tool.y)+dy-module.y}));
+    if(validateLayout({...next,width,height,modules:[fitted],tools:moved}).length)continue;
+    resizedModules.push({id:module.id,name:module.name||module.id,before:{width:module.width,height:module.height},after:{width,height}});
+    module.width=width;module.height=height;
+    for(const tool of own){tool.x=n(tool.x)+dx;tool.y=n(tool.y)+dy;}
+  }
+  return{project:next,resizedModules};
+}
+
+export function minimizeAutoModules(project){return refitModules(project);}
+
 /** Deterministic grid packing. Locked modules and every tool inside them stay in place. */
 export function autoArrange(project,{preserveLocked=true}={}) {
-  const tools=copy(project.tools||[]),oldModules=copy(project.modules||[]),grid=Math.max(1,n(project.grid,42));
+  const minimized=minimizeAutoModules(project).project;
+  const tools=copy(minimized.tools||[]),oldModules=copy(minimized.modules||[]),grid=Math.max(1,n(project.grid,42));
   // Rebuilt modules keep their own display unit (module.unit) by id.
   const unitOf=id=>{const u=oldModules.find(m=>m.id===id)?.unit;return u?{unit:u}:{};};
   const clearance=n(project.clearance,.8),footprints=new Map(),invalid=new Set(),unplaced=[];
@@ -157,9 +191,9 @@ export function autoArrange(project,{preserveLocked=true}={}) {
     t.moduleId=module.id;modules.push(module);reservedTools.add(t.id);
   }
   // Manual sizes and explicitly shared modules remain movable, rigid groups.
-  const groups=oldModules.filter(m=>(m.sizeMode==='manual'||m.grouped===true||m.setLayout==='uniform')&&!lockedIds.has(m.id)).map(original=>{
+  const groups=oldModules.filter(m=>(m.sizeMode==='manual'||m.grouped===true||m.setLayout==='uniform'||m.cells)&&!lockedIds.has(m.id)).map(original=>{
     const own=tools.filter(t=>t.moduleId===original.id);let content=null,width=original.width,height=original.height,valid=!own.some(t=>invalid.has(t.id));
-    if(valid&&original.grouped===true&&original.sizeMode!=='manual'){
+    if(valid&&original.grouped===true&&original.sizeMode!=='manual'&&!original.cells){
       content=box(own.flatMap(t=>{const b=footprints.get(t.id);return[{x:b.x,y:b.y},{x:b.maxX,y:b.maxY}];}));
       const padding=n(project.wall,2.4)+.25;
       width=Math.ceil((content.width+2*padding-EPS)/grid)*grid;height=Math.ceil((content.height+2*padding-EPS)/grid)*grid;
@@ -184,17 +218,27 @@ export function autoArrange(project,{preserveLocked=true}={}) {
   for(const {original,own,width,height,content,valid} of groups){
     let position=null;
     if(valid)for(let y=0;y+height<=n(project.height)+EPS&&!position;y+=grid)for(let x=0;x+width<=n(project.width)+EPS;x+=grid){
-      const candidate={x,y,width,height};
-      if(!modules.some(m=>intersectsRect(candidate,m))){position={x,y};break;}
+      const candidate={...original,x,y,width,height};
+      if(!modules.some(m=>intersectsModules(candidate,m,grid))){position={x,y};break;}
     }
     // Keep the group and its size reloadable even when the drawer is too small.
-    const module={...original,width,height,...(position||{x:n(project.width)+grid,y:0})};
+    const module={...original,width,height,...(position||{x:Math.ceil(n(project.width)/grid)*grid+grid,y:0})};
     const dx=content?module.x+(width-content.width)/2-content.x:module.x-original.x,dy=content?module.y+(height-content.height)/2-content.y:module.y-original.y;
     for(const tool of own){tool.x=n(tool.x)+dx;tool.y=n(tool.y)+dy;reservedTools.add(tool.id);if(!position)markUnplaced(tool.id);}
     modules.push(module);
   }
-  const padding=Math.max(n(project.wall,2.4),n(project.gap,3)/2)+.25;
-  const pending=tools.filter(t=>!reservedTools.has(t.id)).sort((a,b)=>{const x=footprints.get(a.id),y=footprints.get(b.id);return y.width*y.height-x.width*x.height||String(a.id).localeCompare(String(b.id));});
+  const padding=n(project.wall,2.4)+.25;
+  const pendingOrder=new Map(),orderCursor=new Map();
+  for(const set of project.toolSets||[]){
+    if(!['auto','uniform'].includes(set.layout)||!['asc','desc'].includes(set.order))continue;
+    const own=tools.filter(t=>set.toolIds.includes(t.id)&&!reservedTools.has(t.id));if(!own.length)continue;
+    const largest=Math.max(...own.map(t=>{const b=footprints.get(t.id);return b.width*b.height;})),key=own.map(t=>String(t.id)).sort()[0];
+    orderTools(own,set.order).forEach((t,rank)=>pendingOrder.set(t.id,{key,rank,area:largest}));
+  }
+  const pending=tools.filter(t=>!reservedTools.has(t.id)).sort((a,b)=>{
+    const x=footprints.get(a.id),y=footprints.get(b.id),ar=pendingOrder.get(a.id)||{key:String(a.id),rank:0,area:x.width*x.height},br=pendingOrder.get(b.id)||{key:String(b.id),rank:0,area:y.width*y.height};
+    return br.area-ar.area||ar.key.localeCompare(br.key)||ar.rank-br.rank;
+  });
   for(const tool of pending){
     const candidates=[];
     for(const rotation of [n(tool.rotation),n(tool.rotation)+90]){
@@ -203,8 +247,9 @@ export function autoArrange(project,{preserveLocked=true}={}) {
       if(width>n(project.width)||height>n(project.height))continue;
       for(let y=0;y+height<=n(project.height)+EPS;y+=grid){
         for(let x=0;x+width<=n(project.width)+EPS;x+=grid){
-          const candidate={x,y,width,height,rotation,b};
-          if(modules.some(m=>intersectsRect(candidate,m)))continue;
+          const candidate={x,y,width,height,rotation,b},order=pendingOrder.get(tool.id),cursor=order&&orderCursor.get(order.key);
+          if(cursor&&(y<cursor.y-EPS||Math.abs(y-cursor.y)<EPS&&x<cursor.x-EPS))continue;
+          if(modules.some(m=>intersectsModules(candidate,m,grid)))continue;
           // Prefer a low packed height, then the left edge, then the current rotation.
           candidate.score=(y+height)*100000+x*100+((rotation%360+360)%360!==((n(tool.rotation)%360+360)%360)?1:0);
           candidates.push(candidate);break;
@@ -216,7 +261,8 @@ export function autoArrange(project,{preserveLocked=true}={}) {
     const chosen=candidates[0];
     if(!chosen){tool.moduleId=null;tool.x=n(project.width)+grid;tool.y=unplaced.reduce((y,id)=>y+bounds(tools.find(t=>t.id===id)).height+grid,0);unplaced.push(tool.id);continue;}
     const id=tool.moduleId&&!modules.some(m=>m.id===tool.moduleId)?tool.moduleId:`mod-${tool.id}`;
-    const module={id,name:tool.name,x:chosen.x,y:chosen.y,width:chosen.width,height:chosen.height,locked:false,sizeMode:'auto',...unitOf(id)};
+    const previous=oldModules.find(module=>module.id===id),module={...(previous||{}),id,name:previous?.name||tool.name,x:chosen.x,y:chosen.y,width:chosen.width,height:chosen.height,locked:false,sizeMode:'auto',...unitOf(id)};
+    const order=pendingOrder.get(tool.id);if(order)orderCursor.set(order.key,{x:chosen.x,y:chosen.y});
     modules.push(module);
     tool.moduleId=id;tool.rotation=((chosen.rotation%360)+360)%360;
     tool.x=module.x+(module.width-chosen.b.width)/2-chosen.b.x;tool.y=module.y+(module.height-chosen.b.height)/2-chosen.b.y;
@@ -229,8 +275,9 @@ export function validateLayout(project) {
   if(!(n(project.width)>0&&n(project.height)>0&&height>base&&base>0&&wall>0))issues.push(issue('depth',[],'Zkontrolujte rozměry šuplíku, výšku inzertu a tloušťku dna i stěny.'));
   for(let i=0;i<modules.length;i++){
     const m=modules[i];
+    try{validateModuleFootprint(m,n(project.grid,42));}catch(error){issues.push({type:'outside',ids:[m.id],message:error.message,...(error.i18n?{i18n:error.i18n}:{})});continue;}
     if(m.width<=0||m.height<=0||m.x<-.001||m.y<-.001||m.x+m.width>n(project.width)+.001||m.y+m.height>n(project.height)+.001)issues.push(issue('outside',[m.id],'Modul „{name}“ přesahuje šuplík.',{name:m.name||m.id}));
-    for(let j=i+1;j<modules.length;j++)if(intersectsRect(m,modules[j],.001))issues.push(issue('overlap',[m.id,modules[j].id],'Moduly „{a}“ a „{b}“ se překrývají.',{a:m.name||m.id,b:modules[j].name||modules[j].id}));
+    for(let j=i+1;j<modules.length;j++){let overlaps=false;try{overlaps=intersectsModules(m,modules[j],n(project.grid,42));}catch{continue;}if(overlaps)issues.push(issue('overlap',[m.id,modules[j].id],'Moduly „{a}“ a „{b}“ se překrývají.',{a:m.name||m.id,b:modules[j].name||modules[j].id}));}
   }
   const polygons=new Map();
   for(const t of tools){
@@ -240,7 +287,7 @@ export function validateLayout(project) {
     const raw=transformedPoints(t);
     if(!pocketError&&(poly.length<3||Math.abs(area(poly))<EPS||selfIntersects(raw)||selfIntersects(poly)))issues.push(issue('overlap',[t.id],'Kontura „{name}“ se kříží nebo není platná. Upravte konturu či zmenšete vůli.',{name:t.name}));
     if(!m)issues.push(issue('outside',[t.id],'Nástroj „{name}“ zatím nemá umístěný modul.',{name:t.name}));
-    else if(poly.some(p=>p.x<m.x+wall+.25-.001||p.y<m.y+wall+.25-.001||p.x>m.x+m.width-wall-.25+.001||p.y>m.y+m.height-wall-.25+.001))issues.push(issue('outside',[t.id,m.id],'Kolem „{name}“ není dost místa na stěnu. Zvětšete modul nebo spusťte rozvržení.',{name:t.name}));
+    else {let contained=false;try{contained=m.cells?containsPocketWalls(m,poly,wall,n(project.grid,42)):!poly.some(p=>p.x<m.x+wall+.25-.001||p.y<m.y+wall+.25-.001||p.x>m.x+m.width-wall-.25+.001||p.y>m.y+m.height-wall-.25+.001);}catch{}if(!contained)issues.push(issue('outside',[t.id,m.id],'Kolem „{name}“ není dost místa na stěnu. Zvětšete modul nebo spusťte rozvržení.',{name:t.name}));}
     if(!(n(t.depth,10)>0&&n(t.depth,10)<=height-base+.001))issues.push(issue('depth',[t.id],'Hloubka kapsy „{name}“ musí být větší než 0 a nejvýše {max}.',{name:t.name,max:fmtLen(height-base)}));
   }
   for(let i=0;i<tools.length;i++)for(let j=i+1;j<tools.length;j++){
@@ -265,14 +312,14 @@ const path=points=>points.map((p,i)=>`${i?'L':'M'}${fmt(p.x)},${fmt(p.y)}`).join
 export function exportSVG(project,{moduleId=null}={}) {
   const {modules,tools,origin,width,height}=selected(project,moduleId);
   const shift=p=>({x:p.x-origin.x,y:p.y-origin.y});
-  return `<?xml version="1.0" encoding="UTF-8"?>\n<svg xmlns="http://www.w3.org/2000/svg" width="${fmt(width)}mm" height="${fmt(height)}mm" viewBox="0 0 ${fmt(width)} ${fmt(height)}"><title>${xml(project.name||'Šuplík Studio')}</title><desc>${xml(tr('Rozměry v mm. Černá = modul; červená = kapsa včetně vůle {clearance} mm. Ploché dno, rozteč modulů {grid} mm.',{clearance:n(project.clearance,.8),grid:n(project.grid,42)}))}</desc><g id="modules" fill="none" stroke="black" stroke-width="0.15">${modules.map(m=>`<rect x="${fmt(m.x-origin.x+.25)}" y="${fmt(m.y-origin.y+.25)}" width="${fmt(m.width-.5)}" height="${fmt(m.height-.5)}"/>`).join('')}</g><g id="pockets" fill="none" stroke="red" stroke-width="0.15">${tools.map(t=>`<path id="${xml(t.id)}" data-depth-mm="${n(t.depth,10)}" d="${path(pocketOutline(t,n(project.clearance,.8)).map(shift))}"><title>${xml(t.name)}</title></path>`).join('')}</g></svg>`;
+  return `<?xml version="1.0" encoding="UTF-8"?>\n<svg xmlns="http://www.w3.org/2000/svg" width="${fmt(width)}mm" height="${fmt(height)}mm" viewBox="0 0 ${fmt(width)} ${fmt(height)}"><title>${xml(project.name||'Šuplík Studio')}</title><desc>${xml(tr('Rozměry v mm. Černá = modul; červená = kapsa včetně vůle {clearance} mm. Ploché dno, rozteč modulů {grid} mm.',{clearance:n(project.clearance,.8),grid:n(project.grid,42)}))}</desc><g id="modules" fill="none" stroke="black" stroke-width="0.15">${modules.map(m=>m.cells?`<path d="${path(moduleOutline(m,project.grid,{inset:.25}).map(shift))}"/>`:`<rect x="${fmt(m.x-origin.x+.25)}" y="${fmt(m.y-origin.y+.25)}" width="${fmt(m.width-.5)}" height="${fmt(m.height-.5)}"/>`).join('')}</g><g id="pockets" fill="none" stroke="red" stroke-width="0.15">${tools.map(t=>`<path id="${xml(t.id)}" data-depth-mm="${n(t.depth,10)}" d="${path(pocketOutline(t,n(project.clearance,.8)).map(shift))}"><title>${xml(t.name)}</title></path>`).join('')}</g></svg>`;
 }
 export function exportDXF(project,{moduleId=null}={}) {
   const {modules,tools,origin,height}=selected(project,moduleId),lines=[];
   const add=(code,value)=>lines.push(String(code),String(value));
   add(0,'SECTION');add(2,'HEADER');add(9,'$ACADVER');add(1,'AC1015');add(9,'$INSUNITS');add(70,4);add(0,'ENDSEC');add(0,'SECTION');add(2,'ENTITIES');
   const polygon=(points,layer)=>{add(0,'LWPOLYLINE');add(100,'AcDbEntity');add(8,layer);add(100,'AcDbPolyline');add(90,points.length);add(70,1);for(const p of points){add(10,fmt(p.x-origin.x));add(20,fmt(height-(p.y-origin.y)));}};
-  for(const m of modules)polygon([{x:m.x+.25,y:m.y+.25},{x:m.x+m.width-.25,y:m.y+.25},{x:m.x+m.width-.25,y:m.y+m.height-.25},{x:m.x+.25,y:m.y+m.height-.25}],'MODULES');
+  for(const m of modules)polygon(moduleOutline(m,project.grid,{inset:.25}),'MODULES');
   for(const t of tools)polygon(pocketOutline(t,n(project.clearance,.8)),'POCKETS');
   add(0,'ENDSEC');add(0,'EOF');return lines.join('\r\n')+'\r\n';
 }

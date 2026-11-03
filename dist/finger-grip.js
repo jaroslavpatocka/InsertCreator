@@ -101,7 +101,7 @@ function mainAxis(points){
   return{x:Math.cos(angle),y:Math.sin(angle)};
 }
 
-/** Two opposed circles at a filled cross-section nearest the longitudinal midpoint. */
+/** Opposed circles at a narrow filled section in the middle of the tool, away from heads and ends. */
 export function automaticFingerGrips(tool,{radius=9}={}){
   radius=numeric(radius,2,40,'poloměr výřezu pro prsty');
   const points=rawPoints(tool),axis=mainAxis(points),normal={x:-axis.y,y:axis.x};
@@ -109,8 +109,8 @@ export function automaticFingerGrips(tool,{radius=9}={}){
   const filled=combine([points]),rawArea=Math.abs(Clipper.Clipper.Area(toInt(points)))/(SCALE*SCALE);
   if(filled.length!==1||Math.abs(Math.abs(area(filled[0]))-rawArea)>Math.max(.0001,rawArea*1e-7))throw i18nError('Pro tento obrys se nepodařilo automaticky umístit připojené výřezy pro prsty.');
   const along=points.map(p=>p.x*axis.x+p.y*axis.y),lo=Math.min(...along),length=Math.max(...along)-lo,candidates=[];
-  // Prefer the middle itself, rather than a broad head or handle near either end. Nearby
-  // stations cover concave outlines where the centre section cannot make a connected pocket.
+  // A nearby narrow shaft needs less pocket space than a wide handle at the exact midpoint.
+  // Keep the search in the central band; equal-width sections prefer the midpoint itself.
   for(const fraction of [.5,.475,.525,.45,.55,.425,.575,.4,.6,.375,.625,.35,.65]){
     const station=lo+length*fraction,crossings=[];
     for(let i=0;i<points.length;i++){
@@ -123,7 +123,7 @@ export function automaticFingerGrips(tool,{radius=9}={}){
       if(width>.01)candidates.push({station,left,right,width,distance:Math.abs(fraction-.5)});
     }
   }
-  candidates.sort((a,b)=>a.distance-b.distance||b.width-a.width||a.left-b.left);
+  candidates.sort((a,b)=>Math.abs(a.width-b.width)>EPS?a.width-b.width:a.distance-b.distance||a.left-b.left);
   const prefix=String(tool.id||'tool').slice(0,80);
   for(const candidate of candidates){
     const inset=Math.min(radius*.15,candidate.width*.2);

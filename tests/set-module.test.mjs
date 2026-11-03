@@ -31,8 +31,12 @@ function assertGroup(result,tools,project){
   assert.equal(own.length,tools.length,'all tools in the module');
   assert.deepEqual(validateLayout(next),[]);
   for(const tool of own){const b=box(pocketOutline(tool,next.clearance));assert.ok(b.width>=b.height-1e-6,`${tool.id} pocket lies horizontally`);}
-  const pockets=own.reduce((sum,tool)=>{const b=box(pocketOutline(tool,next.clearance));return sum+b.width*b.height;},0);
-  assert.ok(module.width*module.height<=1.6*pockets,`area ratio ${(module.width*module.height/pockets).toFixed(2)}`);
+  // The user's alternative is one printable grid module per tool. Pocket-only
+  // bounding boxes omit both manufacturing walls and the mandatory raster cells.
+  const individual=addToolGroup({...project,width:3000,height:3000,tools:[],modules:[],toolSets:[]},tools,{toolSet:{id:'quality-reference',layout:'auto'}}).project;
+  assert.deepEqual(validateLayout(individual),[]);
+  const individualArea=individual.modules.reduce((sum,module)=>sum+module.width*module.height,0);
+  assert.ok(module.width*module.height<=individualArea,`shared area ${module.width*module.height} exceeds minimal individual grid modules ${individualArea}`);
   return {module,own};
 }
 
@@ -388,7 +392,7 @@ test('adding sets refuses more than 400 modules atomically for every layout and 
 
 test('exactly 400 modules survive placement and saving for shared, automatic, plain and uniform sets',()=>{
   for(const layout of [null,'shared','auto','uniform'])for(const count of [1,2]){
-    const added=layout==='uniform'?count:1,project=withFillers(400-added),snapshot=structuredClone(project),tools=Array.from({length:count},(_,i)=>capacityTool(`new-${i}`));
+    const added=layout==='uniform'||layout==='auto'?count:1,project=withFillers(400-added),snapshot=structuredClone(project),tools=Array.from({length:count},(_,i)=>capacityTool(`new-${i}`));
     const result=addToolGroup(project,tools,layoutOptions(layout));
     assert.equal(result.placed,true,`${layout||'plain'} with ${count} tools`);
     assert.equal(result.project.modules.length,400);
