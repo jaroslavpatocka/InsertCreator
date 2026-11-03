@@ -24,7 +24,7 @@ export function validateProject(input){
   const ids=new Set();
   out.modules=p.modules.map(m=>{
     const id=text(m.id||uid());if(ids.has(id))throw i18nError('Duplicitní identifikátor modulu.');ids.add(id);
-    return{id,name:text(m.name||t('Modul')),x:finite(m.x,0,4000,'pozice X'),y:finite(m.y,0,4000,'pozice Y'),width:finite(m.width,5,3000,'šířka modulu'),height:finite(m.height,5,3000,'hloubka modulu'),...(['mm','in'].includes(m.unit)?{unit:m.unit}:{}),locked:!!m.locked,sizeMode:m.sizeMode==='manual'?'manual':'auto'};
+    return{id,name:text(m.name||t('Modul')),x:finite(m.x,0,4000,'pozice X'),y:finite(m.y,0,4000,'pozice Y'),width:finite(m.width,5,3000,'šířka modulu'),height:finite(m.height,5,3000,'hloubka modulu'),...(['mm','in'].includes(m.unit)?{unit:m.unit}:{}),locked:!!m.locked,sizeMode:m.sizeMode==='manual'?'manual':'auto',...(m.grouped===true?{grouped:true}:{})};
   });
   const toolIds=new Set();
   out.tools=p.tools.map(t=>{

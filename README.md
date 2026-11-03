@@ -31,6 +31,18 @@ Jednotky lze kombinovat. Výchozí jednotka platí pro celou aplikaci a každý 
 
 The **CS / EN** language switch and the **mm / in** unit switch are in the app's top bar. The app-wide unit can be overridden per drawer, and any length field accepts values with an explicit unit (`12 in`, `3 1/2"`, `30 cm`, `15 mm`). Data and manufacturing exports are always stored in millimetres.
 
+## Chytré rozvržení
+
+Tlačítko **Chytré rozvržení** hledá úspornější orientaci nástrojů a kombinuje vhodné nástroje do společných modulů. Porovnává skutečné tvary kapes včetně vůle a prostoru výřezů pro prsty. Mezi kapsami ponechává alespoň větší z hodnot **stěna** a **mezera**. Zámky, ruční rozměry modulů a prázdné výplně respektuje. Ručně smazané výřezy pro prsty neobnovuje.
+
+Výpočet má průběh a lze jej zrušit. Přijaté rozvržení můžete celé vrátit jedním krokem **Zpět**; společné moduly a jejich výřezy zůstávají upravitelné a ukládají se do JSON. Běžné **Auto rozložení** společné moduly zachová. Výsledek uvádí změnu součtu vnějších půdorysů modulů (jmenovité rozměry minus montážní mezera 0,5 mm), nikoli změnu fyzické velikosti šuplíku. Jde o omezené hledání pro nejvýše 24 nástrojů a přiměřeně složité obrysy; nezaručuje matematicky nejmenší možné řešení. Příliš velkou sestavu ponechá beze změny a uvede důvod.
+
+## Ovládání 3D náhledu
+
+V režimu **3D** otáčíte pohledem tažením levým tlačítkem myši, posouváte jej tažením pravým tlačítkem a kolečkem přibližujete či oddalujete. Funguje to nad modelem i nad prázdnou částí plochy. Tlačítka přiblížení ovládají aktuální pohled; **Zobrazit vše** vrátí výchozí kameru. Přepnutí do 2D a zpět zachová 3D pohled, otevření jiného šuplíku jej obnoví.
+
+Navigace mění pouze kameru. Nepřesouvá moduly, neotáčí nástroje a nepřidává záznamy do historie úprav projektu.
+
 ## Výřezy pro prsty
 
 Novým nástrojům se automaticky připraví dva boční výřezy pro snazší vyjmutí z kapsy. U vybraného nástroje je můžete znovu automaticky umístit, přidat další, upravit jejich polohu a průměr nebo je jednotlivě či všechny odstranit. Změny lze vrátit přes Zpět a ukládají se s projektem i do JSON. Smazané výřezy se při automatickém rozvržení samy neobnovují; u starších nástrojů se přidají až na vaše přání.

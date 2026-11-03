@@ -137,3 +137,14 @@ test('layout issues follow the active language and display unit, exports stay me
     assert.match(validateLayout(p).find(i=>i.ids.includes('a')).message,/stěnu 2,4 mm/);
   }finally{setLang('cs',{save:false});setAppUnit('mm',{save:false});}
 });
+
+test('autoArrange keeps each module its own display unit',()=>{
+  const p=createDemoProject();
+  const first=autoArrange(p);
+  const [a,b]=first.modules;
+  const withUnits={...p,tools:first.tools,modules:first.modules.map(m=>m.id===a.id?{...m,unit:'in'}:m.id===b.id?{...m,unit:'mm',locked:true}:m)};
+  const next=autoArrange(withUnits);
+  assert.equal(next.modules.find(m=>m.id===a.id)?.unit,'in');
+  assert.equal(next.modules.find(m=>m.id===b.id)?.unit,'mm');
+  assert.ok(next.modules.filter(m=>m.id!==a.id&&m.id!==b.id).every(m=>!('unit' in m)));
+});

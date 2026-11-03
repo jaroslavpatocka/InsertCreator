@@ -115,4 +115,12 @@ export default {
   'úsporný tisk':'light print',
   'plný blok':'solid block',
   'Zavřít':'Close',
+  "Síť obsahuje degenerovaný trojúhelník.":"The mesh contains a degenerate triangle.",
+  "Síť má příliš mnoho trojúhelníků pro interaktivní SVG náhled. Zobrazuji obrysy modulů.":"The mesh has too many triangles for the interactive SVG preview. Showing module outlines.",
+  "Síť je příliš složitá pro přesný interaktivní SVG náhled. Zobrazuji obrysy modulů.":"The mesh is too complex for an accurate interactive SVG preview. Showing module outlines.",
+  "Síť má příliš mnoho rovin pro interaktivní náhled. Zobrazuji obrysy modulů.":"The mesh has too many planes for the interactive preview. Showing module outlines.",
+  "Síť obsahuje neplatné souřadnice.":"The mesh contains invalid coordinates.",
+  "Modul nemá platnou síť pro náhled.":"The module has no valid mesh for the preview.",
+  "Modul nelze zobrazit jako výrobní síť.":"The module cannot be shown as a manufacturing mesh.",
+  "Sestava zatím nemá moduly.":"The layout has no modules yet.",
 };

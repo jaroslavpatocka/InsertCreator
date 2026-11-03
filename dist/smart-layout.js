@@ -1,0 +1,224 @@
+import Clipper from './vendor/clipper.js';
+import {pocketOutline,transformedPoints,validateLayout} from './geometry.js';
+import {automaticFingerGrips} from './finger-grip.js';
+
+const EPS=.001,SCALE=10000,CELL=2,MAX_CANDIDATES=32000;
+const copy=value=>typeof structuredClone==='function'?structuredClone(value):JSON.parse(JSON.stringify(value));
+const number=(value,fallback=0)=>Number.isFinite(+value)?+value:fallback;
+const compareId=(a,b)=>String(a)<String(b)?-1:String(a)>String(b)?1:0;
+const area=module=>Math.max(0,module.width-.5)*Math.max(0,module.height-.5);
+const box=points=>{let minX=Infinity,minY=Infinity,maxX=-Infinity,maxY=-Infinity;for(const p of points){minX=Math.min(minX,p.x);minY=Math.min(minY,p.y);maxX=Math.max(maxX,p.x);maxY=Math.max(maxY,p.y);}return{minX,minY,maxX,maxY,width:maxX-minX,height:maxY-minY};};
+const intersects=(a,b)=>a.x<b.x+b.width-EPS&&a.x+a.width>b.x+EPS&&a.y<b.y+b.height-EPS&&a.y+a.height>b.y+EPS;
+const inside=(module,project)=>module&&module.x>=-EPS&&module.y>=-EPS&&module.x+module.width<=project.width+EPS&&module.y+module.height<=project.height+EPS;
+const angle=value=>{const result=((value%360)+360)%360;return Math.round(result*1e6)/1e6;};
+const intPath=points=>{const path=points.map(p=>({X:Math.round(p.x*SCALE),Y:Math.round(p.y*SCALE)}));if(!Clipper.Clipper.Orientation(path))path.reverse();return path;};
+function expanded(points,distance){
+  const engine=new Clipper.ClipperOffset(2,.02*SCALE),result=[];engine.AddPath(intPath(points),Clipper.JoinType.jtRound,Clipper.EndType.etClosedPolygon);engine.Execute(result,distance*SCALE);
+  if(!result.length)throw Error('Obrys kapsy nelze bezpečně rozšířit.');
+  result.sort((a,b)=>Math.abs(Clipper.Clipper.Area(b))-Math.abs(Clipper.Clipper.Area(a)));
+  return result[0].map(p=>({x:p.X/SCALE,y:p.Y/SCALE}));
+}
+function intersectionArea(a,b,operation=Clipper.ClipType.ctIntersection){
+  const engine=new Clipper.Clipper(),result=[];engine.AddPath(intPath(a),Clipper.PolyType.ptSubject,true);engine.AddPath(intPath(b),Clipper.PolyType.ptClip,true);engine.Execute(operation,result,Clipper.PolyFillType.pftNonZero,Clipper.PolyFillType.pftNonZero);
+  return Math.abs(result.reduce((sum,path)=>sum+Clipper.Clipper.Area(path),0))/(SCALE*SCALE);
+}
+function principalAngle(points){
+  let mass=0,cx=0,cy=0,xx=0,yy=0,xy=0;
+  for(let i=0;i<points.length;i++){const p=points[i],q=points[(i+1)%points.length],w=p.x*q.y-q.x*p.y;mass+=w;cx+=(p.x+q.x)*w;cy+=(p.y+q.y)*w;xx+=(p.x*p.x+p.x*q.x+q.x*q.x)*w;yy+=(p.y*p.y+p.y*q.y+q.y*q.y)*w;xy+=(2*p.x*p.y+p.x*q.y+q.x*p.y+2*q.x*q.y)*w;}
+  if(Math.abs(mass)<1e-8)throw Error('Kontura nástroje nemá platnou plochu.');cx/=3*mass;cy/=3*mass;
+  return .5*Math.atan2(2*(xy/(12*mass)-cx*cy),xx/(6*mass)-cx*cx-yy/(6*mass)+cy*cy)*180/Math.PI;
+}
+function profile(points){
+  const bounds=box(points),start=Math.floor(bounds.minY/CELL),length=Math.ceil(bounds.maxY/CELL)-start+1,left=new Float64Array(length).fill(Infinity),right=new Float64Array(length).fill(-Infinity);
+  for(let i=0;i<points.length;i++){
+    const a=points[i],b=points[(i+1)%points.length],first=Math.floor(Math.min(a.y,b.y)/CELL),last=Math.floor(Math.max(a.y,b.y)/CELL);
+    for(let row=first;row<=last;row++){
+      const low=Math.max(Math.min(a.y,b.y),row*CELL),high=Math.min(Math.max(a.y,b.y),(row+1)*CELL),index=row-start;
+      if(index<0||index>=length)continue;
+      const x1=b.y===a.y?Math.min(a.x,b.x):a.x+(b.x-a.x)*(low-a.y)/(b.y-a.y),x2=b.y===a.y?Math.max(a.x,b.x):a.x+(b.x-a.x)*(high-a.y)/(b.y-a.y);
+      left[index]=Math.min(left[index],x1,x2);right[index]=Math.max(right[index],x1,x2);
+    }
+  }
+  return{start,left,right};
+}
+function contactX(a,b,dy){
+  const shift=Math.round(dy/CELL),lo=Math.max(a.start,b.start+shift),hi=Math.min(a.start+a.left.length,b.start+b.left.length+shift);let x=-Infinity;
+  for(let row=lo;row<hi;row++){const ai=row-a.start,bi=row-shift-b.start;if(Number.isFinite(a.right[ai])&&Number.isFinite(b.left[bi]))x=Math.max(x,a.right[ai]-b.left[bi]);}
+  return x;
+}
+function usefulGrips(tool){
+  if(!tool.fingerGrips?.length)return false;
+  const raw=tool.points;
+  return tool.fingerGrips.every(grip=>{
+    const circle=Array.from({length:64},(_,i)=>({x:grip.x+Math.cos(i*Math.PI/32)*grip.radius,y:grip.y+Math.sin(i*Math.PI/32)*grip.radius}));
+    return intersectionArea(circle,raw,Clipper.ClipType.ctDifference)>=Math.max(6,Math.PI*grip.radius*grip.radius*.12);
+  });
+}
+const fitsBed=(width,height,project)=>!project.limitToBed||((width-.5<=number(project.bedWidth,220)+EPS&&height-.5<=number(project.bedHeight,220)+EPS)||(height-.5<=number(project.bedWidth,220)+EPS&&width-.5<=number(project.bedHeight,220)+EPS));
+function orientations(tool,project,separation,{nest=false}={}){
+  const aligned=90-principalAngle(tool.points),rotations=[aligned,aligned+180,aligned+90,aligned+270,...(nest?[]:[number(tool.rotation),number(tool.rotation)+90,number(tool.rotation)+180,number(tool.rotation)+270])];
+  const unique=[...new Set(rotations.map(angle))],padding=number(project.wall,2.4)+.26,grid=number(project.grid,42),result=[];
+  for(const rotation of unique){
+    const source=pocketOutline({...tool,x:0,y:0,rotation},project.clearance),bounds=box(source),polygon=source.map(p=>({x:p.x-bounds.minX,y:p.y-bounds.minY}));
+    const width=Math.ceil((bounds.width+2*padding-EPS)/grid)*grid,height=Math.ceil((bounds.height+2*padding-EPS)/grid)*grid;
+    if(width>project.width+EPS||height>project.height+EPS||!fitsBed(width,height,project))continue;
+    result.push({tool,rotation,bounds,polygon,width,height,...(nest?{profile:profile(expanded(polygon,separation/2+.06))}:{})});
+  }
+  return result.sort((a,b)=>area(a)-area(b)||Math.max(a.width,a.height)-Math.max(b.width,b.height)||a.rotation-b.rotation);
+}
+function singleOption(orientation,module){
+  const {tool,bounds,width,height,rotation}=orientation;
+  return{...module,width,height,items:[{tool,x:(width-bounds.width)/2-bounds.minX,y:(height-bounds.height)/2-bounds.minY,rotation}]};
+}
+const hash=string=>{let value=2166136261;for(let i=0;i<string.length;i++){value^=string.charCodeAt(i);value=Math.imul(value,16777619);}return(value>>>0).toString(16);};
+function pairOption(a,b,dx,dy,project){
+  const padding=number(project.wall,2.4)+.26,grid=number(project.grid,42),minX=Math.min(0,dx),minY=Math.min(0,dy),w=Math.max(a.bounds.width,dx+b.bounds.width)-minX,h=Math.max(a.bounds.height,dy+b.bounds.height)-minY;
+  const width=Math.ceil((w+2*padding-EPS)/grid)*grid,height=Math.ceil((h+2*padding-EPS)/grid)*grid;
+  if(width>project.width+EPS||height>project.height+EPS||!fitsBed(width,height,project))return null;
+  // A shared rectangle alone is not contour nesting: the pocket bounds must
+  // actually interleave while their full, expanded silhouettes remain separate.
+  if(Math.min(a.bounds.width,dx+b.bounds.width)-Math.max(0,dx)<.5||Math.min(a.bounds.height,dy+b.bounds.height)-Math.max(0,dy)<.5)return null;
+  const offsetX=(width-w)/2-minX,offsetY=(height-h)/2-minY;
+  return{width,height,bbox:w*h,items:[{tool:a.tool,rotation:a.rotation,x:offsetX-a.bounds.minX,y:offsetY-a.bounds.minY},{tool:b.tool,rotation:b.rotation,x:offsetX+dx-b.bounds.minX,y:offsetY+dy-b.bounds.minY}],a,b,dx,dy};
+}
+function exactPair(option,project,separation){
+  const a=option.a.polygon,b=option.b.polygon.map(p=>({x:p.x+option.dx,y:p.y+option.dy}));
+  if(intersectionArea(expanded(a,separation+.025),b)>1e-7)return false;
+  const module={id:'candidate',x:0,y:0,width:option.width,height:option.height},tools=option.items.map(item=>({...item.tool,x:item.x,y:item.y,rotation:item.rotation,moduleId:module.id}));
+  return validateLayout({...project,width:module.width,height:module.height,modules:[module],tools}).length===0;
+}
+function matching(count,pairs,singles){
+  if(count>16){const used=new Set(),chosen=[];for(const pair of [...pairs.values()].sort((a,b)=>b.gain-a.gain||a.i-b.i||a.j-b.j))if(!used.has(pair.i)&&!used.has(pair.j)){used.add(pair.i);used.add(pair.j);chosen.push(pair);}return chosen;}
+  const cache=new Map();
+  const solve=mask=>{
+    if(!mask)return{cost:0,count:0,pairs:[]};if(cache.has(mask))return cache.get(mask);
+    let i=0;while(!(mask&(1<<i)))i++;const rest=mask&~(1<<i),alone=solve(rest);let best={cost:alone.cost+singles[i],count:alone.count+1,pairs:alone.pairs};
+    for(let j=i+1;j<count;j++)if(rest&(1<<j)){const pair=pairs.get(`${i}:${j}`);if(!pair)continue;const next=solve(rest&~(1<<j)),cost=next.cost+area(pair.option),number=next.count+1;if(cost<best.cost-EPS||(Math.abs(cost-best.cost)<EPS&&number<best.count))best={cost,count:number,pairs:[pair,...next.pairs]};}
+    cache.set(mask,best);return best;
+  };
+  return solve((1<<count)-1).pairs;
+}
+function metric(result,project){
+  const placedModules=result.modules.filter(module=>inside(module,project)),ids=new Set(placedModules.map(module=>module.id)),placed=new Set(result.tools.filter(tool=>ids.has(tool.moduleId)).map(tool=>tool.id));
+  const bounds=placedModules.length?box(placedModules.flatMap(module=>[{x:module.x,y:module.y},{x:module.x+module.width,y:module.y+module.height}])):{width:0,height:0};
+  return{placed,area:result.modules.reduce((sum,module)=>sum+area(module),0),modules:result.modules.length,bbox:bounds.width*bounds.height};
+}
+function better(a,b){return a.placed.size>b.placed.size||(a.placed.size===b.placed.size&&(a.area<b.area-EPS||(Math.abs(a.area-b.area)<EPS&&(a.modules<b.modules||(a.modules===b.modules&&a.bbox<b.bbox-EPS)))));}
+function pack(project,fixed,atoms,order){
+  const tools=project.tools.map(copy),byId=new Map(tools.map(tool=>[tool.id,tool])),modules=fixed.map(copy),grid=number(project.grid,42),unplaced=[];
+  const ranked=[...atoms].sort((a,b)=>{
+    const aa=a.options[0],bb=b.options[0];const score=option=>order===1?Math.max(option.width,option.height):order===2?option.width:option.width*option.height;
+    return score(bb)-score(aa)||compareId(a.id,b.id);
+  });
+  let outsideY=0;
+  for(const atom of ranked){
+    let chosen=null;
+    for(const option of atom.options){
+      if(!fitsBed(option.width,option.height,project))continue;
+      for(let y=0;y+option.height<=project.height+EPS;y+=grid){let found=false;
+        for(let x=0;x+option.width<=project.width+EPS;x+=grid){
+          const rect={x,y,width:option.width,height:option.height};if(modules.some(module=>intersects(rect,module)))continue;
+          const score=(y+option.height)*1e6+x*100+option.height;
+          if(!chosen||score<chosen.score)chosen={option,x,y,score};found=true;break;
+        }
+        if(found)break;
+      }
+    }
+    const option=chosen?.option||atom.options[0],x=chosen?chosen.x:project.width+grid,y=chosen?chosen.y:outsideY;
+    const module={...atom.module,x,y,width:option.width,height:option.height};modules.push(module);if(!chosen)outsideY+=option.height+grid;
+    for(const item of option.items){const target=byId.get(item.tool.id);Object.assign(target,copy(item.tool),{moduleId:module.id,x:x+item.x,y:y+item.y,rotation:item.rotation});if(!chosen)unplaced.push(target.id);}
+  }
+  return{tools,modules,unplaced};
+}
+
+/** Bounded contour-aware pair nesting, followed by deterministic modular packing. */
+export async function smartArrange(project,{onProgress,signal}={}){
+  const abort=()=>{if(signal?.aborted)throw new DOMException('Chytré rozvržení bylo zrušeno.','AbortError');};
+  const progress=(stage,value,message)=>{abort();try{onProgress?.({stage,progress:value,message});}catch{}abort();};
+  const pause=async()=>{await new Promise(resolve=>setTimeout(resolve,0));abort();};
+  abort();if(!project||!Array.isArray(project.tools)||!Array.isArray(project.modules))throw Error('Projekt neobsahuje platné nástroje a moduly.');
+  const source=copy(project),toolIds=new Set(),moduleIds=new Set();
+  for(const module of source.modules){
+    if(!module||typeof module.id!=='string'||!module.id||moduleIds.has(module.id))throw Error('Moduly musí mít jedinečné platné identifikátory.');moduleIds.add(module.id);
+    if(!['x','y','width','height'].every(key=>Number.isFinite(Number(module[key])))||module.x<0||module.y<0||module.width<=0||module.height<=0)throw Error('Modul nemá platné rozměry nebo polohu.');
+  }
+  for(const tool of source.tools){if(!tool||typeof tool.id!=='string'||!tool.id||toolIds.has(tool.id))throw Error('Nástroje musí mít jedinečné platné identifikátory.');toolIds.add(tool.id);}
+  const original={tools:copy(source.tools),modules:copy(source.modules),unplaced:[]},before=metric(original,source);original.unplaced=source.tools.filter(tool=>!before.placed.has(tool.id)).map(tool=>tool.id);
+  let best=original,bestMetric=before;
+  const finish=message=>{
+    const after=metric(best,source),changed=JSON.stringify(best.tools)!==JSON.stringify(original.tools)||JSON.stringify(best.modules)!==JSON.stringify(original.modules);
+    progress('complete',1,message);
+    return{...best,unplaced:best.tools.filter(tool=>!after.placed.has(tool.id)).map(tool=>tool.id),stats:{beforeArea:before.area,afterArea:after.area,savedPercent:before.area?Math.max(0,(1-after.area/before.area)*100):0,beforeModules:before.modules,afterModules:after.modules,sharedModules:best.modules.filter(module=>best.tools.filter(tool=>tool.moduleId===module.id).length>1).length,changed}};
+  };
+  progress('prepare',.01,'Kontroluji rozměry, zámky a přístup pro prsty…');await pause();
+  const grid=number(source.grid,42),separation=Math.max(number(source.wall,2.4),number(source.gap,3));
+  if(!(source.width>0&&source.height>0&&grid>0&&source.wall>0))throw Error('Zkontrolujte rozměry šuplíku, rastr a tloušťku stěny.');
+  if(source.tools.length>24||source.tools.reduce((sum,tool)=>sum+(tool.points?.length||0),0)>12000||Math.ceil(source.width/grid)*Math.ceil(source.height/grid)>20000)return finish('Sestava je pro chytré rozvržení příliš velká. Podporuje nejvýše 24 nástrojů a omezeně složité obrysy; sestava se nezměnila.');
+  const placedModules=source.modules.filter(module=>inside(module,source)),placedIds=new Set(placedModules.map(module=>module.id));
+  const initialIssues=validateLayout({...source,modules:placedModules,tools:source.tools.filter(tool=>placedIds.has(tool.moduleId))});
+  if(initialIssues.length)throw Error('Nejdříve opravte sestavu: '+initialIssues[0].message);
+  for(const tool of source.tools){
+    const poly=pocketOutline(tool,source.clearance),bounds=box(poly),padding=source.wall+.26,w=bounds.width+2*padding,h=bounds.height+2*padding;
+    const check=validateLayout({...source,width:w,height:h,modules:[{id:'check',x:0,y:0,width:w,height:h}],tools:[{...tool,x:tool.x+padding-bounds.minX,y:tool.y+padding-bounds.minY,moduleId:'check'}]});
+    if(check.length)throw Error('Nejdříve opravte nástroj: '+check[0].message);
+  }
+  const fixed=[],rigid=[],free=[],reserved=new Set(),byModule=new Map(source.modules.map(module=>[module.id,source.tools.filter(tool=>tool.moduleId===module.id)]));
+  for(const module of source.modules){
+    const own=byModule.get(module.id),locked=module.locked||own.some(tool=>tool.locked);
+    if(locked||!own.length){fixed.push(copy(module));for(const tool of own)reserved.add(tool.id);continue;}
+    if(module.sizeMode==='manual'||module.grouped||own.length>1){
+      rigid.push({id:module.id,module:copy(module),options:[{width:module.width,height:module.height,items:own.map(tool=>({tool,x:tool.x-module.x,y:tool.y-module.y,rotation:tool.rotation||0}))}]});for(const tool of own)reserved.add(tool.id);
+    }
+  }
+  for(const tool of source.tools){if(tool.locked&&!reserved.has(tool.id))throw Error('Zamčený nástroj musí mít vlastní platný modul.');if(!reserved.has(tool.id))free.push(tool);}
+  free.sort((a,b)=>compareId(a.id,b.id));
+  const singleAtoms=[],singleCosts=[],nesting=[],usedIds=new Set([...fixed,...rigid.map(atom=>atom.module)].map(module=>module.id));
+  const allocate=id=>{let next=id,index=2;while(usedIds.has(next))next=`${id}-${index++}`;usedIds.add(next);return next;};
+  for(const tool of free){
+    const originalModule=source.modules.find(module=>module.id===tool.moduleId),id=allocate(originalModule?.id||`mod-${hash(tool.id)}`),module={...(originalModule||{}),id,name:originalModule?.name||tool.name,locked:false,sizeMode:'auto'};
+    const available=orientations(tool,source,separation);
+    if(!available.length){const bounds=box(pocketOutline(tool,source.clearance)),width=Math.ceil((bounds.width+2*(source.wall+.26))/grid)*grid,height=Math.ceil((bounds.height+2*(source.wall+.26))/grid)*grid;available.push({tool,rotation:tool.rotation||0,bounds,width,height});}
+    const options=available.map(orientation=>singleOption(orientation,module));singleAtoms.push({id,module,options});singleCosts.push(Math.min(...options.map(area)));
+    let prepared=tool;
+    if(!Object.hasOwn(tool,'fingerGrips')){try{prepared={...tool,fingerGrips:automaticFingerGrips(tool,{radius:9})};}catch{prepared=null;}}
+    nesting.push(prepared&&usefulGrips(prepared)?orientations(prepared,source,separation,{nest:true}):[]);
+  }
+  const consider=result=>{
+    const value=metric(result,source);if([...before.placed].some(id=>!value.placed.has(id))||!better(value,bestMetric))return;
+    const ids=new Set(result.modules.filter(module=>inside(module,source)).map(module=>module.id));
+    if(validateLayout({...source,modules:result.modules.filter(module=>ids.has(module.id)),tools:result.tools.filter(tool=>ids.has(tool.moduleId))}).length)return;
+    best=result;bestMetric=value;
+  };
+  for(let order=0;order<3;order++)consider(pack(source,fixed,[...rigid,...singleAtoms],order));
+  progress('orientations',.12,'Narovnávám obrysy a porovnávám protilehlé směry…');await pause();
+  const pairs=new Map();let candidates=0;
+  outer:for(let i=0;i<free.length;i++)for(let j=i+1;j<free.length;j++){
+    let candidate=null;
+    for(const a of nesting[i])for(const b of nesting[j]){
+      const values=[0,CELL,-CELL,grid/2,-grid/2,grid,-grid,a.bounds.height-b.bounds.height,(a.bounds.height-b.bounds.height)/2,a.bounds.height*.25,-a.bounds.height*.25,b.bounds.height*.25,-b.bounds.height*.25,a.bounds.height*.5,-b.bounds.height*.5];
+      for(const dy of [...new Set(values.map(value=>Math.round(value/CELL)*CELL))]){
+        if(++candidates>MAX_CANDIDATES)break outer;
+        const dx=contactX(a.profile,b.profile,dy);if(!Number.isFinite(dx))continue;
+        const option=pairOption(a,b,dx,dy,source);if(!option||area(option)>=singleCosts[i]+singleCosts[j]-EPS)continue;
+        if(!candidate||area(option)<area(candidate)-EPS||(Math.abs(area(option)-area(candidate))<EPS&&option.bbox<candidate.bbox-EPS))candidate=option;
+      }
+    }
+    if(candidate&&exactPair(candidate,source,separation))pairs.set(`${i}:${j}`,{i,j,option:candidate,gain:singleCosts[i]+singleCosts[j]-area(candidate)});
+    progress('nesting',.12+.7*((i*free.length+j+1)/(Math.max(1,free.length*free.length))),`Hledám místo pro celé kapsy včetně prstů (${pairs.size} vhodných dvojic)…`);await pause();
+  }
+  const optimal=matching(free.length,pairs,singleCosts),greedy=[...pairs.values()].sort((a,b)=>b.gain-a.gain||a.i-b.i||a.j-b.j),alternate=[];const taken=new Set();
+  for(const pair of greedy)if(!taken.has(pair.i)&&!taken.has(pair.j)){taken.add(pair.i);taken.add(pair.j);alternate.push(pair);}
+  const groupIds=new Map();
+  for(const plan of [optimal,alternate]){
+    const paired=new Set(plan.flatMap(pair=>[pair.i,pair.j])),groups=plan.map(pair=>{
+      const ids=[free[pair.i].id,free[pair.j].id].sort(compareId),key=JSON.stringify(ids);if(!groupIds.has(key))groupIds.set(key,allocate(`smart-${hash(key)}`));const id=groupIds.get(key);
+      const module={id,name:`${free[pair.i].name} + ${free[pair.j].name}`.slice(0,100),grouped:true,sizeMode:'auto',locked:false};
+      const previous=source.modules.find(module=>module.id===free[pair.i].moduleId);
+      if(previous&&Object.hasOwn(previous,'unit'))module.unit=previous.unit;else if(Object.hasOwn(source,'unit'))module.unit=source.unit;
+      return{id,module,options:[pair.option]};
+    });
+    for(let order=0;order<3;order++){consider(pack(source,fixed,[...rigid,...singleAtoms.filter((atom,i)=>!paired.has(i)),...groups],order));await pause();}
+  }
+  progress('validate',.96,'Ověřuji stěny, vůli a zachování celé sestavy…');await pause();
+  return finish(best===original?'Úspornější bezpečné rozvržení nebylo nalezeno.':'Chytré rozvržení je připravené.');
+}

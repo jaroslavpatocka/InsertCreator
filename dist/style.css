@@ -31,6 +31,8 @@
 .fit-check p{font-size:12px;color:#77836b}
 .board-svg{touch-action:pan-y pinch-zoom}
 .board-svg.moving{touch-action:none}
+.board-toolbar{flex-wrap:wrap;gap:6px}.board-toolbar>.tool-group:last-child{flex-wrap:wrap}.smart-layout-button{color:#667b51;background:#edf3e6}.smart-layout-progress{padding:16px 0;text-align:center}.smart-layout-progress p{font-size:14px}.smart-layout-progress progress{display:block;width:100%;height:12px;margin:20px 0 10px;accent-color:#8d9f71}.smart-layout-progress small{font-size:12px;color:var(--muted)}.smart-layout-result h3{font-size:19px}.smart-layout-result p{font-size:12px;color:var(--muted)}
+.board-svg.view-3d{cursor:grab;touch-action:none}.board-svg.view-3d.is-navigating{cursor:grabbing}.view-3d-hint{position:absolute;left:10px;right:10px;bottom:9px;width:fit-content;max-width:calc(100% - 20px);margin:auto;padding:5px 8px;border-radius:5px;background:#fbfcf9e8;color:#75816d;font-size:10px;line-height:1.5;text-align:center;pointer-events:none}
 .drawer-dimensions{display:inline-flex;align-items:center;flex-wrap:wrap;gap:7px;max-width:100%;min-height:44px;margin-top:8px;padding:8px 10px;border:1px solid var(--line);border-radius:6px;background:#fff;color:#5d6c54;font-size:12px;text-align:left}
 .drawer-dimensions .icon{width:16px;height:16px}.drawer-dimensions small{font-size:11px;color:var(--muted)}
 #drawer-settings{scroll-margin-top:16px}

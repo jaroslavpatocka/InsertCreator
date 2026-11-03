@@ -28,6 +28,7 @@ Postupuj takto:
     - spusť testy,
     - oprav regresní chyby,
     - proveď code review.
+    - pushni na git commit
 
 Nechci pouze návrh rozdělení práce.
 Chci, abys subagenty skutečně používal a práci řídil autonomně.

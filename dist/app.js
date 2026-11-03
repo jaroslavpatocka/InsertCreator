@@ -1,11 +1,13 @@
 import {bounds,transformedPoints,autoArrange,resizeModule,validateLayout,exportSVG,exportDXF,exportSTL,exportFitSTL,printStats,zipFiles,createDemoProject} from './geometry.js';
-import {printPreview} from './preview3d.js';
+import {printPreview,createCamera3D,normalizeCamera3D} from './preview3d.js';
+import {createViewControls} from './view-controls.js';
 import {exportFitPDF} from './fit-sheet.js';
 import {openCapture} from './capture.js';
-import {esc,icon,openModal,closeModal,toast,download} from './ui.js';
 import {mountLibraryFolders} from './catalog-ui.js';
+import {esc,icon,openModal,closeModal,toast,download} from './ui.js';
 import {uid,clone,validateProject,readLocal,writeLocal,blankProject} from './model.js';
 import {automaticFingerGrips,pocketOutline,validateFingerGrips} from './finger-grip.js';
+import {runSmartLayout} from './smart-layout-client.js';
 // `t` is used for tool variables throughout this file, so the translator is imported as `tr`.
 import {t as tr,plural,i18nError,errorText,getLang,setLang,onLangChange,LANGS,LANG_NAMES,fmtNum} from './i18n.js';
 import {unit,unitFor,getAppUnit,setAppUnit,setProjectUnit,UNITS,fmtLen,fmtSize,inputValue,parseLength} from './units.js';
@@ -42,6 +44,8 @@ if(!Array.isArray(library))library=localizeDemo(createDemoProject()).tools.map(t
 library=library.flatMap(t=>{try{return[validateProject({...blankProject(),tools:[t]}).tools[0]];}catch{return[];}});
 let selected=project.tools[0]?.id||null,selectedModule=null,inspectorTab='drawer',view='2d',zoom=1,snap=true,showGrid=true,showLabels=true,tipVisible=!readLocal('suplik-hide-tip',false);
 let undoStack=[],redoStack=[],drag=null,storageFailed=false,moveMode=false;
+let camera3D=createCamera3D(),cameraFrame={width:1000,height:600,zoom:1},viewControls=null;
+let smartLayoutRun=null;
 const tool=()=>project.tools.find(t=>t.id===selected);
 const moduleFor=(t=tool())=>project.modules.find(m=>m.id===(t?.moduleId||selectedModule));
 const errors=()=>validateLayout(project);
@@ -52,12 +56,91 @@ function persist(){
   if(!ok&&!storageFailed)toast(tr('Úložiště prohlížeče je plné nebo vypnuté. Uložte projekt jako JSON.'));storageFailed=!ok;return ok;
 }
 function commit(fn,message){remember();fn();persist();render();if(message)toast(message);}
-// autoArrange() rebuilds unlocked modules; carry each module's own unit over by id.
-function keepModuleUnits(before,after){const units=new Map(before.filter(m=>m.unit).map(m=>[m.id,m.unit]));for(const m of after)if(!m.unit&&units.has(m.id))m.unit=units.get(m.id);return after;}
+function smartMessage(message){const text=String(message||'Porovnávám rozvržení…'),match=text.match(/^Hledám místo pro celé kapsy včetně prstů \((\d+) vhodných dvojic\)…$/);return match?tr('Hledám místo pro celé kapsy včetně prstů ({n} vhodných dvojic)…',{n:match[1]}):tr(text);}
+const same=value=>JSON.stringify(value);
+const layoutArea=p=>p.modules.reduce((sum,m)=>sum+(m.width-.5)*(m.height-.5),0);
+const placedTools=p=>{const ids=new Set(p.modules.filter(m=>m.x>=0&&m.y>=0&&m.x+m.width<=p.width+1e-6&&m.y+m.height<=p.height+1e-6).map(m=>m.id));return new Set(p.tools.filter(t=>ids.has(t.moduleId)).map(t=>t.id));};
+function layoutMetric(p){const modules=p.modules.filter(m=>m.x>=0&&m.y>=0&&m.x+m.width<=p.width+1e-6&&m.y+m.height<=p.height+1e-6),bbox=modules.length?(Math.max(...modules.map(m=>m.x+m.width))-Math.min(...modules.map(m=>m.x)))*(Math.max(...modules.map(m=>m.y+m.height))-Math.min(...modules.map(m=>m.y))):0;return{placed:placedTools(p).size,area:layoutArea(p),modules:p.modules.length,bbox};}
+function betterLayout(a,b){return a.placed>b.placed||(a.placed===b.placed&&(a.area<b.area-1e-6||(Math.abs(a.area-b.area)<=1e-6&&(a.modules<b.modules||(a.modules===b.modules&&a.bbox<b.bbox-1e-6)))));}
+function checkLayoutTransition(before,next){
+  const placed=placedTools(before),after=placedTools(next),lost=before.tools.find(t=>placed.has(t.id)&&!after.has(t.id));
+  if(lost)throw i18nError('Nástroj „{name}“ by se už nevešel. Zvětšete šuplík nebo uvolněte místo.',{name:lost.name});
+  const modules=next.modules.filter(m=>m.x>=0&&m.y>=0&&m.x+m.width<=next.width+1e-6&&m.y+m.height<=next.height+1e-6),insideIds=new Set(modules.map(m=>m.id));
+  const placedIssue=validateLayout({...next,modules,tools:next.tools.filter(t=>insideIds.has(t.moduleId))})[0];if(placedIssue)throw Error(placedIssue.message);
+  const unplacedIds=new Set(next.tools.filter(t=>!after.has(t.id)).map(t=>t.id));
+  const outsideIds=new Set(next.modules.filter(m=>!insideIds.has(m.id)&&next.tools.some(t=>t.moduleId===m.id)&&next.tools.filter(t=>t.moduleId===m.id).every(t=>unplacedIds.has(t.id))).map(m=>m.id));
+  const issue=validateLayout(next).find(i=>!(i.type==='outside'&&i.ids.length===1&&(unplacedIds.has(i.ids[0])||outsideIds.has(i.ids[0]))));if(issue)throw Error(issue.message);
+}
+function checkedSmartResult(before,result){
+  if(!result||!Array.isArray(result.tools)||!Array.isArray(result.modules)||result.tools.length!==before.tools.length)throw Error(tr('Chytré rozvržení nevrátilo úplnou sestavu.'));
+  const checked=validateProject({...before,tools:result.tools,modules:result.modules}),rawTools=new Map(result.tools.map(t=>[t.id,t])),newModules=new Map(checked.modules.map(m=>[m.id,m]));
+  const oldModules=new Map(before.modules.map(m=>[m.id,m])),placements=new Set(['x','y','rotation','moduleId','fingerGrips']);
+  const members=id=>before.tools.filter(t=>t.moduleId===id);
+  const fixedIds=new Set(before.modules.filter(m=>m.locked||!members(m.id).length||members(m.id).some(t=>t.locked)).map(m=>m.id));
+  const protectedIds=new Set(before.modules.filter(m=>fixedIds.has(m.id)||m.sizeMode==='manual'||m.grouped||members(m.id).length>1).map(m=>m.id));
+  const rawModules=new Map(result.modules.map(m=>[m.id,m]));
+  const next={...clone(before),tools:[],modules:checked.modules.map(m=>({...clone(oldModules.get(m.id)||{}),...clone(rawModules.get(m.id)),...m}))};
+  for(const t of before.tools){
+    const raw=rawTools.get(t.id),valid=checked.tools.find(n=>n.id===t.id);if(!raw||!valid)throw Error(tr('V chytrém rozvržení chybí nástroj.'));
+    for(const key of Object.keys(t))if(!placements.has(key)&&same(raw[key])!==same(t[key]))throw i18nError('Chytré rozvržení změnilo údaje nástroje „{name}“.',{name:t.name});
+    if(Object.keys(raw).some(key=>!Object.hasOwn(t,key)&&!placements.has(key)))throw Error(tr('Chytré rozvržení změnilo údaje nástroje.'));
+    const item={...clone(t),x:valid.x,y:valid.y,rotation:valid.rotation,moduleId:valid.moduleId};
+    if(Object.hasOwn(t,'fingerGrips')){if(!Object.hasOwn(raw,'fingerGrips')||same(raw.fingerGrips)!==same(t.fingerGrips))throw Error(tr('Chytré rozvržení změnilo nastavené výřezy pro prsty.'));}
+    else if(Object.hasOwn(raw,'fingerGrips')){
+      const m=newModules.get(valid.moduleId),count=checked.tools.filter(n=>n.moduleId===valid.moduleId).length;
+      if(!m?.grouped||oldModules.has(m.id)||count<2||same(valid.fingerGrips)!==same(automaticFingerGrips(t,{radius:9})))throw Error(tr('Chytré rozvržení přidalo neplatné výřezy pro prsty.'));
+      item.fingerGrips=valid.fingerGrips;
+    }
+    if((t.locked||fixedIds.has(t.moduleId))&&['x','y','rotation','moduleId'].some(key=>same(item[key])!==same(t[key])))throw Error(tr('Chytré rozvržení přesunulo zamčený nástroj.'));
+    if(protectedIds.has(t.moduleId)&&!fixedIds.has(t.moduleId)){
+      const old=oldModules.get(t.moduleId),m=newModules.get(t.moduleId);
+      if(!m||item.moduleId!==t.moduleId||item.rotation!==t.rotation||Math.abs(item.x-t.x-(m.x-old.x))>1e-6||Math.abs(item.y-t.y-(m.y-old.y))>1e-6)throw Error(tr('Chytré rozvržení změnilo vzájemnou polohu nástrojů ve společném nebo ručním modulu.'));
+    }
+    next.tools.push(item);
+  }
+  for(const id of protectedIds){
+    const old=oldModules.get(id),m=newModules.get(id);
+    if(!m||['id','name','width','height','locked'].some(key=>same(m[key])!==same(old[key]))||(fixedIds.has(id)&&(m.x!==old.x||m.y!==old.y))||(m.sizeMode||'auto')!==(old.sizeMode||'auto')||!!m.grouped!==!!old.grouped)throw Error(tr('Chytré rozvržení změnilo zamčený, ruční nebo společný modul.'));
+    next.modules[next.modules.findIndex(m=>m.id===id)]={...clone(old),x:m.x,y:m.y};
+  }
+  checkLayoutTransition(before,next);return next;
+}
+async function smartArrangeProject(){
+  const before=clone(project),controller=new AbortController(),job={controller,key:same(project),done:false};
+  const modal=openModal({title:tr('Chytré rozvržení'),subtitle:tr('Porovnám bezpečné varianty a společné moduly.'),body:tr('<div class="smart-layout-progress" role="status" aria-live="polite"><p data-smart-message>Připravuji výpočet…</p><progress data-smart-progress max="1" value="0" aria-label="Průběh chytrého rozvržení"></progress><small data-smart-percent>0 %</small></div>'),footer:tr('<span class="footnote">Sestavu můžete během výpočtu ponechat beze změny.</span><button class="btn btn-light" data-smart-cancel>Zrušit</button>'),onClose:()=>{if(!job.done)controller.abort();}});
+  smartLayoutRun=job;
+  const finishUI=(title,body)=>{modal.body.innerHTML=`<div class="smart-layout-result"><h3>${esc(title)}</h3>${body}</div>`;modal.footer.innerHTML='<span></span><button class="btn btn-primary" data-smart-close>Hotovo</button>';modal.footer.querySelector('[data-smart-close]').onclick=modal.close;};
+  modal.el.querySelector('[data-smart-cancel]').onclick=()=>{controller.abort();modal.close();toast(tr('Chytré rozvržení zrušeno. Sestava se nezměnila.'));};
+  try{
+    await new Promise(resolve=>requestAnimationFrame(()=>setTimeout(resolve,0)));
+    if(controller.signal.aborted||smartLayoutRun!==job||!modal.el.isConnected)return;
+    const result=await runSmartLayout(before,{signal:controller.signal,onProgress:event=>{
+      if(smartLayoutRun!==job||controller.signal.aborted||!modal.el.isConnected)return;
+      const value=Math.max(0,Math.min(1,Number(event?.progress)||0));job.lastMessage=event?.message?smartMessage(event.message):job.lastMessage;modal.body.querySelector('[data-smart-progress]').value=value;modal.body.querySelector('[data-smart-percent]').textContent=Math.round(value*100)+' %';modal.body.querySelector('[data-smart-message]').textContent=smartMessage(event?.message);
+    }});
+    if(controller.signal.aborted||smartLayoutRun!==job||!modal.el.isConnected)return;
+    if(same(project)!==job.key)throw Error(tr('Sestava se během výpočtu změnila. Spusťte chytré rozvržení znovu.'));
+    const next=checkedSmartResult(before,result),oldMetric=layoutMetric(before),newMetric=layoutMetric(next),beforeArea=oldMetric.area,afterArea=newMetric.area,saving=beforeArea>0?(beforeArea-afterArea)/beforeArea*100:0;
+    if(!betterLayout(newMetric,oldMetric)){job.done=true;finishUI(job.lastMessage||tr('Lepší bezpečné rozvržení nebylo nalezeno.'),tr('<p>Stávající sestava zůstala beze změny.</p>'));return;}
+    const shared=next.modules.filter(m=>next.tools.filter(t=>t.moduleId===m.id).length>1).length;
+    job.done=true;commit(()=>project=next);
+    const title=saving>0?tr('Úspora plochy {percent} %',{percent:fmt(saving,saving<.1?3:1)}):newMetric.placed>oldMetric.placed?tr('Více nástrojů má své místo.'):tr('Rozvržení je kompaktnější.');
+    const areaNote=afterArea>beforeArea+1e-6?tr('<p>Plocha modulů vzrostla, protože mají místo další nástroje.</p>'):Math.abs(afterArea-beforeArea)<=1e-6?tr('<p>Celková plocha modulů zůstala stejná.</p>'):'';
+    finishUI(title,`<p>${tr('Vnější půdorysy modulů: {before} → {after} {unit}',{before:fmt(beforeArea/(unit()==='in'?645.16:1),unit()==='in'?2:0),after:fmt(afterArea/(unit()==='in'?645.16:1),unit()==='in'?2:0),unit:unit()==='in'?'in²':'mm²'})}</p>${areaNote}<p>${tr('Umístěné nástroje: {before} → {after}',{before:oldMetric.placed,after:newMetric.placed})}</p><p>${tr('{before} → {after} modulů · Společné moduly: {shared}. Výsledek můžete vrátit tlačítkem Zpět.',{before:before.modules.length,after:next.modules.length,shared})}</p>`);
+  }catch(error){if(!controller.signal.aborted&&smartLayoutRun===job&&modal.el.isConnected){job.done=true;finishUI(tr('Rozvržení se nepodařilo použít.'),`<p>${esc(errorText(error))}</p>`);}}
+  finally{if(smartLayoutRun===job)smartLayoutRun=null;}
+}
+function splitModule(){
+  const m=moduleFor();if(!m)return;const own=project.tools.filter(t=>t.moduleId===m.id);if(own.length<2)return;
+  if(m.locked||own.some(t=>t.locked))throw Error(tr('Nejprve odemkněte společný modul.'));
+  const next=clone(project);next.modules=next.modules.filter(n=>n.id!==m.id);next.tools.filter(t=>t.moduleId===m.id).forEach(t=>t.moduleId=null);
+  const result=autoArrange(next);next.tools=result.tools;next.modules=result.modules;checkLayoutTransition(project,next);
+  commit(()=>project=next,tr('Společný modul rozdělen. Změnu můžete vrátit tlačítkem Zpět.'));
+}
 const toolUnit=t=>unitFor(t?.unit),moduleUnit=m=>unitFor(m?.unit);
 const unitBadge=u=>u?`<span class="unit-badge" title="${tr('Vlastní jednotky: {unit}',{unit:u})}">${u}</span>`:'';
 function unitSelect(label,value,scope){return `<label class="field unit-field"><span>${label}</span><select data-field="unit" data-scope="${scope}" aria-label="${label}"><option value="" ${value?'':'selected'}>${tr('Podle šuplíku ({unit})',{unit:unit()})}</option>${UNITS.map(u=>`<option value="${u}" ${value===u?'selected':''}>${u}</option>`).join('')}</select></label>`;}
-function arrange(message=true){const result=autoArrange(project);project.tools=result.tools;project.modules=keepModuleUnits(project.modules,result.modules);if(message)toast(result.unplaced.length?plural(result.unplaced.length,['{n} nástroj se nevešel. Zkontrolujte rozměry šuplíku a tiskové plochy nebo odemkněte moduly.','{n} nástroje se nevešly. Zkontrolujte rozměry šuplíku a tiskové plochy nebo odemkněte moduly.','{n} nástrojů se nevešlo. Zkontrolujte rozměry šuplíku a tiskové plochy nebo odemkněte moduly.']):tr('Rozložení hotové. Zamčené moduly zůstaly na svém místě.'));return result;}
+function arrange(message=true){const result=autoArrange(project);project.tools=result.tools;project.modules=result.modules;if(message)toast(result.unplaced.length?plural(result.unplaced.length,['{n} nástroj se nevešel. Zkontrolujte rozměry šuplíku a tiskové plochy nebo odemkněte moduly.','{n} nástroje se nevešly. Zkontrolujte rozměry šuplíku a tiskové plochy nebo odemkněte moduly.','{n} nástrojů se nevešlo. Zkontrolujte rozměry šuplíku a tiskové plochy nebo odemkněte moduly.']):tr('Rozložení hotové. Zamčené moduly zůstaly na svém místě.'));return result;}
 function thumb(t){const b=bounds({...t,x:0,y:0,rotation:0});return `<svg viewBox="${-3} ${-3} ${b.width+6} ${b.height+6}" aria-hidden="true"><path d="${paths(transformedPoints({...t,x:0,y:0,rotation:0}))}" fill="${t.id===selected?'#c79c53':'#9fae90'}" stroke="none"/></svg>`;}
 // Every numeric field is a length: shown in the effective unit, stored in mm, typed text may carry any unit.
 function input(label,value,key,{unit:u,min=0,max=3000,scope='project',type='length'}={}){
@@ -86,7 +169,7 @@ function fingerGripCandidate(id,grips){
     const placedIds=new Set(project.modules.filter(m=>m.x>=0&&m.y>=0&&m.x+m.width<=project.width+1e-6&&m.y+m.height<=project.height+1e-6).map(m=>m.id));
     const result=autoArrange(next),unplaced=new Set(result.unplaced),displaced=project.tools.find(t=>placedIds.has(t.moduleId)&&unplaced.has(t.id));
     if(displaced)throw i18nError('Pro výřezy není dost místa. Nástroj „{name}“ by se už nevešel do šuplíku. Zvětšete šuplík nebo uvolněte místo.',{name:displaced.name});
-    next.tools=result.tools;next.modules=keepModuleUnits(next.modules,result.modules);
+    next.tools=result.tools;next.modules=result.modules;
   }
   const changed=next.tools.find(t=>t.id===id),ids=new Set([id,m?.id,changed.moduleId].filter(Boolean));
   const issue=validateLayout(next).find(issue=>issue.ids.some(id=>ids.has(id)));
@@ -121,7 +204,7 @@ function editFingerGrips(){
   redraw();
 }
 function showDrawerDimensions(){inspectorTab='drawer';render();if(window.innerWidth<=760)$('#drawer-settings')?.scrollIntoView({block:'start',behavior:'smooth'});}
-function moduleSizing(m){const u=moduleUnit(m);return `<div class="module-sizing"><strong>${m.sizeMode==='manual'?tr('Rozměry modulu · ruční'):tr('Rozměry modulu · automatické')}${unitBadge(m.unit)}</strong><small>${tr('Jmenovité {size}',{size:fmtSize(m.width,m.height,{unit:u})})}<br>${tr('Vnější {size}',{size:fmtSize(m.width-.5,m.height-.5,{unit:u})})}</small>${unitSelect(tr('Jednotky modulu'),m.unit,'module')}<div class="selected-actions"><button class="btn btn-light" data-action="resize-module">${icon('ruler')}${tr('Upravit rozměry modulu')}</button>${project.tools.some(t=>t.moduleId===m.id)?`<button class="btn btn-light" data-action="size-module-auto">${tr('Podle nástroje')}</button>`:''}</div></div>`;}
+function moduleSizing(m){const u=moduleUnit(m),count=project.tools.filter(t=>t.moduleId===m.id).length;return `<div class="module-sizing"><strong>${m.sizeMode==='manual'?tr('Rozměry modulu · ruční'):tr('Rozměry modulu · automatické')}${unitBadge(m.unit)}</strong><small>${tr('Jmenovité {size}',{size:fmtSize(m.width,m.height,{unit:u})})}<br>${tr('Vnější {size}',{size:fmtSize(m.width-.5,m.height-.5,{unit:u})})}${count>1?`<br>${tr('Nástrojů ve společném modulu: {n}',{n:count})}`:''}</small>${unitSelect(tr('Jednotky modulu'),m.unit,'module')}<div class="selected-actions"><button class="btn btn-light" data-action="resize-module">${icon('ruler')}${tr('Upravit rozměry modulu')}</button>${project.tools.some(t=>t.moduleId===m.id)?`<button class="btn btn-light" data-action="size-module-auto">${tr('Podle nástroje')}</button>`:''}${count>1?`<button class="btn btn-light" data-action="split-module">${tr('Rozdělit modul')}</button>`:''}</div></div>`;}
 function editModuleSize(){
   const m=moduleFor();if(!m)return;
   const fields=(w,h,u)=>`${input(tr('Jmenovitá šířka'),w,'moduleWidth',{unit:u,min:5,max:3000})}${input(tr('Jmenovitá hloubka'),h,'moduleHeight',{unit:u,min:5,max:3000})}`;
@@ -159,17 +242,22 @@ function removeDrawer(id){
   projects=projects.filter(p=>p.id!==id);writeLocal(storageKey,projects);render();toast(tr('Šuplík „{name}“ smazán.',{name:p.name}));
 }
 function render(){
+  viewControls?.dispose();viewControls=null;
   setProjectUnit(project.unit);
   const issues=errors(),unplaced=project.tools.filter(t=>!project.modules.some(m=>m.id===t.moduleId));
   const occupied=project.modules.reduce((s,m)=>s+m.width*m.height,0),usage=Math.min(100,Math.round(occupied/(project.width*project.height)*100)),lockedCount=project.modules.filter(m=>m.locked).length;
   const drawerSize=fmtSize(project.width,project.height);
-  $('#app').innerHTML=`<div class="app-shell"><aside class="sidebar"><a class="brand" href="#" aria-label="Šuplík Studio" data-action="home"><span class="brand-mark"><i></i><i></i><i></i><i></i></span><span class="brand-name">šuplík<small>STUDIO</small></span></a><nav class="sidebar-nav" aria-label="${tr('Hlavní navigace')}"><button class="nav-item active" data-action="home">${icon('drawer')}<span>${tr('Můj šuplík')}</span></button><button class="nav-item" data-action="library">${icon('wrench')}<span>${tr('Knihovna nástrojů')}</span></button></nav><div class="sidebar-separator"></div>${drawerList()}<div class="sidebar-bottom"><button class="nav-item" data-action="help">${icon('help')}<span>${tr('Jak na to')}</span></button><div class="sidebar-separator" style="margin:18px 0"></div><div class="local-tag">${icon('shield')} ${tr('Všechno zůstává u vás')}</div><p>${tr('Fotky zpracovává váš prohlížeč.')}<br>${tr('Bez cloudu. Bez předplatného.')}</p></div></aside><main class="main"><header class="topbar"><div class="breadcrumb">${tr('Dílna')} <span>/</span> <b>${tr('Organizér nářadí')}</b></div><div class="top-actions">${prefsControls()}<span class="save-state">${icon(storageFailed?'info':'check')} <span class="save-text">${storageFailed?tr('Stáhněte zálohu'):tr('Uloženo v zařízení')}</span></span><button class="btn btn-light" data-action="save-project" aria-label="${tr('Uložit projekt')}">${icon('download')} <span class="btn-label">${tr('Uložit projekt')}</span></button><span class="avatar" title="${tr('Lokální dílna')}">JD</span></div></header><div class="page"><div class="page-heading"><div><p class="eyebrow">${tr('MÍSTO PRO KAŽDÝ NÁSTROJ')}</p><div class="name-edit"><h1>${esc(project.name)}</h1><button class="icon-btn" data-action="rename" aria-label="${tr('Přejmenovat šuplík')}">${icon('edit')}</button></div><p class="subtitle">${tr('Od fotky k pořádku. Přesně podle vaší dílny.')}</p><button class="drawer-dimensions" data-action="drawer-tab">${icon('ruler')}<span>${tr('Rozměry šuplíku')}</span><small>${drawerSize}</small></button></div><div class="heading-actions"><button class="btn btn-light" data-action="add-shape">${icon('plus')} ${tr('Prázdný modul')}</button><button class="btn btn-primary" data-action="capture">${icon('camera')} <span>${tr('Přidat nástroj')}</span></button></div></div><div class="steps" aria-label="${tr('Postup')}"><button class="step done" data-action="capture"><span class="step-num">01</span>${tr('Vyfotit nástroj')}</button><span class="step-chevron">›</span><button class="step done" data-action="capture"><span class="step-num">02</span>${tr('Rozpoznat obrys')}</button><span class="step-chevron">›</span><span class="step active"><span class="step-num">03</span>${tr('Rozvrhnout')}</span><span class="step-chevron">›</span><button class="step" data-action="export"><span class="step-num">04</span>${tr('Vyrobit')}</button></div><div class="workbench"><div class="workspace-col"><section class="workspace" aria-label="${tr('Editor sestavy')}"><div class="workspace-header"><div class="workspace-header-title">${icon('drawer')} ${tr('Náhled šuplíku')} <small>${drawerSize}</small></div><div class="segmented" aria-label="${tr('Režim náhledu')}"><button data-action="2d" class="${view==='2d'?'active':''}" aria-pressed="${view==='2d'}">${icon('grid')}2D</button><button data-action="3d" class="${view==='3d'?'active':''}" aria-pressed="${view==='3d'}">${icon('cube')}3D</button></div></div><div class="board-toolbar"><div class="tool-group"><button class="icon-btn" data-action="undo" aria-label="${tr('Zpět (Ctrl+Z)')}" ${undoStack.length?'':'disabled'}>${icon('undo')}</button><button class="icon-btn" data-action="redo" aria-label="${tr('Znovu (Ctrl+Shift+Z)')}" ${redoStack.length?'':'disabled'}>${icon('redo')}</button><span class="toolbar-sep"></span><button class="icon-btn ${showGrid?'active':''}" data-action="grid" aria-label="${tr('Zobrazit rastr')}" aria-pressed="${showGrid}">${icon('grid')}</button><button class="tiny-button" data-action="labels" aria-pressed="${showLabels}">${icon('eye')} ${tr('Popisky')}</button></div><div class="tool-group"><button class="tiny-button ${moveMode?'active':''}" data-action="move-mode" aria-pressed="${moveMode}">${icon('move')}${moveMode?tr('Hotovo'):tr('Přesunout')}</button><button class="tiny-button" data-action="auto">${icon('spark')} ${tr('Auto rozložení')}</button></div></div><div class="board-area" id="board-area"><svg class="board-svg ${moveMode?'moving':''}" id="board-svg" role="img" aria-label="${tr('Rozložení modulů a nástrojů v šuplíku')}"></svg>${!project.modules.length?`<div class="board-empty">${icon('drawer')}<h3>${tr('Začněte jedním nástrojem')}</h3><p>${tr('Vyfoťte ho na A4 papíru nebo vložte z uložené knihovny.')}</p><button class="btn btn-primary" data-action="capture">${icon('camera')} ${tr('Přidat nástroj')}</button></div>`:''}</div><div class="board-footer"><div class="legend"><span><i></i>${tr('Modul')}</span><span><i></i>${tr('Vybraný nástroj')}</span></div><div class="key-hint">${view==='2d'?tr('Tažením přesunete modul'):tr('Prostorový náhled')} <kbd>R</kbd> ${tr('otočit')}</div><div class="tool-group"><button class="icon-btn" data-action="zoom-out" aria-label="${tr('Oddálit')}">${icon('zoomOut')}</button><span>${Math.round(zoom*100)} %</span><button class="icon-btn" data-action="zoom-in" aria-label="${tr('Přiblížit')}">${icon('zoomIn')}</button><button class="icon-btn" data-action="fit" aria-label="${tr('Zobrazit vše')}">${icon('fit')}</button></div></div></section><div class="metrics"><div class="metric"><div class="metric-icon">${icon('wrench')}</div><div><strong>${project.tools.length} <small>${plural(project.tools.length,['nástroj','nástroje','nástrojů'])}</small></strong><p>${unplaced.length?tr('{n} čeká na umístění',{n:unplaced.length}):tr('Každý má svoje místo')}</p></div></div><div class="metric"><div class="metric-icon">${icon('grid')}</div><div><strong>${project.modules.length} <small>${plural(project.modules.length,['modul','moduly','modulů'])}</small></strong><p>${tr('{n} zamčených · rozšiřitelné',{n:lockedCount})}</p></div></div><div class="metric"><div class="metric-icon">${icon('drawer')}</div><div><strong>${usage} <small>${tr('% plochy')}</small></strong><p>${tr('{n} % na další nástroje',{n:Math.max(0,100-usage)})}</p></div></div></div>${issues.length?`<div class="issue-box" role="status">${issues.slice(0,3).map(i=>`<p>${esc(errorText(i))}</p>`).join('')}${issues.length>3?`<p>${tr('A dalších {n} upozornění.',{n:issues.length-3})}</p>`:''}<button class="section-link" data-action="auto">${tr('Přepočítat rozvržení')}</button></div>`:''}${tipVisible?`<div class="tip">${icon('lightbulb')}<div><strong>${tr('Vaše dílna poroste. Sestava taky.')}</strong> ${tr('Zamkněte hotové moduly a přidejte další nástroje. Auto rozložení zachová jejich polohu.')}</div><button class="icon-btn" data-action="hide-tip" aria-label="${tr('Skrýt tip')}">${icon('close')}</button></div>`:''}</div><aside class="inspector" aria-label="${tr('Nastavení a nástroje')}"><section class="panel" id="drawer-settings">${inspectorTab==='tool'?selectedPanel():drawerPanel()}</section><section class="panel"><div class="panel-header"><h2 class="panel-title">${tr('Nástroje v sestavě')}</h2><span>${project.tools.length.toString().padStart(2,'0')}</span></div><div class="tool-list">${project.tools.map(t=>`<button class="tool-row ${selected===t.id?'selected':''}" data-select="${esc(t.id)}" aria-pressed="${selected===t.id}"><span class="tool-thumb">${thumb(t)}</span><span><strong>${esc(t.name)}${unitBadge(t.unit)}</strong><small>${sizeShort(bounds(t).width,bounds(t).height,toolUnit(t))}${!t.moduleId?' · '+tr('neumístěno'):''}</small></span>${icon(project.modules.find(m=>m.id===t.moduleId)?.locked?'lock':'chevron')}</button>`).join('')||`<div class="empty-note">${tr('Zatím žádné nástroje.')}</div>`}</div><button class="add-tool-row" data-action="capture">${icon('plus')} ${tr('Přidat další nástroj')}</button></section><div class="export-card"><div class="ready">${icon(issues.length?'info':'check')} ${issues.length?tr('Zkontrolujte sestavu'):tr('Sestava připravena')}</div><p>${issues.length?tr('Před výrobou opravte označené rozměry nebo překryvy.'):tr('STL pro 3D tisk, SVG a DXF pro výřez. Vše v reálných milimetrech.')}</p><button class="btn btn-dark block-button" data-action="export">${icon('download')} ${tr('Připravit export')} ${icon('arrow')}</button></div></aside></div><footer class="footer-line"><span>${tr('Navrženo ve skutečných rozměrech. Vyrobeno pro vaši dílnu.')}</span><button data-action="help">${tr('Návod a inspirace')}</button><span class="app-version">STUDIO / 1.2</span></footer></div></main></div><nav class="mobile-nav" aria-label="${tr('Mobilní navigace')}"><button class="active" data-action="home">${icon('drawer')}${tr('Šuplík')}</button><button data-action="library">${icon('wrench')}${tr('Knihovna')}</button><button class="camera-nav" data-action="capture" aria-label="${tr('Vyfotit nástroj')}">${icon('camera')}</button><button data-action="projects">${icon('folder')}${tr('Šuplíky')}</button><button data-action="export">${icon('download')}${tr('Export')}</button></nav>`;
+  $('#app').innerHTML=`<div class="app-shell"><aside class="sidebar"><a class="brand" href="#" aria-label="Šuplík Studio" data-action="home"><span class="brand-mark"><i></i><i></i><i></i><i></i></span><span class="brand-name">šuplík<small>STUDIO</small></span></a><nav class="sidebar-nav" aria-label="${tr('Hlavní navigace')}"><button class="nav-item active" data-action="home">${icon('drawer')}<span>${tr('Můj šuplík')}</span></button><button class="nav-item" data-action="library">${icon('wrench')}<span>${tr('Knihovna nástrojů')}</span></button></nav><div class="sidebar-separator"></div>${drawerList()}<div class="sidebar-bottom"><button class="nav-item" data-action="help">${icon('help')}<span>${tr('Jak na to')}</span></button><div class="sidebar-separator" style="margin:18px 0"></div><div class="local-tag">${icon('shield')} ${tr('Všechno zůstává u vás')}</div><p>${tr('Fotky zpracovává váš prohlížeč.')}<br>${tr('Bez cloudu. Bez předplatného.')}</p></div></aside><main class="main"><header class="topbar"><div class="breadcrumb">${tr('Dílna')} <span>/</span> <b>${tr('Organizér nářadí')}</b></div><div class="top-actions">${prefsControls()}<span class="save-state">${icon(storageFailed?'info':'check')} <span class="save-text">${storageFailed?tr('Stáhněte zálohu'):tr('Uloženo v zařízení')}</span></span><button class="btn btn-light" data-action="save-project" aria-label="${tr('Uložit projekt')}">${icon('download')} <span class="btn-label">${tr('Uložit projekt')}</span></button><span class="avatar" title="${tr('Lokální dílna')}">JD</span></div></header><div class="page"><div class="page-heading"><div><p class="eyebrow">${tr('MÍSTO PRO KAŽDÝ NÁSTROJ')}</p><div class="name-edit"><h1>${esc(project.name)}</h1><button class="icon-btn" data-action="rename" aria-label="${tr('Přejmenovat šuplík')}">${icon('edit')}</button></div><p class="subtitle">${tr('Od fotky k pořádku. Přesně podle vaší dílny.')}</p><button class="drawer-dimensions" data-action="drawer-tab">${icon('ruler')}<span>${tr('Rozměry šuplíku')}</span><small>${drawerSize}</small></button></div><div class="heading-actions"><button class="btn btn-light" data-action="add-shape">${icon('plus')} ${tr('Prázdný modul')}</button><button class="btn btn-primary" data-action="capture">${icon('camera')} <span>${tr('Přidat nástroj')}</span></button></div></div><div class="steps" aria-label="${tr('Postup')}"><button class="step done" data-action="capture"><span class="step-num">01</span>${tr('Vyfotit nástroj')}</button><span class="step-chevron">›</span><button class="step done" data-action="capture"><span class="step-num">02</span>${tr('Rozpoznat obrys')}</button><span class="step-chevron">›</span><span class="step active"><span class="step-num">03</span>${tr('Rozvrhnout')}</span><span class="step-chevron">›</span><button class="step" data-action="export"><span class="step-num">04</span>${tr('Vyrobit')}</button></div><div class="workbench"><div class="workspace-col"><section class="workspace" aria-label="${tr('Editor sestavy')}"><div class="workspace-header"><div class="workspace-header-title">${icon('drawer')} ${tr('Náhled šuplíku')} <small>${drawerSize}</small></div><div class="segmented" aria-label="${tr('Režim náhledu')}"><button data-action="2d" class="${view==='2d'?'active':''}" aria-pressed="${view==='2d'}">${icon('grid')}2D</button><button data-action="3d" class="${view==='3d'?'active':''}" aria-pressed="${view==='3d'}">${icon('cube')}3D</button></div></div><div class="board-toolbar"><div class="tool-group"><button class="icon-btn" data-action="undo" aria-label="${tr('Zpět (Ctrl+Z)')}" ${undoStack.length?'':'disabled'}>${icon('undo')}</button><button class="icon-btn" data-action="redo" aria-label="${tr('Znovu (Ctrl+Shift+Z)')}" ${redoStack.length?'':'disabled'}>${icon('redo')}</button><span class="toolbar-sep"></span><button class="icon-btn ${showGrid?'active':''}" data-action="grid" aria-label="${tr('Zobrazit rastr')}" aria-pressed="${showGrid}">${icon('grid')}</button><button class="tiny-button" data-action="labels" aria-pressed="${showLabels}">${icon('eye')} ${tr('Popisky')}</button></div><div class="tool-group"><button class="tiny-button ${moveMode?'active':''}" data-action="move-mode" aria-pressed="${moveMode}">${icon('move')}${moveMode?tr('Hotovo'):tr('Přesunout')}</button><button class="tiny-button" data-action="auto">${icon('spark')} ${tr('Auto rozložení')}</button><button class="tiny-button smart-layout-button" data-action="smart-layout">${icon('spark')} ${tr('Chytré rozvržení')}</button></div></div><div class="board-area" id="board-area"><svg class="board-svg ${moveMode?'moving':''} ${view==='3d'?'view-3d':''}" id="board-svg" role="img" aria-label="${tr('Rozložení modulů a nástrojů v šuplíku')}"></svg>${!project.modules.length&&view==='2d'?`<div class="board-empty">${icon('drawer')}<h3>${tr('Začněte jedním nástrojem')}</h3><p>${tr('Vyfoťte ho na A4 papíru nebo vložte z uložené knihovny.')}</p><button class="btn btn-primary" data-action="capture">${icon('camera')} ${tr('Přidat nástroj')}</button></div>`:''}${view==='3d'?'<div class="view-3d-hint">'+esc(tr('Levé tlačítko: otáčet · Pravé: posouvat · Kolečko: přiblížit'))+'</div>':''}</div><div class="board-footer"><div class="legend"><span><i></i>${tr('Modul')}</span><span><i></i>${tr('Vybraný nástroj')}</span></div><div class="key-hint">${view==='2d'?tr('Tažením přesunete modul')+' <kbd>R</kbd> '+tr('otočit'):tr('Pohled kamerou')}</div><div class="tool-group"><button class="icon-btn" data-action="zoom-out" aria-label="${tr('Oddálit')}">${icon('zoomOut')}</button><span data-zoom-value>${Math.round((view==='3d'?camera3D.zoom:zoom)*100)} %</span><button class="icon-btn" data-action="zoom-in" aria-label="${tr('Přiblížit')}">${icon('zoomIn')}</button><button class="icon-btn" data-action="fit" aria-label="${tr('Zobrazit vše')}">${icon('fit')}</button></div></div></section><div class="metrics"><div class="metric"><div class="metric-icon">${icon('wrench')}</div><div><strong>${project.tools.length} <small>${plural(project.tools.length,['nástroj','nástroje','nástrojů'])}</small></strong><p>${unplaced.length?tr('{n} čeká na umístění',{n:unplaced.length}):tr('Každý má svoje místo')}</p></div></div><div class="metric"><div class="metric-icon">${icon('grid')}</div><div><strong>${project.modules.length} <small>${plural(project.modules.length,['modul','moduly','modulů'])}</small></strong><p>${tr('{n} zamčených · rozšiřitelné',{n:lockedCount})}</p></div></div><div class="metric"><div class="metric-icon">${icon('drawer')}</div><div><strong>${usage} <small>${tr('% plochy')}</small></strong><p>${tr('{n} % na další nástroje',{n:Math.max(0,100-usage)})}</p></div></div></div>${issues.length?`<div class="issue-box" role="status">${issues.slice(0,3).map(i=>`<p>${esc(errorText(i))}</p>`).join('')}${issues.length>3?`<p>${tr('A dalších {n} upozornění.',{n:issues.length-3})}</p>`:''}<button class="section-link" data-action="auto">${tr('Přepočítat rozvržení')}</button></div>`:''}${tipVisible?`<div class="tip">${icon('lightbulb')}<div><strong>${tr('Vaše dílna poroste. Sestava taky.')}</strong> ${tr('Zamkněte hotové moduly a přidejte další nástroje. Auto rozložení zachová jejich polohu.')}</div><button class="icon-btn" data-action="hide-tip" aria-label="${tr('Skrýt tip')}">${icon('close')}</button></div>`:''}</div><aside class="inspector" aria-label="${tr('Nastavení a nástroje')}"><section class="panel" id="drawer-settings">${inspectorTab==='tool'?selectedPanel():drawerPanel()}</section><section class="panel"><div class="panel-header"><h2 class="panel-title">${tr('Nástroje v sestavě')}</h2><span>${project.tools.length.toString().padStart(2,'0')}</span></div><div class="tool-list">${project.tools.map(t=>`<button class="tool-row ${selected===t.id?'selected':''}" data-select="${esc(t.id)}" aria-pressed="${selected===t.id}"><span class="tool-thumb">${thumb(t)}</span><span><strong>${esc(t.name)}${unitBadge(t.unit)}</strong><small>${sizeShort(bounds(t).width,bounds(t).height,toolUnit(t))}${!t.moduleId?' · '+tr('neumístěno'):''}</small></span>${icon(project.modules.find(m=>m.id===t.moduleId)?.locked?'lock':'chevron')}</button>`).join('')||`<div class="empty-note">${tr('Zatím žádné nástroje.')}</div>`}</div><button class="add-tool-row" data-action="capture">${icon('plus')} ${tr('Přidat další nástroj')}</button></section><div class="export-card"><div class="ready">${icon(issues.length?'info':'check')} ${issues.length?tr('Zkontrolujte sestavu'):tr('Sestava připravena')}</div><p>${issues.length?tr('Před výrobou opravte označené rozměry nebo překryvy.'):tr('STL pro 3D tisk, SVG a DXF pro výřez. Vše v reálných milimetrech.')}</p><button class="btn btn-dark block-button" data-action="export">${icon('download')} ${tr('Připravit export')} ${icon('arrow')}</button></div></aside></div><footer class="footer-line"><span>${tr('Navrženo ve skutečných rozměrech. Vyrobeno pro vaši dílnu.')}</span><button data-action="help">${tr('Návod a inspirace')}</button><span class="app-version">STUDIO / 1.2</span></footer></div></main></div><nav class="mobile-nav" aria-label="${tr('Mobilní navigace')}"><button class="active" data-action="home">${icon('drawer')}${tr('Šuplík')}</button><button data-action="library">${icon('wrench')}${tr('Knihovna')}</button><button class="camera-nav" data-action="capture" aria-label="${tr('Vyfotit nástroj')}">${icon('camera')}</button><button data-action="projects">${icon('folder')}${tr('Šuplíky')}</button><button data-action="export">${icon('download')}${tr('Export')}</button></nav>`;
   renderBoard();
 }
 
 function renderBoard(){
   const svg=$('#board-svg');if(!svg)return;
-  if(view==='3d'){render3D(svg);return;}
+  if(view==='3d'){
+    render3D(svg);
+    if(!viewControls)viewControls=createViewControls(svg,{getCamera:()=>camera3D,setCamera:value=>camera3D=value,getFrame:()=>({width:cameraFrame.width*cameraFrame.zoom/camera3D.zoom,height:cameraFrame.height*cameraFrame.zoom/camera3D.zoom}),render:renderCameraFrame});
+    return;
+  }
   const pad=34,w=project.width+pad*2,h=project.height+pad*2;
   svg.setAttribute('viewBox',`${-pad+(w-w/zoom)/2} ${-pad+(h-h/zoom)/2} ${w/zoom} ${h/zoom}`);
   const issues=errors(),bad=new Set(issues.flatMap(x=>x.ids));
@@ -192,37 +280,17 @@ function renderBoard(){
   svg.innerHTML=html;
 }
 function render3D(svg){
-  try{const p=printPreview(project,selected,selectedModule);svg.setAttribute('viewBox',p.viewBox);svg.innerHTML=p.html;return;}catch{}
-
-  const pr=(x,y,z=0)=>({x:(x-y)*.866,y:(x+y)*.43-z});
-  const corners=[pr(0,0),pr(project.width,0),pr(project.width,project.height),pr(0,project.height)];
-  const minX=Math.min(...corners.map(p=>p.x))-30,maxX=Math.max(...corners.map(p=>p.x))+30,maxY=Math.max(...corners.map(p=>p.y))+30;
-  const w=maxX-minX,h=maxY+65;svg.setAttribute('viewBox',`${minX+(w-w/zoom)/2} ${-60+(h-h/zoom)/2} ${w/zoom} ${h/zoom}`);
-  const poly=(ps)=>ps.map(p=>`${p.x},${p.y}`).join(' ');
-  let html=`<polygon points="${poly(corners)}" fill="#e8eddf" stroke="#bfcbb2" stroke-width="1"/>`;
-  if(showGrid)for(let x=project.grid;x<project.width;x+=project.grid){const a=pr(x,0),b=pr(x,project.height);html+=`<path d="M${a.x} ${a.y}L${b.x} ${b.y}" stroke="#d6dfca" stroke-width=".6"/>`;}
-  if(showGrid)for(let y=project.grid;y<project.height;y+=project.grid){const a=pr(0,y),b=pr(project.width,y);html+=`<path d="M${a.x} ${a.y}L${b.x} ${b.y}" stroke="#d6dfca" stroke-width=".6"/>`;}
-  for(const m of [...project.modules].sort((a,b)=>(a.x+a.y)-(b.x+b.y))){
-    const H=project.insertHeight,ts=project.tools.filter(t=>t.moduleId===m.id),sel=ts.some(t=>t.id===selected)||selectedModule===m.id;
-    const xy=[{x:m.x+.5,y:m.y+.5},{x:m.x+m.width-.5,y:m.y+.5},{x:m.x+m.width-.5,y:m.y+m.height-.5},{x:m.x+.5,y:m.y+m.height-.5}];
-    html+=`<g data-module="${esc(m.id)}" class="module" tabindex="0" role="button" aria-label="${esc(m.name)}">`;
-    for(const [a,b] of [[1,2],[2,3]])html+=`<polygon points="${poly([pr(xy[a].x,xy[a].y),pr(xy[b].x,xy[b].y),pr(xy[b].x,xy[b].y,H),pr(xy[a].x,xy[a].y,H)])}" fill="${sel?'#c8a265':'#a8b796'}" stroke="${sel?'#af8d58':'#96a883'}" stroke-width=".6"/>`;
-    const top=xy.map(p=>pr(p.x,p.y,H));
-    const holes=ts.map(t=>safePocket(t));
-    html+=`<path d="${paths(top)} ${holes.map(p=>paths(p.map(p=>pr(p.x,p.y,H)))).join(' ')}" fill="${sel?'#f4dfb7':'#dce6ce'}" fill-rule="evenodd" stroke="${sel?'#d3ae72':'#b4c59f'}" stroke-width=".7"/>`;
-    for(const [i,p] of holes.entries()){
-      const t=ts[i],floor=H-t.depth,lip=p.map(p=>pr(p.x,p.y,H)),bottom=p.map(p=>pr(p.x,p.y,floor));
-      html+=`<path d="${paths(lip)}" fill="${sel?'#9a7e50':'#81936d'}"/>`;
-      // Clip the recessed floor to the opening to represent its depth correctly.
-      html+=`<defs><clipPath id="clip-${esc(t.id)}"><path d="${paths(lip)}"/></clipPath></defs><path d="${paths(bottom)}" fill="${sel?'#c7a36c':'#aebe98'}" clip-path="url(#clip-${esc(t.id)})"/><path d="${paths(lip)}" fill="none" stroke="${sel?'#b7975d':'#9aad85'}" stroke-width=".75"/>`;
-    }
-    html+='</g>';
-  }
-  const pos=pr(project.width/2,project.height+26);html+=`<text x="${pos.x}" y="${pos.y}" fill="#92a07f" text-anchor="middle" font-size="8">${fmtSize(project.width,project.height,project.insertHeight)} · ${tr('prostorový náhled')}</text>`;
-  svg.innerHTML=html;
+  const rect=svg.getBoundingClientRect(),viewport={width:rect.width||svg.clientWidth||1000,height:rect.height||svg.clientHeight||600};
+  const preview=printPreview(project,selected,selectedModule,camera3D,viewport);
+  camera3D=preview.camera;cameraFrame={...preview.frame,zoom:camera3D.zoom};
+  svg.setAttribute('viewBox',preview.viewBox);svg.innerHTML=preview.html;
+}
+function renderCameraFrame(){
+  const svg=$('#board-svg');if(view!=='3d'||!svg)return;render3D(svg);
+  const label=$('[data-zoom-value]');if(label)label.textContent=Math.round(camera3D.zoom*100)+' %';
 }
 
-function switchProject(p){persist();project=clone(p);selected=project.tools[0]?.id||null;selectedModule=null;inspectorTab='drawer';undoStack=[];redoStack=[];zoom=1;persist();closeModal();render();}
+function switchProject(p){persist();project=clone(p);selected=project.tools[0]?.id||null;selectedModule=null;inspectorTab='drawer';undoStack=[];redoStack=[];zoom=1;camera3D=createCamera3D();persist();closeModal();render();}
 function addTools(tools){
   if(project.tools.length+tools.length>300)throw i18nError('V jednom projektu může být nejvýše 300 nástrojů. Založte další projekt.');
   if(project.insertHeight-project.base<.5)throw i18nError('Výška inzertu musí být alespoň o {gap} větší než tloušťka dna.',{gap:fmtLen(.5)});
@@ -331,18 +399,18 @@ const actions={
  'set-unit':u=>{setAppUnit(u);render();if(project.unit&&project.unit!==u)toast(tr('Tento šuplík má vlastní jednotky ({unit}). Změníte je v Rozměrech šuplíku.',{unit:project.unit}));},
  'drawer-tab':showDrawerDimensions,
  'edit-contour':capture,'finger-grips':editFingerGrips,'finger-grips-auto':()=>{const t=tool();if(t)setFingerGrips(automaticFingerGrips(t,{radius:9}));},'finger-grips-clear':()=>setFingerGrips([]),
- auto:()=>commit(()=>arrange()),
+ auto:()=>commit(()=>arrange()),'smart-layout':smartArrangeProject,'split-module':splitModule,
  undo,redo,
  snap:()=>{snap=!snap;render();},grid:()=>{showGrid=!showGrid;render();},labels:()=>{showLabels=!showLabels;render();},
- '2d':()=>{view='2d';zoom=1;render();},'3d':()=>{view='3d';zoom=1;render();},
- 'zoom-in':()=>{zoom=Math.min(3,zoom+.25);render();},'zoom-out':()=>{zoom=Math.max(.5,zoom-.25);render();},fit:()=>{zoom=1;render();},
+ '2d':()=>{view='2d';render();},'3d':()=>{view='3d';render();},
+ 'zoom-in':()=>{if(view==='3d')camera3D=normalizeCamera3D({...camera3D,zoom:camera3D.zoom*1.25});else zoom=Math.min(3,zoom+.25);render();},'zoom-out':()=>{if(view==='3d')camera3D=normalizeCamera3D({...camera3D,zoom:camera3D.zoom/1.25});else zoom=Math.max(.5,zoom-.25);render();},fit:()=>{if(view==='3d')camera3D=createCamera3D();else zoom=1;render();},
  'hide-tip':()=>{tipVisible=false;writeLocal('suplik-hide-tip',true);render();},
  rotate:()=>{const t=tool(),m=moduleFor();if(!t)return;if(m?.locked)return toast(tr('Nejprve odemkněte polohu modulu.'));commit(()=>{const b=bounds(t);t.rotation=(t.rotation+90)%360;const next=bounds(t);t.x=b.x+(b.width-next.width)/2;t.y=b.y+(b.height-next.height)/2;},tr('Nástroj otočen. Pokud přesahuje modul, spusťte Auto rozložení.'));},
  lock:()=>{const m=moduleFor();if(!m)return;commit(()=>{m.locked=!m.locked;project.tools.filter(t=>t.moduleId===m.id).forEach(t=>t.locked=m.locked);},m.locked?tr('Poloha modulu je odemčená.'):tr('Poloha modulu je zamčená.'));},
  duplicate:()=>{const t=tool();if(t)addTools([{...clone(t),name:t.name+' · '+tr('kopie')}]);},
  delete:()=>{const t=tool(),m=moduleFor();if(!t&&!m)return;commit(()=>{if(t){project.tools=project.tools.filter(x=>x.id!==t.id);project.modules=project.modules.filter(x=>x.id!==t.moduleId||project.tools.some(o=>o.moduleId===x.id));selected=project.tools[0]?.id||null;}else project.modules=project.modules.filter(x=>x.id!==m.id);selectedModule=null;},tr('Odstraněno ze sestavy. Akci můžete vrátit tlačítkem Zpět.'));}
 };
-$('#app').addEventListener('click',e=>{const open=e.target.closest('[data-drawer-open]'),remove=e.target.closest('[data-drawer-remove]');if(remove){removeDrawer(remove.dataset.drawerRemove);return;}if(open){const p=projects.find(p=>p.id===open.dataset.drawerOpen);if(p&&p.id!==project.id)switchProject(p);return;}const sel=e.target.closest('[data-select]');if(sel){selected=sel.dataset.select;selectedModule=null;inspectorTab='tool';render();return;}const group=e.target.closest('[data-module]');if(group&&!moveMode){const m=project.modules.find(m=>m.id===group.dataset.module),t=project.tools.find(t=>t.moduleId===m?.id);selected=t?.id||null;selectedModule=t?null:m?.id;inspectorTab='tool';render();return;}const a=e.target.closest('[data-action]');if(a){e.preventDefault();try{actions[a.dataset.action]?.(a.dataset.value);}catch(error){toast(errorText(error));}}});
+$('#app').addEventListener('click',e=>{const open=e.target.closest('[data-drawer-open]'),remove=e.target.closest('[data-drawer-remove]');if(remove){removeDrawer(remove.dataset.drawerRemove);return;}if(open){const p=projects.find(p=>p.id===open.dataset.drawerOpen);if(p&&p.id!==project.id)switchProject(p);return;}const sel=e.target.closest('[data-select]');if(sel){selected=sel.dataset.select;selectedModule=null;inspectorTab='tool';render();return;}const group=e.target.closest('[data-module]');if(group&&(view==='3d'||!moveMode)){const m=project.modules.find(m=>m.id===group.dataset.module),t=project.tools.find(t=>t.moduleId===m?.id);selected=t?.id||null;selectedModule=t?null:m?.id;inspectorTab='tool';render();return;}const a=e.target.closest('[data-action]');if(a){e.preventDefault();try{actions[a.dataset.action]?.(a.dataset.value);}catch(error){toast(errorText(error));}}});
 $('#app').addEventListener('change',e=>{
   const el=e.target.closest('[data-field]');if(!el)return;const field=el.dataset.field,scope=el.dataset.scope;let value=el.value.trim();
   if(el.hasAttribute('data-length')){value=lengthFrom(el);if(value===null){render();return;}}
@@ -362,6 +430,7 @@ $('#app').addEventListener('change',e=>{
   else commit(()=>project[field]=value);
 });
 $('#app').addEventListener('pointerdown',e=>{
+  if(view==='3d'||e.button!==0)return;
   if(e.pointerType==='touch'&&!moveMode)return;
   const group=e.target.closest('[data-module]'),svg=$('#board-svg');if(!group||!svg)return;
   const m=project.modules.find(m=>m.id===group.dataset.module);if(!m)return;
@@ -371,7 +440,7 @@ $('#app').addEventListener('pointerdown',e=>{
   drag={pointer:e.pointerId,id:m.id,start:p,x:m.x,y:m.y,snapshot:clone(project),moved:false};svg.setPointerCapture(e.pointerId);renderBoard();
 });
 $('#app').addEventListener('pointermove',e=>{
-  if(!drag)return;const svg=$('#board-svg'),p=svg.createSVGPoint();p.x=e.clientX;p.y=e.clientY;const q=p.matrixTransform(svg.getScreenCTM().inverse());const m=project.modules.find(m=>m.id===drag.id);if(!m)return;
+  if(view==='3d'||!drag)return;const svg=$('#board-svg'),p=svg.createSVGPoint();p.x=e.clientX;p.y=e.clientY;const q=p.matrixTransform(svg.getScreenCTM().inverse());const m=project.modules.find(m=>m.id===drag.id);if(!m)return;
   const dx=q.x-drag.start.x,dy=q.y-drag.start.y;if(Math.hypot(dx,dy)<2&&!drag.moved)return;drag.moved=true;
   let x=drag.x+dx,y=drag.y+dy;if(snap){x=Math.round(x/project.grid)*project.grid;y=Math.round(y/project.grid)*project.grid;}x=Math.max(0,Math.min(project.width-m.width,x));y=Math.max(0,Math.min(project.height-m.height,y));
   const sx=x-m.x,sy=y-m.y;m.x=x;m.y=y;project.tools.filter(t=>t.moduleId===m.id).forEach(t=>{t.x+=sx;t.y+=sy;});renderBoard();
