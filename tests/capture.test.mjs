@@ -9,6 +9,7 @@ const win=new Window({url:'http://localhost:5173'});
 const html=await fs.readFile(new URL('../dist/index.html',import.meta.url),'utf8');
 win.document.write(html.replace(/<script[^>]*>[\s\S]*?<\/script>/g,''));
 for(const key of ['window','document','localStorage','Image','ResizeObserver','HTMLElement'])globalThis[key]=key==='window'?win:win[key];
+localStorage.setItem('suplik-studio-lang','"cs"');localStorage.setItem('suplik-studio-unit','"mm"');
 Object.defineProperty(globalThis,'navigator',{value:win.navigator,configurable:true});
 globalThis.ImageData=ImageData;
 // A real rendering pause exposes cancellation while processing awaits the next frame.

@@ -1,3 +1,5 @@
+import {t} from './i18n.js';
+
 const paths={
  camera:'M14 4h-4L8 7H4a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-4z M16 14a4 4 0 1 1-8 0 4 4 0 0 1 8 0',
  grid:'M3 3h7v7H3z M14 3h7v7h-7z M3 14h7v7H3z M14 14h7v7h-7z',
@@ -49,7 +51,7 @@ export function openModal({title,subtitle='',body='',footer='',wide=false,onClos
   closeModal();
   const previousFocus=document.activeElement;
   const root=document.querySelector('#modal-root');
-  root.innerHTML=`<div class="modal-backdrop"><section class="modal ${wide?'wide':''}" role="dialog" aria-modal="true" aria-labelledby="modal-title" tabindex="-1"><div class="modal-head"><div><h2 id="modal-title">${esc(title)}</h2><p>${esc(subtitle)}</p></div><button class="icon-btn" data-modal-close aria-label="Zavřít">${icon('close')}</button></div><div class="modal-body">${body}</div><div class="modal-foot">${footer}</div></section></div>`;
+  root.innerHTML=`<div class="modal-backdrop"><section class="modal ${wide?'wide':''}" role="dialog" aria-modal="true" aria-labelledby="modal-title" tabindex="-1"><div class="modal-head"><div><h2 id="modal-title">${esc(title)}</h2><p>${esc(subtitle)}</p></div><button class="icon-btn" data-modal-close aria-label="${esc(t('Zavřít'))}">${icon('close')}</button></div><div class="modal-body">${body}</div><div class="modal-foot">${footer}</div></section></div>`;
   document.body.style.overflow='hidden';
   const el=root.querySelector('.modal');
   const close=()=>{if(activeModal?.el!==el)return;root.innerHTML='';document.body.style.overflow='';document.removeEventListener('keydown',handleKey);activeModal=null;onClose?.();if(previousFocus?.isConnected)previousFocus.focus();};

@@ -1,4 +1,5 @@
 import {validateNeuralImage} from './neural-core.js';
+import {i18nError} from './i18n.js';
 export {preprocess,normalizePrediction} from './neural-core.js';
 
 let worker=null,nextId=0;
@@ -15,7 +16,7 @@ function stop(error){
 }
 function getWorker(){
   if(worker)return worker;
-  if(typeof Worker!=='function')throw new Error('Tento prohlížeč nepodporuje lokální rozpoznávání. Použijte aktuální Chrome, Edge, Firefox nebo Safari.');
+  if(typeof Worker!=='function')throw i18nError('Tento prohlížeč nepodporuje lokální rozpoznávání. Použijte aktuální Chrome, Edge, Firefox nebo Safari.');
   worker=new Worker(new URL('./neural-worker.js',import.meta.url),{type:'module',name:'suplik-neural'});
   worker.onmessage=({data})=>{
     const job=pending.get(data.id);if(!job)return;
@@ -23,12 +24,12 @@ function getWorker(){
     if(data.type==='error'){stop(new Error(data.message));return;}
     if(data.type==='result'){
       const probability=new Float32Array(data.buffer);
-      if(probability.length!==data.width*data.height){stop(new Error('Rozpoznávání nevrátilo úplnou masku.'));return;}
+      if(probability.length!==data.width*data.height){stop(i18nError('Rozpoznávání nevrátilo úplnou masku.'));return;}
       finish(data.id,null,{probability,width:data.width,height:data.height,model:'u2netp'});
     }
   };
-  worker.onerror=event=>{event.preventDefault();stop(new Error('Lokální rozpoznávání se nepodařilo spustit. Obnovte stránku a zkuste snímek znovu.'));};
-  worker.onmessageerror=()=>stop(new Error('Masku rozpoznaných nástrojů se nepodařilo předat. Zkuste snímek znovu.'));
+  worker.onerror=event=>{event.preventDefault();stop(i18nError('Lokální rozpoznávání se nepodařilo spustit. Obnovte stránku a zkuste snímek znovu.'));};
+  worker.onmessageerror=()=>stop(i18nError('Masku rozpoznaných nástrojů se nepodařilo předat. Zkuste snímek znovu.'));
   return worker;
 }
 
@@ -40,10 +41,10 @@ export function segmentNeural(imageData,{onProgress,signal}={}){
   const id=++nextId;
   return new Promise((resolve,reject)=>{
     const abort=()=>stop(abortError());
-    const timeout=setTimeout(()=>stop(new Error('Rozpoznávání trvalo příliš dlouho. Zkuste menší snímek nebo novější zařízení.')),60000);
+    const timeout=setTimeout(()=>stop(i18nError('Rozpoznávání trvalo příliš dlouho. Zkuste menší snímek nebo novější zařízení.')),60000);
     pending.set(id,{resolve,reject,onProgress,signal,abort,timeout});signal?.addEventListener('abort',abort,{once:true});
     // Copy before transfer so cancellation never detaches the caller's photo data.
     const data=new Uint8ClampedArray(imageData.data);
-    try{current.postMessage({id,width:imageData.width,height:imageData.height,buffer:data.buffer},[data.buffer]);}catch(error){stop(new Error('Fotografii nelze předat rozpoznávání. '+error.message));}
+    try{current.postMessage({id,width:imageData.width,height:imageData.height,buffer:data.buffer},[data.buffer]);}catch(error){stop(i18nError('Fotografii nelze předat rozpoznávání. {detail}',{detail:error.message}));}
   });
 }

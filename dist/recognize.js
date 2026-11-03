@@ -1,5 +1,7 @@
 import { autoTraceImage } from './auto-trace.js';
 import { segmentNeural } from './neural.js';
+import { i18nError } from './i18n.js';
+// Progress messages and worker errors are Czech source text; capture.js translates them with t()/errorText().
 
 const aborted = () => new DOMException('Rozpoznávání bylo zrušeno.', 'AbortError');
 function classical(image, options, signal) {
@@ -22,7 +24,7 @@ function classical(image, options, signal) {
       else if (data.error) finish(new Error(data.error));
       else finish(null, data.result);
     };
-    worker.onerror = () => finish(new Error('Automatické rozpoznávání se nepodařilo spustit. Obnovte aplikaci a zkuste to znovu.'));
+    worker.onerror = () => finish(i18nError('Automatické rozpoznávání se nepodařilo spustit. Obnovte aplikaci a zkuste to znovu.'));
     const pixels = new Uint8ClampedArray(image.data);
     const probability = options.probability ? new Float32Array(options.probability) : null;
     worker.postMessage({ image: { width: image.width, height: image.height, data: pixels }, options: { pxPerMm: options.pxPerMm, kind: options.kind, probability } }, probability ? [pixels.buffer, probability.buffer] : [pixels.buffer]);
@@ -48,7 +50,7 @@ export async function recognizeTools(image, { pxPerMm = 1, kind = 'paper', signa
     result = base.value;
     result.neuralModel = null;
     result.neuralUnavailable = neural.status === 'rejected';
-  } else throw base.reason || new Error('Fotografii se nepodařilo zpracovat.');
+  } else throw base.reason || i18nError('Fotografii se nepodařilo zpracovat.');
   progress({ stage: 'done', progress: 1, message: result.quality.status === 'ready' ? 'Obrysy jsou připravené.' : 'Fotka potřebuje lepší podmínky.' });
   return result;
 }

@@ -67,7 +67,7 @@ function morphology(mask, width, height, dilate) {
   return result;
 }
 
-function labelComponents(mask, width, height) {
+function labelComponents(mask, width, height, barriers = null) {
   const labels = new Int32Array(mask.length), queue = new Int32Array(mask.length), components = [];
   let id = 0;
   for (let start = 0; start < mask.length; start++) {
@@ -78,12 +78,12 @@ function labelComponents(mask, width, height) {
     while (head < tail) {
       const p = queue[head++], x = p % width, y = Math.floor(p / width);
       minX = Math.min(minX, x); maxX = Math.max(maxX, x); minY = Math.min(minY, y); maxY = Math.max(maxY, y);
-      if (x > 0 && mask[p - 1] && !labels[p - 1]) { labels[p - 1] = id; queue[tail++] = p - 1; }
-      if (x + 1 < width && mask[p + 1] && !labels[p + 1]) { labels[p + 1] = id; queue[tail++] = p + 1; }
-      if (y > 0 && mask[p - width] && !labels[p - width]) { labels[p - width] = id; queue[tail++] = p - width; }
-      if (y + 1 < height && mask[p + width] && !labels[p + width]) { labels[p + width] = id; queue[tail++] = p + width; }
+      if (x > 0 && mask[p - 1] && !labels[p - 1] && !(barriers?.[p - 1] & 1)) { labels[p - 1] = id; queue[tail++] = p - 1; }
+      if (x + 1 < width && mask[p + 1] && !labels[p + 1] && !(barriers?.[p] & 1)) { labels[p + 1] = id; queue[tail++] = p + 1; }
+      if (y > 0 && mask[p - width] && !labels[p - width] && !(barriers?.[p - width] & 2)) { labels[p - width] = id; queue[tail++] = p - width; }
+      if (y + 1 < height && mask[p + width] && !labels[p + width] && !(barriers?.[p] & 2)) { labels[p + width] = id; queue[tail++] = p + width; }
     }
-    components.push({ id, area: tail, minX, minY, maxX, maxY });
+    components.push({ id, start, area: tail, minX, minY, maxX, maxY });
   }
   return { labels, components };
 }
@@ -188,18 +188,26 @@ export function traceImage(imageData, { threshold = null, invert = false, minAre
   if (high - low < 4 && threshold === null) return { contours: [], threshold: selected, mask, width, height };
   for (let i = 0; i < count; i++) mask[i] = invert ? +(filtered[i] >= selected) : +(filtered[i] <= selected);
   mask = morphology(morphology(mask, width, height, true), width, height, false);
-  const { labels, components } = labelComponents(mask, width, height);
+  return { ...traceMask(mask, width, height, { minArea, smoothing }), threshold: selected };
+}
+
+/** Trace measured binary pixel edges without blurring away gaps or closing thin shafts. */
+export function traceMask(mask, width, height, { minArea = .001, smoothing = 1.3, barriers = null, includeLabels = false } = {}) {
+  if (!Number.isInteger(width) || !Number.isInteger(height) || width < 2 || height < 2 || width * height > 16000000 || mask?.length !== width * height) throw new Error('Maska nemá platná pixelová data.');
+  if (barriers && barriers.length !== mask.length) throw new Error('Mapa hran má jiný rozměr než maska.');
+  const count = width * height;
+  const { labels, components } = labelComponents(mask, width, height, barriers);
   const minimum = Math.max(12, minArea < 1 ? count * Math.max(0, minArea) : minArea), contours = [], clean = new Uint8Array(count), accepted = new Set();
   for (const c of components) {
     if (c.area < minimum || c.minX <= 1 || c.minY <= 1 || c.maxX >= width - 2 || c.maxY >= height - 2) continue;
     const points = simplifyContour(exteriorContour(labels, c, width, height), Math.max(0, Number(smoothing) || 0));
     if (points.length < 3) continue;
     accepted.add(c.id);
-    contours.push({ points, area: Math.abs(polygonArea(points)), width: c.maxX - c.minX + 1, height: c.maxY - c.minY + 1 });
+    contours.push({ points, area: Math.abs(polygonArea(points)), width: c.maxX - c.minX + 1, height: c.maxY - c.minY + 1, ...(includeLabels ? { componentId: c.id, seed: c.start } : {}) });
   }
   for (let i = 0; i < count; i++) if (accepted.has(labels[i])) clean[i] = 1;
   contours.sort((a, b) => b.area - a.area);
-  return { contours, threshold: selected, mask: clean, width, height };
+  return { contours, mask: clean, width, height, ...(includeLabels ? { labels } : {}) };
 }
 
 /** Best-effort white-sheet detection. Null means the user must set four corners. */
@@ -228,7 +236,9 @@ export function detectPaper(imageData) {
       if (x - y < values[3]) { values[3] = x - y; corners[3] = { x, y }; }
     }
     const unique = new Set(corners.map(p => `${p.x},${p.y}`));
-    if (unique.size === 4 && Math.abs(polygonArea(corners)) > gray.length * .07) return corners.map(p => ({ x: p.x / scale, y: p.y / scale }));
+    // Return the exact source pixels sampled above. Fractional inverse coordinates
+    // can interpolate a neighbouring tabletop pixel into a whole rectified edge.
+    if (unique.size === 4 && Math.abs(polygonArea(corners)) > gray.length * .07) return corners.map(p => ({ x: Math.min(imageData.width - 1, Math.round(p.x / scale)), y: Math.min(imageData.height - 1, Math.round(p.y / scale)) }));
   }
   return null;
 }
@@ -278,6 +288,6 @@ export function rectifyImage(imageData, corners, widthMm = 210, heightMm = 297, 
 /** Pixels per millimetre for two ruler marks; perspective must already be near-normal. */
 export function calibrateSegment(a, b, distanceMm) {
   const distance = Math.hypot(b.x - a.x, b.y - a.y);
-  if (!Number.isFinite(distance) || distance < 2 || !(distanceMm > 0) || !Number.isFinite(distanceMm)) throw new Error('Označte dvě různé značky pravítka a jejich vzdálenost v mm.');
+  if (!Number.isFinite(distance) || distance < 2 || !(distanceMm > 0) || !Number.isFinite(distanceMm)) throw new Error('Označte dvě různé značky pravítka a zadejte jejich skutečnou vzdálenost.');
   return distance / distanceMm;
 }

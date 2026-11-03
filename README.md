@@ -12,26 +12,42 @@ npm run dev
 
 Otevřete `http://localhost:5173`. V PowerShellu s blokovanými skripty použijte `npm.cmd run dev`. Není potřeba instalovat závislosti ani provádět build. Pro vlastní hosting stačí zveřejnit obsah `dist/` přes HTTP(S); otevření `index.html` přímo jako soubor není podporováno kvůli ES modulům. Kamera telefonu a instalace aplikace vyžadují HTTPS nebo localhost.
 
+Podrobné kroky před nasazením a kontrolu po něm najdete v [DEPLOY.md](./DEPLOY.md).
+
 ## Od fotografie k inzertu
 
-1. Zadejte vnitřní šířku a hloubku šuplíku v milimetrech.
+1. V nabídce **Moje šuplíky** založte nový šuplík, pojmenujte jej a zadejte vnitřní šířku a hloubku v milimetrech. Šuplíků můžete mít několik a přepínat mezi nimi. Tlačítko **Rozměry šuplíku** umožňuje rozměry později změnit.
 2. Vyfoťte oddělené nástroje shora na matném světlém podkladu. Nechte kolem nich volné místo a omezte stíny. Pro kalibraci použijte celý viditelný papír A4 nebo pravítko s dobře viditelným známým úsekem.
 3. Při použití A4 aplikace sama najde papír, určí orientaci a narovná perspektivu. Celý bílý list musí být viditelný na odlišném podkladu. U pravítka označte jen dva body a zadejte skutečnou vzdálenost; tento režim předpokládá fotografii kolmo k podkladu.
-4. Obrysy se načtou automaticky. Aplikace kombinuje lokální model U²-Net s barvou podkladu a hranami v původním rozlišení. Kontrast, odstranění šumu, potlačení stínů i vyhlazení vybírá sama. Nepoužívají se posuvníky ani ruční úprava bodů. Připravené nástroje jen pojmenujte a přidejte. Pokud je výsledek příliš nejistý, aplikace požádá o novou fotografii a nedovolí nejistou konturu přidat.
-5. Spusťte automatické rozvržení. Moduly lze přesouvat a nástroje otáčet. Zamknuté moduly a nástroje zůstanou při dalším rozvržení na místě. Přidejte další nástroje nebo rozšiřte rozměry šuplíku a pokračujte ve stejné sestavě.
+4. Obrysy se načtou automaticky. Aplikace kombinuje lokální model U²-Net s barvou podkladu a hranami v původním rozlišení. Zachovává úzké mezery mezi nástroji a dotýkající se protáhlé nástroje umí rozdělit podle viditelné hranice a oddělených částí. Kontrast, odstranění šumu, potlačení stínů i vyhlazení vybírá sama. Nepoužívají se posuvníky ani ruční úprava bodů. Připravené nástroje jen pojmenujte a přidejte. Pokud je výsledek příliš nejistý, aplikace požádá o novou fotografii a nedovolí nejistou konturu přidat.
+5. Spusťte automatické rozvržení. Velikost nového modulu se přizpůsobí nástroji včetně vůle a stěn. U vybraného modulu můžete zadat vlastní šířku a hloubku nebo znovu použít automatickou velikost podle nástroje. Změna modulu neškáluje obrys nástroje. Ručně zadané rozměry zůstávají zachované při uložení i dalším rozvržení. Moduly lze přesouvat a nástroje otáčet; zamknuté polohy zůstanou při dalším rozvržení na místě.
 6. Vyřešte hlášené kolize, přesahy a neplatné hloubky. Potom exportujte podklady.
+
+## Jazyk a jednotky / Language and units
+
+Přepínač **CS / EN** a přepínač jednotek **mm / in** jsou v horní liště aplikace. Volba se ukládá v prohlížeči. Bez uložené volby se jazyk řídí nastavením prohlížeče: čeština nebo slovenština zobrazí češtinu, jiné jazyky angličtinu. Palce se jako výchozí jednotka použijí pro `en-US`.
+
+Jednotky lze kombinovat. Výchozí jednotka platí pro celou aplikaci a každý šuplík ji může přepsat vlastní volbou (**Podle aplikace / mm / in**). Volba šuplíku se ukládá s projektem i do JSON. Do každého pole s délkou lze napsat hodnotu i v jiné jednotce, než se právě zobrazuje: `12 in`, `3 1/2"`, `3/4 in`, `1' 2"`, `30 cm` nebo `15 mm`. Hodnota se převede a uloží v milimetrech. Výrobní soubory STL, SVG, DXF a PDF 1:1 zůstávají v milimetrech. Standard Gridfinity (42 mm) je metrický.
+
+The **CS / EN** language switch and the **mm / in** unit switch are in the app's top bar. The app-wide unit can be overridden per drawer, and any length field accepts values with an explicit unit (`12 in`, `3 1/2"`, `30 cm`, `15 mm`). Data and manufacturing exports are always stored in millimetres.
+
+## Výřezy pro prsty
+
+Novým nástrojům se automaticky připraví dva boční výřezy pro snazší vyjmutí z kapsy. U vybraného nástroje je můžete znovu automaticky umístit, přidat další, upravit jejich polohu a průměr nebo je jednotlivě či všechny odstranit. Změny lze vrátit přes Zpět a ukládají se s projektem i do JSON. Smazané výřezy se při automatickém rozvržení samy neobnovují; u starších nástrojů se přidají až na vaše přání.
+
+Výřezy mají stejnou hloubku jako kapsa nástroje. Jejich prostor se započítává do automatické velikosti modulu a výrobních exportů STL, SVG, DXF i zkušebního PDF. Skutečný naměřený obrys a rozměry nástroje se nemění. U ručně zmenšeného nebo zamčeného modulu musí zbýt dost místa na stěnu; neplatné výřezy je potřeba upravit nebo modul zvětšit.
 
 ## Výroba a modularita
 
-Výchozí rastr je **42 mm**. Každý modul je samostatný blok s plochým dnem; rozměry modulu jsou násobky rastru. Skutečné vnější rozměry jsou o 0,5 mm menší, aby sousední díly měly montážní mezeru. Systém nemá standardní patky, magnety ani stohovací lem Gridfinity a nepředstavuje plně kompatibilní Gridfinity model.
+Výchozí rastr je **42 mm**. Automatická velikost modulu se zaokrouhluje nahoru do rastru; ručně lze zadat vlastní rozměry v milimetrech. Skutečné vnější rozměry jsou o 0,5 mm menší než jmenovité rozměry modulu, aby sousední díly měly montážní mezeru. Nabídka exportu obsahuje plné a úsporné provedení, hladké dno, patky Gridfinity, kapsy pro magnety a variantu k lepení. Patky Gridfinity vyžadují rastr a rozměry v násobcích 42 mm; systém neobsahuje stohovací lem.
 
 **STL** obsahuje uzavřenou trojúhelníkovou geometrii s opravdovými zapuštěnými kapsami a dnem; jednotky jsou milimetry. ZIP umožňuje získat samostatné díly pro tisk. **SVG a DXF** obsahují obrysy modulů a kapes v milimetrech pro další zpracování, například řezání pěny. Nevytvářejí dráhy CNC ani G-code. Nastavená vůle zvětšuje obrys kapsy; rohy se zaoblují s tolerancí přibližně 0,015 mm.
 
 Fotografie nedává zaručenou výrobní přesnost. Stíny, lesklé plochy, výška nástroje nad papírem a perspektiva ovlivňují obrys. Překrývající se nástroje se mohou spojit. Automatické hodnocení kvality je heuristické a nepředstavuje záruku rozměrové přesnosti. Nečitelnou hranu nelze z chybějící obrazové informace spolehlivě odhadnout. Kontrolujte měřítko podle skutečného rozměru a před tiskem celé sestavy vytiskněte jeden zkušební díl. Hloubku kapsy určujete sami; z jedné fotografie ji nelze spolehlivě změřit.
 
-## Projekty a soukromí
+## Šuplíky a soukromí
 
-Rozpracované projekty se ukládají v úložišti daného prohlížeče. Export JSON slouží jako záloha a pro přenos na jiný počítač či telefon; import vrátí upravitelný projekt. Smazání dat prohlížeče může lokální projekty odstranit. Automatická synchronizace mezi zařízeními není součástí aplikace. Fotografie se neodesílají k rozpoznávání na vzdálený server.
+Každý šuplík se ukládá jako samostatný projekt s vlastním názvem, rozměry, nástroji a moduly v úložišti daného prohlížeče. Export JSON slouží jako záloha a pro přenos na jiný počítač či telefon; import vrátí upravitelný projekt. Smazání dat prohlížeče může lokální šuplíky odstranit. Automatická synchronizace mezi zařízeními není součástí aplikace. Fotografie se neodesílají k rozpoznávání na vzdálený server.
 
 ## Ověření a knihovny
 

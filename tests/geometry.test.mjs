@@ -71,6 +71,39 @@ test('raw crossing and self-touching contours are rejected before clearance can 
     assert.ok(validateLayout(p).some(i=>i.type==='overlap'&&i.ids.includes('bad')));assert.throws(()=>exportSTL(p));
   }
 });
+function twoPocketProject(x,y,{clearance=0}={}){
+  const points=[{x:0,y:0},{x:20,y:0},{x:20,y:20},{x:0,y:20}];
+  return {width:84,height:84,grid:42,clearance,wall:2.4,base:2.4,insertHeight:20,modules:[{id:'m',x:0,y:0,width:84,height:84}],tools:[
+    {id:'a',name:'A',points,x:10,y:10,rotation:0,depth:8,moduleId:'m'},
+    {id:'b',name:'B',points,x,y,rotation:0,depth:12,moduleId:'m'}
+  ]};
+}
+test('pockets touching along an edge or at a vertex block every manufacturing export',()=>{
+  for(const [x,y] of [[30,10],[30,30]]){
+    const p=twoPocketProject(x,y);
+    assert.ok(validateLayout(p).some(i=>i.type==='overlap'&&i.ids.includes('a')&&i.ids.includes('b')&&/dotýkají/.test(i.message)));
+    for(const exporter of [exportSTL,exportSVG,exportDXF]){
+      assert.throws(()=>exporter(p),/dotýkají/);
+      assert.throws(()=>exporter(p,{moduleId:'m'}),/dotýkají/);
+    }
+  }
+});
+test('minimum internal wall is measured between the pockets after clearance',()=>{
+  const p=twoPocketProject(32,10,{clearance:.5});
+  assert.ok(validateLayout(p).some(i=>i.ids.includes('a')&&i.ids.includes('b')&&/stěnu 2.4 mm/.test(i.message)));
+  for(const exporter of [exportSTL,exportSVG,exportDXF])assert.throws(()=>exporter(p),/stěnu/);
+  p.tools[1].x=33.4;
+  assert.deepEqual(validateLayout(p),[]);
+  assert.ok(inspectSTL(exportSTL(p)).volume>0);
+  assert.ok(exportSVG(p));assert.ok(exportDXF(p));
+});
+test('diagonal pocket spacing uses contour distance rather than bounding box padding',()=>{
+  const p=twoPocketProject(31.6,31.6);
+  assert.ok(validateLayout(p).some(i=>/stěnu/.test(i.message)));
+  p.tools[1].x=31.8;p.tools[1].y=31.8;
+  assert.deepEqual(validateLayout(p),[]);
+  assert.ok(inspectSTL(exportSTL(p)).volume>0);
+});
 test('increasing clearance beyond module wall blocks manufacturing export',()=>{
   const p=createDemoProject();p.clearance=30;assert.ok(validateLayout(p).some(i=>i.type==='outside'));assert.throws(()=>exportSTL(p));
 });
@@ -84,4 +117,23 @@ test('ZIP archive carries real local and central records with UTF8 filenames',()
   const bytes=zipFiles([{name:'kleště.svg',data:'abc'},{name:'mesh.stl',data:new Uint8Array([1,2,3,4])}]),v=new DataView(bytes.buffer);
   assert.equal(v.getUint32(0,true),0x04034b50);assert.equal(v.getUint32(bytes.length-22,true),0x06054b50);assert.equal(v.getUint16(bytes.length-14,true),2);assert.equal(v.getUint16(6,true),0x800);
   const size=v.getUint16(26,true);assert.equal(new TextDecoder().decode(bytes.slice(30,30+size)),'kleště.svg');assert.equal(v.getUint32(22,true),3);assert.equal(v.getUint32(14,true),0x352441c2);
+});
+
+test('layout issues follow the active language and display unit, exports stay metric',async()=>{
+  const {setLang}=await import('../dist/i18n.js'),{setAppUnit}=await import('../dist/units.js'),{errorText}=await import('../dist/i18n.js');
+  const p=twoPocketProject(32,10,{clearance:.5});
+  setLang('en',{save:false});setAppUnit('in',{save:false});
+  try{
+    const issue=validateLayout(p).find(i=>i.ids.includes('a')&&i.ids.includes('b'));
+    assert.match(issue.message,/not enough room for a 0\.094 in wall between pockets/);
+    assert.throws(()=>exportSTL(p),/0\.094 in wall/);
+    const outside=createDemoProject();outside.modules[0].x=400;
+    assert.ok(validateLayout(outside).some(i=>/extends beyond the drawer/.test(i.message)));
+    assert.match(createDemoProject().tools[0].name,/Combination pliers/);
+    const ok=createDemoProject();assert.match(exportSVG(ok),/width="420mm"/);assert.match(exportSVG(ok),/Dimensions in mm/);
+    let error;try{exportSTL(p);}catch(e){error=e;}
+    setLang('cs',{save:false});setAppUnit('mm',{save:false});
+    assert.match(errorText(error),/Mezi kapsami .* stěnu 0\.094 in/,'re-translation keeps the parameters captured at creation');
+    assert.match(validateLayout(p).find(i=>i.ids.includes('a')).message,/stěnu 2,4 mm/);
+  }finally{setLang('cs',{save:false});setAppUnit('mm',{save:false});}
 });
