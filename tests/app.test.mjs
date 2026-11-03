@@ -44,9 +44,11 @@ test('editor workflows and actual photo pipeline integrate with persistent proje
   const lockedPositions=saved().modules.filter(m=>m.locked).map(m=>[m.id,m.x,m.y]);
   action('auto');assert.deepEqual(saved().modules.filter(m=>m.locked).map(m=>[m.id,m.x,m.y]),lockedPositions);
   action('undo');assert.equal(saved().tools.length,7);action('redo');
-  action('capture');click('#sample-scan');await waitFor(()=>$('#calibration-canvas'));
-  assert.equal($('#calibration-canvas').width,1000);
-  click('#capture-continue');await waitFor(()=>$('#trace-items input[type=checkbox]'));
+  action('capture');click('#sample-scan');await waitFor(()=>$('#trace-items input[type=checkbox]'));
+  assert.equal($('#calibration-canvas'),null,'A4 scale and perspective must be automatic');
+  assert.equal($('#trace-threshold'),null,'The user must not have to tune a threshold');
+  assert.equal($('#trace-smoothing'),null,'The user must not have to tune smoothing');
+  assert.equal($('#capture-add').disabled,false,'Clean sample must be ready immediately');
   assert.equal(win.document.querySelectorAll('#trace-items input[type=checkbox]').length,2,'Actual sample raster must recover 2 separate tools');
   assert.match($('#trace-summary').textContent,/2/);
   click('#trace-mask');click('#capture-add');await waitFor(()=>!$('#modal-root').children.length);

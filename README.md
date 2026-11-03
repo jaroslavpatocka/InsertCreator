@@ -16,8 +16,8 @@ Otevřete `http://localhost:5173`. V PowerShellu s blokovanými skripty použijt
 
 1. Zadejte vnitřní šířku a hloubku šuplíku v milimetrech.
 2. Vyfoťte oddělené nástroje shora na matném světlém podkladu. Nechte kolem nich volné místo a omezte stíny. Pro kalibraci použijte celý viditelný papír A4 nebo pravítko s dobře viditelným známým úsekem.
-3. Při kalibraci A4 zkontrolujte všechny čtyři rohy. Aplikace umí narovnat perspektivu roviny papíru. U pravítka označte dva body a zadejte skutečnou vzdálenost; tento režim předpokládá fotografii kolmo k podkladu.
-4. Zkontrolujte kontrast a nalezené obrysy. Automatické prahování lze doladit. Vyberte kontury nástrojů, pojmenujte je a zadejte hloubku kapsy.
+3. Při použití A4 aplikace sama najde papír, určí orientaci a narovná perspektivu. Celý bílý list musí být viditelný na odlišném podkladu. U pravítka označte jen dva body a zadejte skutečnou vzdálenost; tento režim předpokládá fotografii kolmo k podkladu.
+4. Obrysy se načtou automaticky. Aplikace kombinuje lokální model U²-Net s barvou podkladu a hranami v původním rozlišení. Kontrast, odstranění šumu, potlačení stínů i vyhlazení vybírá sama. Nepoužívají se posuvníky ani ruční úprava bodů. Připravené nástroje jen pojmenujte a přidejte. Pokud je výsledek příliš nejistý, aplikace požádá o novou fotografii a nedovolí nejistou konturu přidat.
 5. Spusťte automatické rozvržení. Moduly lze přesouvat a nástroje otáčet. Zamknuté moduly a nástroje zůstanou při dalším rozvržení na místě. Přidejte další nástroje nebo rozšiřte rozměry šuplíku a pokračujte ve stejné sestavě.
 6. Vyřešte hlášené kolize, přesahy a neplatné hloubky. Potom exportujte podklady.
 
@@ -27,7 +27,7 @@ Výchozí rastr je **42 mm**. Každý modul je samostatný blok s plochým dnem;
 
 **STL** obsahuje uzavřenou trojúhelníkovou geometrii s opravdovými zapuštěnými kapsami a dnem; jednotky jsou milimetry. ZIP umožňuje získat samostatné díly pro tisk. **SVG a DXF** obsahují obrysy modulů a kapes v milimetrech pro další zpracování, například řezání pěny. Nevytvářejí dráhy CNC ani G-code. Nastavená vůle zvětšuje obrys kapsy; rohy se zaoblují s tolerancí přibližně 0,015 mm.
 
-Fotografie nedává zaručenou výrobní přesnost. Stíny, lesklé plochy, výška nástroje nad papírem a perspektiva ovlivňují obrys. Překrývající se nástroje se mohou spojit. Kontrolujte měřítko podle skutečného rozměru a před tiskem celé sestavy vytiskněte jeden zkušební díl. Hloubku kapsy určujete sami; z jedné fotografie ji nelze spolehlivě změřit.
+Fotografie nedává zaručenou výrobní přesnost. Stíny, lesklé plochy, výška nástroje nad papírem a perspektiva ovlivňují obrys. Překrývající se nástroje se mohou spojit. Automatické hodnocení kvality je heuristické a nepředstavuje záruku rozměrové přesnosti. Nečitelnou hranu nelze z chybějící obrazové informace spolehlivě odhadnout. Kontrolujte měřítko podle skutečného rozměru a před tiskem celé sestavy vytiskněte jeden zkušební díl. Hloubku kapsy určujete sami; z jedné fotografie ji nelze spolehlivě změřit.
 
 ## Projekty a soukromí
 
@@ -41,6 +41,6 @@ npm test
 npm run check
 ```
 
-Instalace závislostí je potřeba jen pro vývojové testy (Happy DOM a rastrové plátno), nikoli pro běh aplikace. Integrační test prochází editor, uložení, rozšíření sestavy, zachování zámků a celý tok ukázkové fotografie. Jde o simulované DOM prostředí, nikoli vizuální test ve skutečném mobilním prohlížeči.
+Instalace závislostí je potřeba jen pro vývojové testy (Happy DOM a rastrové plátno), nikoli pro běh již zabalené aplikace. Integrační test prochází editor, uložení, rozšíření sestavy, zachování zámků a celý automatický tok ukázkové fotografie bez nastavení prahu. Testy neuronového rozpoznávání spouštějí skutečný přiložený ONNX model a stejný WASM runtime jako prohlížeč. Jde o simulované DOM a pracovní prostředí Node, nikoli vizuální test ve skutečném mobilním prohlížeči.
 
-Testy ověřují zpracování obrazu, kalibraci, rozvržení, zachování zámků, kolize, výrobní vůli, metrické exporty, integritu ZIP a uzavřenost i orientaci STL včetně objemu kapsy. Pro triangulaci se používá lokální Earcut 3.0.2 (ISC), pro robustní posun kontur lokální Clipper 6.4.2.2 (Boost Software License). Zdroje a licence jsou v `dist/vendor/`; aplikace je za běhu nestahuje z CDN.
+Testy ověřují zpracování obrazu, kalibraci, rozvržení, zachování zámků, kolize, výrobní vůli, metrické exporty, integritu ZIP a uzavřenost i orientaci STL včetně objemu kapsy. Pro triangulaci se používá lokální Earcut 3.0.2 (ISC), pro robustní posun kontur lokální Clipper 6.4.2.2 (Boost Software License). Rozpoznávání používá U2Netp (Apache 2.0, model ONNX z vydání rembg) a ONNX Runtime Web 1.20.1 (MIT). Zdroje, původ modelu, kontrolní součet a licence jsou v `dist/models/` a `dist/vendor/`. Žádná fotografie se neodesílá k vzdálené inferenci. Rozpoznávač se při prvním použití načte ze stejného hostingu aplikace (přibližně 16 MB), následně může využívat cache prohlížeče. Na starších zařízeních nebo při nedostupném WASM se použije analýza obrazu a při nízké kvalitě se vyžádá nový snímek.
