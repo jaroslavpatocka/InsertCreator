@@ -44,6 +44,9 @@ const sets=[
 const source=async()=>({categories:CATEGORIES,items,sets,setsCategory:SETS_CATEGORY});
 setCatalogSource(source);
 
+// Explicit print bed: these scenarios are not about the bed (see the bed tests in catalog-set-options.test.mjs).
+const seedProject=async()=>{const {createDemoProject}=await import('../dist/geometry.js'),{validateProject}=await import('../dist/model.js');const p=validateProject({...createDemoProject(),id:'test-drawer',limitToBed:false});localStorage.setItem('suplik-studio-projects-v1',JSON.stringify([p]));localStorage.setItem('suplik-studio-current',JSON.stringify(p.id));};
+await seedProject();
 await import('../dist/app.js');
 
 const $=s=>win.document.querySelector(s);

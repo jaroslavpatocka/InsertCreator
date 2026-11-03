@@ -23,6 +23,8 @@ Aktivní projekt je v tomto adresáři. ZIP se zdroji a dva deployment archivy v
 | Chytré rozvržení | `dist/smart-layout.js`, `dist/smart-layout-client.js`, `dist/smart-layout-worker.js` | Hledání orientací a společných modulů, průběh výpočtu a zrušení mimo hlavní vlákno |
 | Sady nástrojů | `dist/tool-sets.js`, `dist/set-layout.js` | Porovnání obrysů, kanonická orientace, ruční členství a sjednocené varianty rozvržení |
 | Vložení a měřítko sady | `dist/set-module.js`, `dist/catalog-ui.js`, `dist/catalog/` | Uspořádání sady při vložení, rovnoměrná změna obrysů a katalogové volby |
+| Jmenovité velikosti a popisky | `dist/tool-size.js`, `dist/size-labels.js` | Čtení zadaných velikostí, pořadí mm/in, lokální písmo a společný plán skutečného rytí |
+| Hromadné úpravy | `dist/bulk-edit.js`, `dist/app.js` | Atomické změny výběru, přesuny celých modulů, kontrola geometrie a jediná transakce historie |
 | Konstrukce pro tisk — souběžný vývoj | `dist/print-geometry.js` | Konstrukce sítě, konfigurace tisku, kontrola tiskové plochy, objem a binární STL |
 | Náhled sítě | `dist/preview3d.js` | Ortografická 3D kamera, projekce skutečné STL sítě, viditelnost stěn a cache geometrie |
 | Ovládání kamery | `dist/view-controls.js` | 2D posun pravým tlačítkem, 3D orbit levým tlačítkem a posun pravým, kolečko pro zoom kolem kurzoru |
@@ -73,6 +75,8 @@ Projekt obsahuje rozměry šuplíku, rastr, vůli, stěnu, dno, výšku a pole `
 - Modul má ID, absolutní `x/y`, rozměry, zámek polohy a režim velikosti `sizeMode` (`auto` nebo `manual`).
 - Nástroj má vlastní ID, lokální polygon `points`, polohu, rotaci ve stupních, hloubku a vazbu `moduleId`.
 - Volitelné `tool.fingerGrips` obsahuje nejvýše 12 výřezů `{id, x, y, radius}` v lokálních milimetrech nástroje. Nepřítomné pole označuje původní nástroj bez automatické změny kapsy; explicitní `[]` uchovává smazání. Normalizace souřadnic posouvá centra výřezů stejně jako body nástroje.
+- `tool.nominalSize = {value, unit:'mm'|'in'}` uchovává zadanou jmenovitou velikost ve vlastní jednotce. `tool.sizeLabel` je volitelný ruční text do 24 znaků. Obě hodnoty procházejí validátorem a JSON; nejsou rozměrem obálky kontury a škálování je nemění.
+- `project.sizeLabels` zapíná výrobní popisky pro celý šuplík, výchozí hodnota je `false`. Vynechaný popisek neblokuje ostatní model; UI uvádí důvod z `SIZE_LABEL_REASONS`.
 - `transformedPoints()` otočí lokální polygon, posune jeho obálku k počátku a poté přičte `x/y`. Pozice tak označuje počátek obálky po otočení.
 - `validateProject()` kontroluje strukturu a rozsahy, doplní výchozí hodnoty a normalizuje body. Výrobní platnost kontroluje zvlášť `validateLayout()`.
 - Limity importu jsou 300 nástrojů, 400 modulů a 3–6000 bodů na konturu. Normalizovaný rozměr kontury smí být nejvýše 3000 mm v každé ose.
@@ -110,6 +114,14 @@ Přímou změnu velikosti přes SVG úchyty koordinuje `app.js`: kandidáty poč
 
 `addToolGroup()` v `set-module.js` skládá úplné kapsy včetně výřezů do řad podle jejich kontur, porovnává orientace a velikosti v rastru a výslednou skupinu ověřuje přes `validateLayout()`. Vložení katalogové sady může vytvořit jeden společný modul nebo samostatné stejně velké moduly se společným směrem nástrojů a zaznamenává editovatelné členství v `project.toolSets`. Hromadné vložení předává intervaly jednotlivých sad v `collections`, zachovává jejich členství, měřítko a rozložení a přijímá celý výběr jedinou transakcí historie. Při nedostatku místa zůstanou nástroje v projektu a `offerFit()` nabídne konkrétní rozšíření nebo nový šuplík se samostatným upozorněním na tiskovou plochu. Nový šuplík zachová společné i sjednocené samostatné moduly a přenese členství příslušných sad.
 
+Volby `arrangement:'ordered'|'compact'` a `order:'asc'|'desc'` platí pro vložení i `splitForBed()`. Explicitní přehledné řady mají společný směr a zarovnané spodní hrany. Úsporná varianta zachovává monotónní úseky pořadí, používá profil úplné kapsy a porovnává otočení o 180°; při stejné ploše v rastru má přednost neotočená varianta. Rozdělení pro tiskovou plochu udržuje souvislé velikostní rozsahy v pevných modulech a vrací zvlášť příliš dlouhé nástroje. Packer předem hlídá limity 300 nástrojů a 400 modulů a parkované moduly mají souřadnice slučitelné s opětovným načtením.
+
+`tool-size.js` čte jmenovitou velikost, případně údaj s explicitním mm/in v názvu; podporuje i palcové zlomky. `sizeText()` upřednostní ruční text. Comparator převádí jmenovité velikosti na mm, délku obrysu používá pouze jako náhradní klíč řazení. Z kontury ani fotografie nevytváří jmenovitou velikost.
+
+Přeuložení existující sady koordinuje `app.js`: odmítne zamčené členy a moduly sdílené s jinou sadou, znovu sestaví pouze zvolenou sadu a zachová ID nástrojů, obrysy, hloubky, popisky i ID sady. Celá změna se přijme jediným `commit()` a lze ji vrátit jedním krokem.
+
+`bulk-edit.js` vrací klon projektu a před přijetím kontroluje dotčenou geometrii, hloubky, zámky, tiskovou plochu a rastr Gridfinity. Přesun a zámek se rozšíří na celé dotčené moduly včetně nevybraných sourozenců; změna hloubky a mazání se týkají vybraných nástrojů. UI drží dočasný `bulkSelection`, propojuje checkboxy, modifikované klepnutí a klávesové zkratky. Tažení výběru počítá náhled od počátečního snímku, při chybě či zrušení jej obnoví a úspěšný tah uloží jako jeden krok historie.
+
 `automaticFingerGrips()` volí dva boční kruhy u skutečně vyplněného řezu hlavní osou nástroje. Novým nástrojům je přidává `addTools()`; stávající konfiguraci včetně smazání zachovává. `pocketOutline()` sjednocuje obrys s vůlí a výřezy přes Clipper, zachovává původní kotvu otočeného nástroje a vyžaduje plošné napojení každého výřezu. Poloměr kruhu je skutečná velikost v mm bez dalšího přídavku vůle; hloubka odpovídá kapse nástroje. Obálky modulů, kolize a všechny výrobní výstupy používají tuto rozšířenou konturu. `bounds()` a `transformedPoints()` nadále popisují samotný naměřený nástroj.
 
 `validateLayout()` kontroluje přesahy a překryvy modulů, kontury, přiřazení kapsy, stěny, hloubku, průnik i dotyk kapes. Minimální stěna mezi kapsami stejného modulu se měří mezi konturami po započtení vůle. Společná exportní validace blokuje neplatnou výrobu; samostatný platný modul lze exportovat i při chybách jinde v sestavě.
@@ -120,11 +132,13 @@ Přímou změnu velikosti přes SVG úchyty koordinuje `app.js`: kandidáty poč
 - ZIP obsahuje samostatné soubory, CRC32 a UTF-8 názvy; nepoužívá kompresi.
 - JSON uchovává editovatelný projekt a lze jej uložit i pro výrobně neplatnou sestavu.
 
+`planSizeLabels()` sdílí stejný plán popisků pro 2D, náhled a STL. Lokální písmo 5×7 vytváří tahy široké nejméně 0,5 mm, znak vysoký 3,5 mm a rytí hluboké 0,35 mm. Plný díl má skutečně zapuštěný text; úsporný díl přidává štítek do stejného uzavřeného tělesa nad zachované dno. Plán obchází kapsy včetně výřezů a požadovaných stěn. Chybějící údaj, nepodporovaná diakritika, malá výška nebo nedostatek prostoru mají samostatné důvody vynechání, které překládá a zobrazuje UI.
+
 Souběžné vlákno rozšiřuje tisková nastavení, typy dna, odhady tisku a zkušební výstupy. Jejich rozpracovaná pole `printMode`, `bottomMode`, `bedWidth/bedHeight`, `limitToBed` a parametry magnetů nelze považovat za samostatně dokončenou funkci jen podle přítomnosti v datovém modelu.
 
 `smartArrange()` hledá vhodné orientace obrysů a menší společné moduly. Optimalizace používá úplné kapsy včetně výřezů pro prsty, zachovává zámky a ruční skupiny a před přijetím kontroluje výrobní geometrii. Odpovídající moduly mají volitelné `grouped: true`; normalizace JSON a běžné `autoArrange()` tuto skupinu zachovávají. Výpočet běží přes samostatný worker a klient ruší nebo odmítá zastaralé výsledky. Přijetí je jediná transakce historie. Hlášená úspora porovnává součet vnějších obdélníkových půdorysů modulů (šířka − 0,5 mm) × (hloubka − 0,5 mm); hledání má omezený rozsah a není důkazem globálního optima.
 
-Volitelné `project.toolSets` uchovává ruční sady `{id, name, toolIds, layout}` s režimem `auto`, `uniform` nebo `shared`. Jeden nástroj patří nejvýše do jedné ruční sady. Automatické návrhy vycházejí z normalizovaných geometrických profilů a nejsou vydávány za rozpoznaný výrobek. `analyzeToolShape()` určuje orientaci hlavní osy včetně rozlišení protilehlých konců; `findToolSets()` upřednostňuje ruční členství a `setCoherence()` nezávisle měří splnění zvolené varianty. Moduly mohou nést `setId` a `setLayout`; běžné Auto zachovává společný půdorys samostatných sjednocených modulů. Při rozvržení sad lze znovu sestavit dřívější odemčené automatické skupiny, zatímco ruční rozměry, zámky a výplně zůstávají chráněné.
+Volitelné `project.toolSets` uchovává ruční sady `{id, name, toolIds, layout}` s režimem `auto`, `uniform` nebo `shared` a volitelnými preferencemi `arrangement` a `order`. Jeden nástroj patří nejvýše do jedné ruční sady. Automatické návrhy vycházejí z normalizovaných geometrických profilů a nejsou vydávány za rozpoznaný výrobek. `analyzeToolShape()` určuje orientaci hlavní osy včetně rozlišení protilehlých konců; `findToolSets()` upřednostňuje ruční členství a `setCoherence()` nezávisle měří splnění zvolené varianty. Pouze explicitní `arrangement:'compact'` připouští protilehlé směry 0/180°; starší sady zachovávají požadavek na jediný směr. Moduly mohou nést `setId` a `setLayout`; běžné Auto zachovává společný půdorys samostatných sjednocených modulů. Při rozvržení sad lze znovu sestavit dřívější odemčené automatické skupiny, zatímco ruční rozměry, zámky a výplně zůstávají chráněné.
 
 ## Spuštění a offline režim
 

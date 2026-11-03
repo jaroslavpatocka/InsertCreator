@@ -1,3 +1,6 @@
+import {pocketOutline} from './finger-grip.js';
+import {getToolSize,orderTools} from './tool-size.js';
+
 const BINS=32,EPS=1e-8;
 const cache=new Map();
 const compare=(a,b)=>String(a)<String(b)?-1:String(a)>String(b)?1:0;
@@ -53,9 +56,12 @@ export function validateToolSets(sets,knownToolIds){
     if(!set||typeof set.id!=='string'||!set.id.trim()||set.id.length>100||ids.has(set.id))throw Error('Sady musí mít jedinečné platné identifikátory.');ids.add(set.id);
     if(!Array.isArray(set.toolIds)||set.toolIds.length>300||set.toolIds.some(id=>typeof id!=='string'||!id||id.length>100))throw Error('Sada musí obsahovat platné identifikátory nástrojů.');
     const layout=set.layout??'auto';if(!['auto','uniform','shared'].includes(layout))throw Error('Zvolte automatické, sjednocené nebo společné uspořádání sady.');
+    if(Object.hasOwn(set,'arrangement')&&!['ordered','compact'].includes(set.arrangement))throw Error('Zvolte přehledné nebo úsporné uložení sady.');
+    if(Object.hasOwn(set,'order')&&!['asc','desc'].includes(set.order))throw Error('Zvolte vzestupné nebo sestupné pořadí velikostí.');
+    const preferences={...(Object.hasOwn(set,'arrangement')?{arrangement:set.arrangement}:{}),...(Object.hasOwn(set,'order')?{order:set.order}:{})};
     const toolIds=[...new Set(set.toolIds)].filter(id=>known.has(id));
     for(const id of toolIds){if(members.has(id))throw Error('Nástroj může patřit pouze do jedné sady.');members.add(id);}
-    if(toolIds.length)result.push({id:set.id,name:String(set.name||'Sada nástrojů').slice(0,100),toolIds,layout});
+    if(toolIds.length)result.push({id:set.id,name:String(set.name||'Sada nástrojů').slice(0,100),toolIds,layout,...preferences});
   }
   return result;
 }
@@ -75,7 +81,7 @@ export function findToolSets(project){
     const toolIds=[...new Set(source.toolIds)].filter(id=>known.has(id)&&!claimed.has(id));if(!toolIds.length)continue;
     for(const id of toolIds)claimed.add(id);
     let id=typeof source.id==='string'&&source.id?source.id:`manual-${hash(JSON.stringify([...toolIds].sort(compare)))}`,suffix=2;const base=id;while(usedIds.has(id))id=`${base}-${suffix++}`;usedIds.add(id);
-    sets.push({id,name:String(source.name||'Sada nástrojů'),toolIds,layout:['auto','uniform','shared'].includes(source.layout)?source.layout:'auto',source:'manual',confidence:1});
+    sets.push({id,name:String(source.name||'Sada nástrojů'),toolIds,layout:['auto','uniform','shared'].includes(source.layout)?source.layout:'auto',...(['ordered','compact'].includes(source.arrangement)?{arrangement:source.arrangement}:{}),...(['asc','desc'].includes(source.order)?{order:source.order}:{}),source:'manual',confidence:1});
   }
   const shapes=[];
   for(const tool of tools.filter(tool=>!claimed.has(tool.id)).sort((a,b)=>compare(a.id,b.id))){try{const analysis=analyzeToolShape(tool);if(analysis.eligible)shapes.push({id:tool.id,analysis});}catch{}}
@@ -98,7 +104,45 @@ export function findToolSets(project){
   return{sets,unassigned:tools.filter(tool=>!claimed.has(tool.id)).map(tool=>tool.id).sort(compare)};
 }
 
-/** Number of members in fully coherent sets, rather than partial pair rewards. */
+const sizeValue=tool=>getToolSize(tool)?.mm??Math.max(Math.max(...tool.points.map(p=>p.x))-Math.min(...tool.points.map(p=>p.x)),Math.max(...tool.points.map(p=>p.y))-Math.min(...tool.points.map(p=>p.y)));
+function verticalRange(polygon,x){
+  let lo=Infinity,hi=-Infinity;
+  for(let i=0;i<polygon.length;i++){
+    const a=polygon[i],b=polygon[(i+1)%polygon.length];
+    if(x<Math.min(a.x,b.x)-EPS||x>Math.max(a.x,b.x)+EPS)continue;
+    if(Math.abs(a.x-b.x)<EPS){lo=Math.min(lo,a.y,b.y);hi=Math.max(hi,a.y,b.y);}
+    else{const y=a.y+(b.y-a.y)*(x-a.x)/(b.x-a.x);lo=Math.min(lo,y);hi=Math.max(hi,y);}
+  }
+  return{lo,hi};
+}
+/** Read rows from actual pockets. Compact rows may nest vertically, so bbox bottoms are not row identifiers. */
+function sharedSequence(project,members){
+  const items=members.map(tool=>{const polygon=pocketOutline(tool,project.clearance??.8);return{tool,polygon,left:Math.min(...polygon.map(p=>p.x)),right:Math.max(...polygon.map(p=>p.x)),before:new Set()};});
+  for(let i=0;i<items.length;i++)for(let j=i+1;j<items.length;j++){
+    const a=items[i],b=items[j],left=Math.max(a.left,b.left),right=Math.min(a.right,b.right);
+    if(right-left<=.001)continue;
+    const x=(left+right)/2,ar=verticalRange(a.polygon,x),br=verticalRange(b.polygon,x);
+    if(ar.hi<=br.lo+.001)b.before.add(a);else if(br.hi<=ar.lo+.001)a.before.add(b);
+  }
+  const remaining=new Set(items),read=[];
+  while(remaining.size){
+    const row=[...remaining].filter(item=>![...item.before].some(other=>remaining.has(other))).sort((a,b)=>a.left-b.left||compare(a.tool.id,b.tool.id));
+    if(!row.length)return null;
+    read.push(...row.map(item=>item.tool));for(const item of row)remaining.delete(item);
+  }
+  return read;
+}
+function orderedMembers(project,set,members,own,shared,uniform){
+  const order=['asc','desc'].includes(set.order)?set.order:set.arrangement?'asc':null;
+  if(!order)return true;
+  try{
+    const physical=uniform?[...members].sort((a,b)=>{const am=own[members.indexOf(a)],bm=own[members.indexOf(b)];return am.y-bm.y||am.x-bm.x||compare(a.id,b.id);}):shared?sharedSequence(project,members):null;
+    const expected=orderTools(members,order);
+    return !!physical&&physical.length===expected.length&&physical.every((tool,index)=>Math.abs(sizeValue(tool)-sizeValue(expected[index]))<.000001);
+  }catch{return false;}
+}
+
+/** Number of members in fully coherent sets, rather than partial pair rewards. Explicit preferences include physical size order. */
 export function setCoherence(project,sets){
   const list=Array.isArray(sets)?sets:sets?.sets||[],tools=new Map((project?.tools||[]).map(tool=>[tool.id,tool])),modules=new Map((project?.modules||[]).map(module=>[module.id,module])),details=[],satisfied=[],unsatisfied=[];let score=0;
   const counts=new Map();for(const tool of tools.values())counts.set(tool.moduleId,(counts.get(tool.moduleId)||0)+1);
@@ -106,10 +150,10 @@ export function setCoherence(project,sets){
   for(const set of list){
     const toolIds=[...new Set(set.toolIds||[])].filter(id=>tools.has(id)),members=toolIds.map(id=>tools.get(id)),own=members.map(tool=>modules.get(tool.moduleId));
     let headings=[],headingAligned=false;
-    try{headings=members.map(tool=>{const rotation=Number(tool.rotation??0);if(!Number.isFinite(rotation))throw Error('Neplatné otočení.');return wrap(rotation-analyzeToolShape(tool).rotation);});headingAligned=headings.length>0&&headings.every(heading=>Math.min(wrap(heading-headings[0]),wrap(headings[0]-heading))<=2);}catch{}
+    try{headings=members.map(tool=>{const rotation=Number(tool.rotation??0);if(!Number.isFinite(rotation))throw Error('Neplatné otočení.');return wrap(rotation-analyzeToolShape(tool).rotation);});const distance=heading=>Math.min(wrap(heading-headings[0]),wrap(headings[0]-heading));headingAligned=headings.length>0&&headings.every(heading=>distance(heading)<=2||(set.arrangement==='compact'&&Math.abs(distance(heading)-180)<=2));}catch{}
     const allPlaced=members.length>0&&own.every(placed),shared=allPlaced&&own.every(module=>module.id===own[0].id)&&counts.get(own[0].id)===members.length,uniform=allPlaced&&new Set(own.map(module=>module.id)).size===members.length&&own.every(module=>counts.get(module.id)===1&&Math.abs(module.width-own[0].width)<.001&&Math.abs(module.height-own[0].height)<.001);
-    const ok=headingAligned&&(set.layout==='shared'?shared:set.layout==='uniform'?uniform:shared||uniform);
-    details.push({id:set.id,satisfied:ok,shared,uniform,headingAligned,toolIds,headings});(ok?satisfied:unsatisfied).push(set.id);if(ok)score+=toolIds.length;
+    const orderAligned=orderedMembers(project,set,members,own,shared,uniform),ok=headingAligned&&orderAligned&&(set.layout==='shared'?shared:set.layout==='uniform'?uniform:shared||uniform);
+    details.push({id:set.id,satisfied:ok,shared,uniform,headingAligned,orderAligned,toolIds,headings});(ok?satisfied:unsatisfied).push(set.id);if(ok)score+=toolIds.length;
   }
   return{score,satisfied,unsatisfied,details};
 }

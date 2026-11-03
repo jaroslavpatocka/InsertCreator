@@ -1,9 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {scaleTool,addToolGroup} from '../dist/set-module.js';
+import {scaleTool,addToolGroup,splitForBed} from '../dist/set-module.js';
 import {catalogSets} from '../dist/catalog/index.js';
 import {blankProject,validateProject} from '../dist/model.js';
-import {validateLayout,autoArrange,resizeModule,pocketOutline} from '../dist/geometry.js';
+import {validateLayout,autoArrange,resizeModule,pocketOutline,exportSTL} from '../dist/geometry.js';
 import {automaticFingerGrips} from '../dist/finger-grip.js';
 import {smartArrange} from '../dist/smart-layout.js';
 import {setLang,errorText} from '../dist/i18n.js';
@@ -64,6 +64,29 @@ test('scaleTool rejects invalid factors and outlines over 3000 mm',()=>{
   try{assert.match(errorText((()=>{try{scaleTool(tool,9);}catch(e){return e;}})()),/scale/i);}finally{setLang('cs',{save:false});}
 });
 
+test('real hex catalogue depths produce printable ordered and compact sets in both size directions',()=>{
+  const source=set('hex-key-set-1-5-10mm').tools;
+  for(const arrangement of ['ordered','compact'])for(const order of ['asc','desc'])for(const sizeLabels of [false,true]){
+    const project=drawer({sizeLabels}),snapshot=structuredClone(project),tools=source.map((item,i)=>{
+      const tool={id:'hex-safe-'+i,name:item.name.cs,nominalSize:{value:item.size,unit:item.unit},points:structuredClone(item.points),depth:Math.min(item.depth,project.insertHeight-project.base),x:0,y:0,rotation:0,locked:false,moduleId:null};
+      return{...tool,fingerGrips:automaticFingerGrips(tool,{radius:9})};
+    }),originals=structuredClone(tools);
+    const result=addToolGroup(project,tools,{arrangement,order,toolSet:{name:'Imbusy 1,5–10 mm',layout:'shared',arrangement,order}});
+    assert.equal(result.placed,true,`${arrangement}/${order}/${sizeLabels} stays in the drawer`);assert.deepEqual(validateLayout(result.project),[]);validateProject(result.project);
+    for(const printMode of ['solid','light']){
+      const bytes=exportSTL({...result.project,printMode}),view=new DataView(bytes.buffer,bytes.byteOffset,bytes.byteLength);
+      assert.ok(view.getUint32(80,true)>0&&view.getUint32(80,true)<120000,'the manufacturing guard accepts a closed model within the facet cap');
+    }
+    assert.deepEqual(project,snapshot,'candidate search cannot mutate the input project');assert.deepEqual(tools,originals,'candidate search cannot mutate measured or nominal tool data');
+  }
+});
+
+test('an explicit arrangement with no printable candidate fails atomically',()=>{
+  const project=drawer(),tool={id:'overdeep',name:'Příliš hluboký',points:[{x:0,y:0},{x:30,y:0},{x:30,y:50},{x:0,y:50}],depth:99,x:0,y:0,rotation:0,locked:false,moduleId:null,fingerGrips:[]},snapshot=structuredClone(project),original=structuredClone(tool);
+  assert.throws(()=>addToolGroup(project,[tool],{arrangement:'ordered',toolSet:{layout:'shared'}}),error=>error.i18n?.cs==='Model nelze bezpečně vytisknout. Zkuste nástroje rozdělit do samostatných modulů.');
+  assert.deepEqual(project,snapshot);assert.deepEqual(tool,original);
+});
+
 test('combination wrench set 8–19 mm becomes one tight module in the default drawer',()=>{
   const project=drawer(),tools=toolsOf('combination-wrench-set-8-19mm');
   const result=addToolGroup(project,tools,{name:'Očkoploché klíče 8–19',unit:'mm'});
@@ -110,13 +133,108 @@ test('a set too big for the drawer is kept outside the drawer, nothing lost',()=
   assert.equal(reloaded.tools.filter(t=>t.moduleId===moduleId).length,tools.length);
 });
 
-test('print bed limit: a set that does not fit the bed is not placed',()=>{
-  const project={...blankProject(),limitToBed:true},tools=toolsOf('combination-wrench-set-8-19mm');
-  const result=addToolGroup(project,tools);
-  assert.equal(result.placed,false);assert.equal(result.project.tools.length,tools.length);
+test('print bed limit: a set larger than the bed is still placed in an empty default drawer, with reason "bed"',()=>{
+  // The user's bug: default project (limitToBed, 220 × 220 bed, 504 × 378 drawer) left the 8–19 mm set unplaced.
+  const project=blankProject(),tools=toolsOf('combination-wrench-set-8-19mm');
+  assert.equal(project.limitToBed,true);
+  for(const opts of [{},{toolSet:{name:'Klíče',layout:'shared'}}]){
+    const result=addToolGroup(project,tools,opts),m=result.project.modules.find(x=>x.id===result.moduleId);
+    assert.equal(result.placed,true);assert.equal(result.reason,'bed');assert.equal(result.onBed,false);
+    assert.ok(m.x>=0&&m.y>=0&&m.x+m.width<=project.width&&m.y+m.height<=project.height,'inside the drawer');
+    assert.ok(m.width-.5>220||m.height-.5>220,'really larger than the bed');
+    assert.equal(result.project.tools.filter(t=>t.moduleId===m.id).length,tools.length);
+    assert.equal(validateLayout(result.project).length,0,'no layout issue apart from the bed size');
+  }
   const hex=toolsOf('hex-key-set-1-5-10mm'),fits=addToolGroup(project,hex);
-  assert.equal(fits.placed,true);
+  assert.equal(fits.placed,true);assert.equal(fits.reason,'ok');assert.equal(fits.onBed,true);
   const m=fits.project.modules[0];assert.ok(m.width-.5<=220&&m.height-.5<=220);
+  // No room at all: reason "drawer".
+  const tiny=addToolGroup({...project,width:126,height:126},tools);
+  assert.equal(tiny.placed,false);assert.equal(tiny.reason,'drawer');
+});
+
+test('6–32 mm wrench set (26 pieces) packs into one valid module in a 1000 × 800 drawer in under a second',()=>{
+  const tools=toolsOf('combination-wrench-set-6-32mm');
+  for(const [project,opts] of [[drawer({width:1000,height:800}),{}],[{...blankProject(),width:1000,height:800},{toolSet:{name:'6–32',layout:'shared'}}]]){
+    const start=performance.now(),result=addToolGroup(project,tools,opts),ms=performance.now()-start;
+    assert.ok(ms<1000,`took ${ms.toFixed(0)} ms`);
+    assert.equal(result.placed,true);assert.ok(['ok','bed'].includes(result.reason));
+    const m=result.project.modules.find(x=>x.id===result.moduleId);
+    assert.ok(m.x+m.width<=1000&&m.y+m.height<=800);
+    assert.equal(issuesFor(result.project,result.moduleId).length,0,'walls between pockets incl. finger grips');
+    const pockets=tools.reduce((sum,tool)=>{const own=result.project.tools.find(t=>t.id===tool.id),b=box(pocketOutline(own,project.clearance));return sum+b.width*b.height;},0);
+    assert.ok(m.width*m.height<=1.3*pockets,`area ratio ${(m.width*m.height/pockets).toFixed(2)}`);
+  }
+});
+
+test('plain groups nest head-to-tail (180° turned neighbours); registered sets keep one heading',async()=>{
+  const {setCoherence,findToolSets}=await import('../dist/tool-sets.js');
+  const tools=toolsOf('combination-wrench-set-6-32mm'),big=drawer({width:1000,height:800});
+  const plain=addToolGroup(big,tools),straight=addToolGroup(big,tools,{alternate:false});
+  const area=r=>{const m=r.project.modules.find(x=>x.id===r.moduleId);return m.width*m.height;};
+  assert.ok(area(plain)<area(straight),`turned ${area(plain)} < straight ${area(straight)}`);
+  const headings=new Set(plain.project.tools.map(t=>Math.round(((t.rotation%360)+360)%360)));
+  assert.ok(headings.size>=2,'some tools are turned by 180°');
+  assert.equal(issuesFor(plain.project,plain.moduleId).length,0);
+  const screwdrivers=toolsOf('screwdriver-set-sl-ph-6pcs'),s=addToolGroup(drawer(),screwdrivers);
+  assert.equal(s.placed,true);assert.equal(issuesFor(s.project,s.moduleId).length,0);
+  const registered=addToolGroup(big,tools,{toolSet:{layout:'shared'}});
+  assert.equal(setCoherence(registered.project,findToolSets(registered.project).sets).unsatisfied.length,0,'one common heading');
+});
+
+test('splitForBed packs a set into few bed-sized modules registered as one set',async()=>{
+  const {validateToolSets}=await import('../dist/tool-sets.js');
+  const project={...blankProject(),width:672,height:420},tools=toolsOf('combination-wrench-set-8-19mm');
+  const start=performance.now(),result=splitForBed(project,tools,{name:'Klíče 8–19',unit:'mm',toolSet:{name:'Klíče 8–19'}}),ms=performance.now()-start;
+  assert.ok(ms<2000,`took ${ms.toFixed(0)} ms`);
+  const next=result.project;
+  assert.equal(result.placed,true);assert.equal(result.reason,'ok');assert.equal(result.oversize.length,0);
+  assert.ok(result.moduleIds.length>=2&&result.moduleIds.length<=4,`${result.moduleIds.length} modules`);
+  assert.equal(result.moduleId,result.moduleIds[0]);
+  const modules=result.moduleIds.map(id=>next.modules.find(m=>m.id===id));
+  for(const m of modules){
+    assert.ok((m.width-.5<=220&&m.height-.5<=220)||(m.height-.5<=220&&m.width-.5<=220),`${m.width}×${m.height} fits the bed`);
+    assert.equal(m.grouped,true);assert.equal(m.sizeMode,'manual');assert.equal(m.unit,'mm');assert.equal(m.width%next.grid,0);
+    assert.ok(m.x+m.width<=project.width&&m.y+m.height<=project.height);
+  }
+  assert.equal(next.tools.length,tools.length);
+  assert.ok(next.tools.every(t=>result.moduleIds.includes(t.moduleId)));
+  assert.equal(validateLayout(next).length,0,'no overlap or wall issues');
+  assert.equal(next.toolSets.length,1);assert.equal(next.toolSets[0].id,result.setId);assert.equal(next.toolSets[0].layout,'shared');
+  assert.equal(next.toolSets[0].toolIds.length,tools.length);
+  const reloaded=validateProject(JSON.parse(JSON.stringify(next)));
+  assert.equal(reloaded.modules.length,modules.length);assert.equal(validateToolSets(reloaded.toolSets,reloaded.tools.map(t=>t.id)).length,1);
+  // Rigid groups: autoArrange keeps every module and every placement.
+  const arranged=autoArrange(reloaded);assert.equal(arranged.unplaced.length,0);
+  // The default 504 × 378 drawer is too small for the split set: nothing is lost, every module stays printable.
+  const tight=splitForBed(blankProject(),tools);
+  assert.equal(tight.placed,false);assert.equal(tight.reason,'drawer');
+  assert.equal(tight.project.tools.length,tools.length);
+  assert.ok(tight.moduleIds.every(id=>{const m=tight.project.modules.find(x=>x.id===id);return m.width-.5<=220&&m.height-.5<=220;}));
+  assert.ok(validateLayout(tight.project).every(issue=>issue.type==='outside'));
+});
+
+test('splitForBed reports tools longer than the bed and keeps them in one extra module (or skips them)',()=>{
+  const project={...blankProject(),width:1008,height:840},tools=toolsOf('combination-wrench-set-6-32mm');
+  const start=performance.now(),result=splitForBed(project,tools),ms=performance.now()-start;
+  assert.ok(ms<2000,`took ${ms.toFixed(0)} ms`);
+  assert.ok(result.oversize.length>0&&result.oversize.length<tools.length);
+  assert.equal(result.reason,'bed');assert.equal(result.placed,true);
+  assert.equal(result.project.tools.length,tools.length,'nothing lost');
+  const over=result.project.modules.filter(m=>result.moduleIds.includes(m.id)&&!(m.width-.5<=220&&m.height-.5<=220));
+  assert.equal(over.length,1,'one over-bed module for the oversize tools');
+  assert.equal(result.project.tools.filter(t=>t.moduleId===over[0].id).length,result.oversize.length);
+  assert.equal(validateLayout(result.project).length,0);
+  const skipped=splitForBed(project,tools,{oversize:'skip',toolSet:{}});
+  assert.equal(skipped.reason,'ok');assert.equal(skipped.project.tools.length,tools.length-skipped.oversize.length);
+  assert.ok(skipped.project.toolSets[0].toolIds.every(id=>!skipped.oversize.includes(id)));
+  // Without diagonal turns more tools are too long for the bed.
+  const straight=splitForBed(project,tools,{diagonal:false});
+  assert.equal(straight.diagonal.length,0);assert.ok(straight.oversize.length>result.oversize.length);
+  // Sets that fit the bed stay a single module.
+  const hex=splitForBed(project,toolsOf('hex-key-set-1-5-10mm'));
+  assert.equal(hex.moduleIds.length,1);assert.equal(hex.reason,'ok');
+  assert.throws(()=>splitForBed(project,[]),error=>!!error.i18n);
 });
 
 test('when no free spot is left, autoArrange makes room and keeps the group whole',()=>{

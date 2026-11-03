@@ -30,7 +30,9 @@ async function loadCatalog(){
 
 // Session state: last opened folder and catalogue filters survive closing the modal.
 // layout: how "Přidat sadu" places a set – 'group' = one module for the whole set (default), 'each' = one module per tool.
-const state={folder:'mine',category:'all',system:'all',query:'',limit:96,layout:'group'};
+const state={folder:'mine',category:'all',system:'all',query:'',limit:96,layout:'group',arrangement:'ordered',order:'asc'};
+const setPreferences=new Map();
+const preferences=set=>({...state,...setPreferences.get(set.id)});
 const PAGE=96,SET_PREVIEW=3,SET_SEARCH_PREVIEW=6,SET_THUMB_MAX=8;
 export const catalogFolder=()=>state.folder;
 /** Session choice of the set layout: 'group' (one module per set, default) or 'each' (one module per tool). */
@@ -57,7 +59,8 @@ function haystack(item){
 
 /** Tool object (no id; the caller assigns one) created from a catalogue item, named in the current language. */
 export function catalogTool(item){
-  return{name:localName(item),points:item.points.map(p=>({x:Number(p.x),y:Number(p.y)})),depth:Number(item.depth)||12,...(item.unit==='mm'||item.unit==='in'?{unit:item.unit}:{}),x:0,y:0,rotation:0};
+  const name=localName(item),code=name.match(/\b(PH|PZ|TX|T)\s*(\d+)\b/i),nonMetricCode=code&&/^(PH|PZ)$/i.test(code[1]);
+  return{name,points:item.points.map(p=>({x:Number(p.x),y:Number(p.y)})),depth:Number(item.depth)||12,...(item.unit==='mm'||item.unit==='in'?{unit:item.unit}:{}),...(code?{sizeLabel:code[1].toUpperCase()+code[2]}:{}),...(!nonMetricCode&&typeof item.size==='number'&&Number.isFinite(item.size)&&item.size>0&&['mm','in'].includes(item.unit)?{nominalSize:{value:item.size,unit:item.unit}}:{}),x:0,y:0,rotation:0};
 }
 // ---- Scale ("Měřítko") ----
 export const SCALE_MIN=.2,SCALE_MAX=5;
@@ -255,7 +258,10 @@ export function mountLibraryFolders(modal,{mine,onAdd,onSave}){
     if(edited!=='len')details.querySelector('[data-scale-len]').value=lenValue(st.cur*st.f,st.unit);
   }
   const LAYOUTS=[['group','Jeden modul pro celou sadu'],['each','Samostatný modul pro každý nástroj']];
-  const layoutHTML=set=>set.tools.length<2?'':`<label class="catalog-set-layout"><span>${esc(t('Rozložení'))}</span><select data-set-layout="${esc(set.id)}" aria-label="${esc(t('Rozložení sady {name}',{name:localName(set)}))}">${LAYOUTS.map(([id,label])=>`<option value="${id}" ${state.layout===id?'selected':''}>${esc(t(label))}</option>`).join('')}</select></label>`;
+  const layoutHTML=set=>{
+    if(set.tools.length<2)return '';const p=preferences(set);
+    return `<div class="catalog-storage-options"><label class="catalog-set-layout"><span>${esc(t('Rozložení'))}</span><select data-set-layout="${esc(set.id)}" aria-label="${esc(t('Rozložení sady {name}',{name:localName(set)}))}">${LAYOUTS.map(([id,label])=>`<option value="${id}" ${p.layout===id?'selected':''}>${esc(t(label))}</option>`).join('')}</select></label><label class="catalog-set-layout"><span>${esc(t('Uložení nástrojů'))}</span><select data-set-arrangement="${esc(set.id)}" ${p.layout==='each'?'disabled':''}><option value="ordered" ${p.arrangement==='ordered'?'selected':''}>${esc(t('Přehledně podle velikosti'))}</option><option value="compact" ${p.arrangement==='compact'?'selected':''}>${esc(t('Úsporně proti sobě'))}</option></select></label><label class="catalog-set-layout"><span>${esc(t('Pořadí velikostí'))}</span><select data-set-order="${esc(set.id)}"><option value="asc" ${p.order==='asc'?'selected':''}>${esc(t('Od nejmenšího po největší'))}</option><option value="desc" ${p.order==='desc'?'selected':''}>${esc(t('Od největšího po nejmenší'))}</option></select></label></div>`;
+  };
   function itemHTML(item){
     const name=localName(item),acc=ACCURACY[item.accuracy]||ACCURACY.typical,src=item.source||{},on=selected.has(item.id);
     const tip=t('Zdroj: {source} · Licence: {license}',{source:src.name||'—',license:src.license||'—'});
@@ -313,13 +319,14 @@ export function mountLibraryFolders(modal,{mine,onAdd,onSave}){
       for(const set of [...selectedSets].map(setById).filter(Boolean)){
         const members=setTools(set),start=tools.length;
         tools.push(...members);
-        if(members.length>1)collections.push({start,count:members.length,name:localName(set),unit:set.unit==='in'?'in':'mm',layout:state.layout==='group'?'shared':'uniform'});
+        const p=preferences(set);
+        if(members.length>1)collections.push({start,count:members.length,name:localName(set),unit:set.unit==='in'?'in':'mm',layout:p.layout==='group'?'shared':'uniform',arrangement:p.layout==='each'?'ordered':p.arrangement,order:p.order});
       }
       add(()=>tools,{collections});
     }catch(error){toast(errorText(error));}
   };
   // set: the added tools become one project tool set; group: ONE module for them (default layout).
-  const setAddOpts=(set,n)=>{const info={name:localName(set),unit:set.unit==='in'?'in':'mm'};return n>1?{set:info,...(state.layout==='group'?{group:info}:{})}:{};};
+  const setAddOpts=(set,n)=>{const p=preferences(set),info={name:localName(set),unit:set.unit==='in'?'in':'mm',arrangement:p.layout==='each'?'ordered':p.arrangement,order:p.order};return n>1?{set:info,...(p.layout==='group'?{group:info}:{})}:{};};
   panel.addEventListener('click',e=>{
     if(state.folder!=='catalog')return;
     const summary=e.target.closest('.catalog-scale > summary');
@@ -346,8 +353,17 @@ export function mountLibraryFolders(modal,{mine,onAdd,onSave}){
     refreshScale(details,pctField?'pct':'len');
   });
   panel.addEventListener('change',e=>{
-    const layout=e.target.closest('[data-set-layout]');
-    if(layout){state.layout=layout.value==='each'?'each':'group';for(const s of panel.querySelectorAll('[data-set-layout]'))s.value=state.layout;return;}
+    const layout=e.target.closest('[data-set-layout],[data-set-arrangement],[data-set-order]');
+    if(layout){
+      const key=layout.hasAttribute('data-set-layout')?'layout':layout.hasAttribute('data-set-arrangement')?'arrangement':'order',id=layout.dataset.setLayout||layout.dataset.setArrangement||layout.dataset.setOrder;
+      const value=key==='layout'?(layout.value==='each'?'each':'group'):key==='arrangement'?(layout.value==='compact'?'compact':'ordered'):(layout.value==='desc'?'desc':'asc');
+      setPreferences.set(id,{...setPreferences.get(id),[key]:value});state[key]=value;
+      for(const select of panel.querySelectorAll('[data-set-layout],[data-set-arrangement],[data-set-order]')){
+        const item=setById(select.dataset.setLayout||select.dataset.setArrangement||select.dataset.setOrder);if(!item)continue;const p=preferences(item);
+        select.value=select.hasAttribute('data-set-layout')?p.layout:select.hasAttribute('data-set-arrangement')?p.arrangement:p.order;
+        if(select.hasAttribute('data-set-arrangement'))select.disabled=p.layout==='each';
+      }return;
+    }
     if(e.target.closest('[data-scale-pct],[data-scale-len]'))return;
     const member=e.target.closest('[data-set-member]');
     if(member){

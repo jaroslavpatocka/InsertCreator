@@ -1,6 +1,7 @@
 import {exportSTL} from './geometry.js';
 import {esc} from './ui.js';
 import {t} from './i18n.js';
+import {planSizeLabels,SIZE_LABEL_REASONS} from './size-labels.js';
 
 const TAU=Math.PI*2,PITCH_LIMIT=Math.PI/2-.01;
 const clamp=(value,min,max)=>Math.max(min,Math.min(max,value));
@@ -114,6 +115,8 @@ function sceneFor(project){
   const width=clamp(finite(project.width,504)>0?finite(project.width,504):504,1,1000000),height=clamp(finite(project.height,378)>0?finite(project.height,378):378,1,1000000);
   const reference=[[0,0,0],[width,0,0],[width,height,0],[0,height,0]],modules=[],warnings=[],allPoints=[...reference];
   const sourceModules=Array.isArray(project.modules)?project.modules:[],tools=Array.isArray(project.tools)?project.tools:[];
+  const sizeLabels=planSizeLabels(project,sourceModules,tools);
+  for(const skipped of sizeLabels.skipped){const tool=tools.find(tool=>tool.id===skipped.toolId);warnings.push(t('Popisek „{name}“: {reason}',{name:tool?.name||skipped.text||skipped.toolId,reason:t(SIZE_LABEL_REASONS[skipped.reason])}));}
   for(const module of sourceModules){
     const entry={id:module.id,name:module.name||'Modul',faces:[],wire:null};
     try{

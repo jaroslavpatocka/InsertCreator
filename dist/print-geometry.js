@@ -2,6 +2,7 @@ import earcut from './vendor/earcut.js';
 import Clipper from './vendor/clipper.js';
 import {i18nError} from './i18n.js';
 import {fmtLen,fmtSize} from './units.js';
+import {planSizeLabels} from './size-labels.js';
 
 const SCALE=10000,EPS=1e-7;
 const number=(value,fallback)=>Number.isFinite(+value)?+value:fallback;
@@ -65,6 +66,7 @@ export function validatePrintBed(project,modules){
 /** Build non-overlapping material slabs, then expose only their actual boundary faces. */
 export function buildPrintTriangles(project,modules,tools,origin={x:0,y:0},{fit=false}={}){
   const cfg=printConfig(fit?{...project,bottomMode:'plain'}:project),triangles=[];
+  const labelPlan=fit?{labels:[],skipped:[]}:planSizeLabels(project,modules,tools);
   const cellCount=modules.reduce((sum,m)=>sum+Math.round(m.width/42)*Math.round(m.height/42),0);
   if(!fit&&cfg.bottomMode==='grid'&&cellCount>400)throw i18nError('Najednou lze vytvořit nejvýše 400 Gridfinity patek. Exportujte sestavu po jednotlivých modulech.');
   if(tools.reduce((sum,t)=>sum+t.poly.length,0)>20000)throw i18nError('Kontury jsou pro jeden export příliš složité. Exportujte jednotlivé moduly.');
@@ -79,15 +81,64 @@ export function buildPrintTriangles(project,modules,tools,origin={x:0,y:0},{fit=
     }
   }
   function sides(paths,z0,z1){for(const poly of paths)for(let i=0;i<poly.length;i++){const a=poly[i],b=poly[(i+1)%poly.length];add(v(a,z0),v(b,z0),v(b,z1));add(v(a,z0),v(b,z1),v(a,z1));}}
-  function slabs(levels,sections,bottom=[]){
+  function slabs(levels,sections,bottom=[],barriers=null,topCuts=[]){
     let below=bottom;
-    for(let i=0;i<sections.length;i++){
-      const current=sections[i];face(subtract(current,below),levels[i],false);face(subtract(below,current),levels[i],true);sides(current,levels[i],levels[i+1]);below=current;
+    if(!barriers){
+      for(let i=0;i<sections.length;i++){const current=sections[i];face(subtract(current,below),levels[i],false);face(subtract(below,current),levels[i],true);sides(current,levels[i],levels[i+1]);below=current;}
+      face(subtract(below,topCuts),levels.at(-1),true);return;
     }
-    face(below,levels.at(-1),true);
+    // Merge only across Z levels introduced by lettering. Original base, pocket and magnet levels
+    // retain their vertices: Boolean T-junctions at those levels must remain available for stitching.
+    const walls=new Map();
+    for(let i=0;i<sections.length;i++){
+      const current=sections[i];face(subtract(current,below),levels[i],false);face(subtract(below,current),levels[i],true);
+      for(const poly of current)for(let j=0;j<poly.length;j++){
+        const a=poly[j],b=poly[(j+1)%poly.length],key=`${a.x},${a.y}|${b.x},${b.y}`;
+        let edge=walls.get(key);if(!edge){edge={a,b,ranges:[]};walls.set(key,edge);}
+        const last=edge.ranges.at(-1);if(last&&!barriers.has(levels[i])&&Math.abs(last[1]-levels[i])<EPS)last[1]=levels[i+1];else edge.ranges.push([levels[i],levels[i+1]]);
+      }
+      below=current;
+    }
+    face(subtract(below,topCuts),levels.at(-1),true);
+    for(const {a,b,ranges} of walls.values())for(const [z0,z1] of ranges){add(v(a,z0),v(b,z0),v(b,z1));add(v(a,z0),v(b,z1),v(a,z1));}
   }
   function loft(a,b,z0,z1){
     for(let i=0;i<a.length;i++){const j=(i+1)%a.length;add(v(a[i],z0),v(a[j],z0),v(b[j],z1));add(v(a[i],z0),v(b[j],z1),v(b[i],z1));}
+  }
+  /** Independent pockets and wall rings need only their own height. Keep touching or overlapping rings on the
+   *  original global-Z path: their Boolean junctions require all original depth barriers for stitching. */
+  function disjointComponents(outer,pockets,labels,bottom,baseTop,H,magnets,feet){
+    if(pockets.length<2)return false;
+    const components=pockets.map(tool=>({paths:subtract(offset(tool.poly,cfg.wall),[tool.poly]),envelope:offset(tool.poly,cfg.wall+1/SCALE),top:round(baseTop+number(tool.depth,10))}));
+    for(const label of labels)components.push({paths:[label.plate],envelope:offset(label.plate,1/SCALE),top:label.top,label});
+    const bounds=paths=>{let minX=Infinity,minY=Infinity,maxX=-Infinity,maxY=-Infinity;for(const path of paths)for(const p of path){minX=Math.min(minX,p.x);minY=Math.min(minY,p.y);maxX=Math.max(maxX,p.x);maxY=Math.max(maxY,p.y);}return{minX,minY,maxX,maxY};};
+    for(const component of components){if(!component.paths.length||!component.envelope.length)return false;component.bounds=bounds(component.envelope);}
+    for(let i=0;i<components.length;i++)for(let j=0;j<i;j++){
+      const a=components[i],b=components[j],x=a.bounds,y=b.bounds;
+      if(x.maxX<y.minX||x.minX>y.maxX||x.maxY<y.minY||x.minY>y.maxY)continue;
+      // The one-grid-unit growth rejects point and edge contact as well as a positive overlap.
+      if(boolean(a.envelope,b.envelope,Clipper.ClipType.ctIntersection).length)return false;
+    }
+    if(cfg.printMode==='solid'){
+      const z=[...new Set([bottom,H,...(magnets.length?[cfg.magnetDepth]:[])].map(round))].sort((a,b)=>a-b);
+      const sections=z.slice(1).map((top,i)=>magnets.length&&(z[i]+top)/2<cfg.magnetDepth-EPS?subtract([outer],magnets):[outer]);
+      const cuts=[...pockets.map(tool=>tool.poly),...labels.flatMap(label=>label.polygons)];
+      slabs(z,sections,feet,null,cuts);
+      // A void's wall winding faces into the pocket. Its floor points upwards; no internal cap is added.
+      for(const tool of pockets){const floor=round(H-number(tool.depth,10));face([tool.poly],floor,true);sides([[...tool.poly].reverse()],floor,H);}
+      for(const label of labels){const floor=round(label.top-label.depth);face(label.polygons,floor,true);sides(label.polygons.map(path=>[...path].reverse()),floor,label.top);}
+      return true;
+    }
+    const z=[...new Set([bottom,baseTop,...(magnets.length?[cfg.magnetDepth]:[])].map(round))].sort((a,b)=>a-b);
+    const sections=z.slice(1).map((top,i)=>magnets.length&&(z[i]+top)/2<cfg.magnetDepth-EPS?subtract([outer],magnets):[outer]);
+    // Expose the base only where no component grows from it. Components themselves omit a bottom
+    // cap, so they join the one common base without coincident internal faces.
+    slabs(z,sections,feet,null,components.flatMap(component=>component.paths));
+    for(const component of components){
+      if(component.label){const label=component.label;slabs([baseTop,round(label.top-label.depth),label.top],[component.paths,subtract(component.paths,label.polygons)],component.paths,new Set([round(baseTop),round(label.top)]));}
+      else slabs([baseTop,component.top],[component.paths],component.paths);
+    }
+    return true;
   }
   for(const m of modules){
     const start=triangles.length;
@@ -111,21 +162,49 @@ export function buildPrintTriangles(project,modules,tools,origin={x:0,y:0},{fit=
       if(Math.min(m.width-.5,m.height-.5)<2*cfg.magnetDiameter+2*edge+.5)throw i18nError('Modul „{name}“ je příliš malý pro čtyři bezpečně oddělené magnetové kapsy.',{name:m.name||m.id});
       for(const x of [m.x+.25+inset,m.x+m.width-.25-inset])for(const y of [m.y+.25+inset,m.y+m.height-.25-inset])magnets.push(circle(x,y,r));
     }
+    const labels=labelPlan.labels.filter(label=>label.moduleId===m.id);
+    if(!disjointComponents(outer,pockets,labels,bottom,baseTop,H,magnets,feet)){
     const levels=[bottom,baseTop,...pockets.map(t=>cfg.printMode==='light'?baseTop+number(t.depth,10):H-number(t.depth,10)),cfg.printMode==='solid'?H:baseTop];
     if(magnets.length)levels.push(cfg.magnetDepth);
+    const barriers=labels.length?new Set(levels.map(round)):null;
+    levels.push(...labels.flatMap(label=>[label.top-label.depth,label.top]));
     const z=[...new Set(levels.map(round))].sort((a,b)=>a-b),sections=[];
     for(let i=0;i<z.length-1;i++){
       const middle=(z[i]+z[i+1])/2;let section;
-      if(cfg.printMode==='light')section=middle<baseTop-EPS?[outer]:union(pockets.filter(t=>middle<baseTop+number(t.depth,10)-EPS).flatMap(t=>subtract(offset(t.poly,cfg.wall),[t.poly])));
+      if(cfg.printMode==='light')section=middle<baseTop-EPS?[outer]:union([...pockets.filter(t=>middle<baseTop+number(t.depth,10)-EPS).flatMap(t=>subtract(offset(t.poly,cfg.wall),[t.poly])),...labels.filter(label=>middle<label.top-EPS).map(label=>label.plate)]);
       else section=subtract([outer],pockets.filter(t=>middle>=H-number(t.depth,10)-EPS).map(t=>t.poly));
       if(magnets.length&&middle<cfg.magnetDepth-EPS)section=subtract(section,magnets);
+      const lettering=labels.filter(label=>middle>=label.top-label.depth-EPS&&middle<label.top-EPS).flatMap(label=>label.polygons);
+      if(lettering.length)section=subtract(section,lettering);
       sections.push(section);
     }
-    slabs(z,sections,feet);
+    slabs(z,sections,feet,barriers);
+    }
     const stitched=stitchBoundaryEdges(triangles.splice(start));for(const triangle of stitched)triangles.push(triangle);
     if(triangles.length>120000)throw i18nError('Model je pro jeden export příliš složitý. Exportujte jednotlivé moduly.');
   }
-  return fit?stitchBoundaryEdges(triangles):triangles;
+  const result=fit?stitchBoundaryEdges(triangles):triangles;
+  validatePrintMesh(result);
+  return result;
+}
+
+/** Validate the exact float32 surface sent to STL, at the same 0.00001 mm edge precision as QA. */
+export function validatePrintMesh(triangles){
+  if(!triangles.length)return;
+  const fail=()=>{throw i18nError('Model nelze bezpečně vytisknout. Zkuste nástroje rozdělit do samostatných modulů.');};
+  const edges=new Map(),key=point=>point.map(value=>Math.round(Math.fround(value)*1e5)).join(',');let volume=0;
+  for(const triangle of triangles){
+    if(triangle.length!==3||triangle.some(point=>point.length!==3||point.some(value=>!Number.isFinite(value))))fail();
+    const points=triangle.map(point=>point.map(Math.fround)),keys=points.map(key);
+    if(new Set(keys).size!==3)fail();
+    const [a,b,c]=points;volume+=(a[0]*(b[1]*c[2]-b[2]*c[1])-a[1]*(b[0]*c[2]-b[2]*c[0])+a[2]*(b[0]*c[1]-b[1]*c[0]))/6;
+    for(let i=0;i<3;i++){
+      const a=keys[i],b=keys[(i+1)%3],edge=a<b?a+'|'+b:b+'|'+a,entry=edges.get(edge)||{count:0,direction:0};
+      entry.count++;entry.direction+=a<b?1:-1;edges.set(edge,entry);
+    }
+  }
+  if(!(volume>0&&Number.isFinite(volume)))fail();
+  for(const entry of edges.values())if(entry.count!==2||entry.direction!==0)fail();
 }
 
 /** Split polygon-Boolean T-junctions without dropping collinear boundary vertices. */

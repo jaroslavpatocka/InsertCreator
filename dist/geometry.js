@@ -4,6 +4,7 @@ import {pocketOutline} from './finger-grip.js';
 export {pocketOutline} from './finger-grip.js';
 import {t as tr,i18nError} from './i18n.js';
 import {fmtLen} from './units.js';
+import {orderTools} from './tool-size.js';
 
 const EPS = 1e-7;
 const copy = value => JSON.parse(JSON.stringify(value));
@@ -166,7 +167,21 @@ export function autoArrange(project,{preserveLocked=true}={}) {
       if(width>3000||height>3000){valid=false;width=original.width;height=original.height;content=null;}
     }
     return{original,own,width,height,content,valid};
-  }).sort((a,b)=>b.width*b.height-a.width*a.height||String(a.original.id).localeCompare(String(b.original.id)));
+  });
+  // Equal-footprint members of an explicitly ordered uniform set form one deterministic sort block.
+  // A tuple avoids a non-transitive "same set => nominal, otherwise => id" comparator.
+  const groupOrder=new Map();
+  for(const set of project.toolSets||[]){
+    if(!['auto','uniform'].includes(set.layout)||!['asc','desc'].includes(set.order))continue;
+    const memberIds=new Set(set.toolIds),own=groups.filter(g=>g.original.setLayout==='uniform'&&g.own.length===1&&memberIds.has(g.own[0].id));
+    if(!own.length)continue;
+    const key=own.map(g=>String(g.original.id)).sort((a,b)=>a.localeCompare(b))[0],rank=new Map(orderTools(own.map(g=>g.own[0]),set.order).map((t,index)=>[t.id,index]));
+    for(const group of own)groupOrder.set(group.original.id,{key,rank:rank.get(group.own[0].id)});
+  }
+  groups.sort((a,b)=>{
+    const ar=groupOrder.get(a.original.id)||{key:String(a.original.id),rank:0},br=groupOrder.get(b.original.id)||{key:String(b.original.id),rank:0};
+    return b.width*b.height-a.width*a.height||ar.key.localeCompare(br.key)||ar.rank-br.rank;
+  });
   for(const {original,own,width,height,content,valid} of groups){
     let position=null;
     const fitsBed=!project.limitToBed||((width-.5<=n(project.bedWidth,220)&&height-.5<=n(project.bedHeight,220))||(height-.5<=n(project.bedWidth,220)&&width-.5<=n(project.bedHeight,220)));

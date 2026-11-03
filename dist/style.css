@@ -211,3 +211,26 @@
 }
 /* Why an unplaced tool has no module (selected-tool panel) */
 .unplaced-why p{margin:0 0 4px}.unplaced-why .section-link{min-height:32px;margin-right:6px}
+
+/* Print bed choice after adding tools (offerBedFit): inline bed size inputs inside an option card. */
+.fit-option.fit-bed{cursor:default}
+.fit-option.fit-bed .fields-row{width:100%;margin-top:6px}
+.fit-option.fit-bed .field{margin:0}
+.fit-option.fit-bed .btn{margin-top:6px;min-height:36px}
+.fit-option.fit-bed:focus-within{border-color:var(--green)}
+.tool-select-row{display:flex;align-items:center;gap:4px;border-radius:10px}
+.tool-select-row>input{flex:none;width:17px;height:17px;margin:8px 0 8px 2px;accent-color:#bb8c38;cursor:pointer}
+.tool-select-row .tool-row{flex:1;min-width:0;width:calc(100% - 23px)}
+.tool-select-row.batch-selected{background:#f9f0dc;outline:1px solid #e1cda0}
+.bulk-controls{margin:12px 17px 14px;padding:10px 0;border-top:1px solid #e3e7dd;border-bottom:1px solid #e3e7dd}
+.bulk-heading{display:flex;align-items:center;gap:12px;flex-wrap:wrap;font-size:12px}
+.bulk-heading strong{margin-right:auto}
+.bulk-actions{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px}
+.bulk-actions .btn{font-size:11px;min-height:34px;padding:7px 10px}
+.bulk-controls .muted-note{font-size:11px;margin:8px 0 0}
+.size-label-editor{padding:12px 0;border-bottom:1px solid #e3e7dd;margin-bottom:12px}
+.catalog-storage-options{display:grid;gap:8px;min-width:0}
+.catalog-storage-options select{max-width:100%}
+.model-size-label{opacity:.9}
+.label-warning p{font-size:12px}
+@media(max-width:760px){.tool-select-row>input{width:22px;height:22px;margin:10px 3px}.bulk-actions .btn{min-height:40px}.bulk-heading{gap:10px}}

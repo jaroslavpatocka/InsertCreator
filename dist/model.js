@@ -20,6 +20,7 @@ export function validateProject(input){
   out.bedHeight=finite(p.bedHeight??220,50,2000,'hloubka tiskové plochy');
   out.limitToBed=p.limitToBed!==false;
   out.unit=['mm','in'].includes(p.unit)?p.unit:'';
+  out.sizeLabels=p.sizeLabels===true;
   out.magnetDiameter=finite(p.magnetDiameter??6.2,3,20,'průměr kapsy pro magnet');
   out.magnetDepth=finite(p.magnetDepth??2.2,1,8,'hloubka kapsy pro magnet');
   const ids=new Set();
@@ -41,7 +42,14 @@ export function validateProject(input){
     const width=Math.max(...points.map(p=>p.x)),height=Math.max(...points.map(p=>p.y));
     if(width<.1||height<.1)throw i18nError('Kontura nemá platnou plochu.');
     if(width>3000||height>3000)throw i18nError('Kontura nesmí v žádném směru přesáhnout {max}.',{max:fmtLen(3000)});
-    return{id,name:text(t.name||tr('Nástroj')),...(['mm','in'].includes(t.unit)?{unit:t.unit}:{}),points,x:finite(t.x??0,-1000000,1000000,'X nástroje'),y:finite(t.y??0,-1000000,1000000,'Y nástroje'),rotation:finite(t.rotation??0,-3600,3600,'otočení',false),depth:finite(t.depth??12,.5,99,'hloubka kapsy'),locked:!!t.locked,moduleId:ids.has(t.moduleId)?t.moduleId:null,...(Object.hasOwn(t,'fingerGrips')?{fingerGrips:validateFingerGrips(t.fingerGrips,{minX,minY})}:{})};
+    const sizeFields={};
+    if(Object.hasOwn(t,'sizeLabel')){if(typeof t.sizeLabel!=='string')throw i18nError('Popisek velikosti musí být text.');sizeFields.sizeLabel=t.sizeLabel.replace(/[\u0000-\u001f]/g,'').trim().slice(0,24);}
+    if(Object.hasOwn(t,'nominalSize')){
+      const size=t.nominalSize;
+      if(!size||typeof size.value!=='number'||!Number.isFinite(size.value)||size.value<=0||size.value>3000||!['mm','in'].includes(size.unit))throw i18nError('Zadejte platnou jmenovitou velikost nástroje.');
+      sizeFields.nominalSize={value:size.value,unit:size.unit};
+    }
+    return{id,name:text(t.name||tr('Nástroj')),...(['mm','in'].includes(t.unit)?{unit:t.unit}:{}),...sizeFields,points,x:finite(t.x??0,-1000000,1000000,'X nástroje'),y:finite(t.y??0,-1000000,1000000,'Y nástroje'),rotation:finite(t.rotation??0,-3600,3600,'otočení',false),depth:finite(t.depth??12,.5,99,'hloubka kapsy'),locked:!!t.locked,moduleId:ids.has(t.moduleId)?t.moduleId:null,...(Object.hasOwn(t,'fingerGrips')?{fingerGrips:validateFingerGrips(t.fingerGrips,{minX,minY})}:{})};
   });
   if(Object.hasOwn(p,'toolSets'))out.toolSets=validateToolSets(p.toolSets,toolIds);
   return out;

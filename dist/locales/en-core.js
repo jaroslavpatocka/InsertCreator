@@ -1,6 +1,7 @@
 // English translations for the core area. Key = exact Czech source text passed to t()/plural()/i18nError().
 // Keep {placeholders} identical in both languages.
 export default {
+  'Model nelze bezpečně vytisknout. Zkuste nástroje rozdělit do samostatných modulů.':'The model cannot be printed safely. Try splitting the tools into separate modules.',
   // model.js — import/validation
   'Neplatná hodnota: {label} ({range}).':'Invalid value: {label} ({range}).',
   'Neplatná hodnota: {label}.':'Invalid value: {label}.',
@@ -132,4 +133,33 @@ export default {
   'Sadu se nepodařilo bezpečně uspořádat do jednoho modulu.':'The set could not be safely arranged into one module.',
   'Sada nástrojů':'Tool set',
   'Zvolte automatické, sjednocené nebo společné uspořádání sady.':'Choose automatic, uniform or shared arrangement for the set.',
+  // Nominal sizes, set preferences and batch edit validation.
+  'Nástroj nemá platný obrys pro porovnání sady.':'The tool has no valid outline for comparing set members.',
+  'Obrys nástroje obsahuje neplatné souřadnice.':'The tool outline contains invalid coordinates.',
+  'Obrys nástroje nemá platnou plochu.':'The tool outline has no valid area.',
+  'Obrys nástroje nemá měřitelné rozměry.':'The tool outline has no measurable dimensions.',
+  'Sady nástrojů musí být pole s nejvýše 300 položkami.':'Tool sets must be an array of at most 300 entries.',
+  'Sady musí mít jedinečné platné identifikátory.':'Sets must have unique valid identifiers.',
+  'Sada musí obsahovat platné identifikátory nástrojů.':'A set must contain valid tool identifiers.',
+  'Zvolte přehledné nebo úsporné uložení sady.':'Choose an ordered or compact arrangement for the set.',
+  'Zvolte přehledné nebo úsporné uspořádání sady.':'Choose an ordered or compact arrangement for the set.',
+  'Zvolte vzestupné nebo sestupné pořadí velikostí.':'Choose ascending or descending size order.',
+  'Nástroj může patřit pouze do jedné sady.':'A tool can belong to only one set.',
+  'Neplatné otočení.':'Invalid rotation.',
+  'Modul sady musí mít platný identifikátor sady a způsob uspořádání.':'A set module must have a valid set identifier and layout.',
+  'Popisek velikosti musí být text.':'The size label must be text.',
+  'Zadejte platnou jmenovitou velikost nástroje.':'Enter a valid nominal tool size.',
+  'Vybraný nástroj neexistuje.':'The selected tool does not exist.',
+  'Zadejte platnou hodnotu pro {label}.':'Enter a valid value for {label}.',
+  'Hloubka kapsy musí být od {min} do {max}.':'Pocket depth must be between {min} and {max}.',
+  'Zvolte zamknutí nebo odemknutí polohy.':'Choose whether to lock or unlock the position.',
+  'posun X':'X offset',
+  'posun Y':'Y offset',
+  'hloubku kapsy':'pocket depth',
+  // size-labels.js: explain every skipped print label.
+  'Nástroj nemá zadanou velikost pro tiskový popisek.':'The tool has no size entered for its printed label.',
+  'Tiskový popisek obsahuje nepodporovaný znak. Použijte čísla a latinku bez diakritiky.':'The printed label contains an unsupported character. Use numbers and Latin letters without diacritics.',
+  'Vedle kapsy není dost bezpečného místa pro čitelný tiskový popisek.':'There is not enough safe space beside the pocket for a legible printed label.',
+  'Nad dnem není dost materiálu pro bezpečně vyrytý popisek.':'There is not enough material above the base to engrave the label safely.',
+  'Bez platného obrysu kapsy nelze popisek bezpečně umístit.':'The label cannot be safely placed without a valid pocket outline.',
 };

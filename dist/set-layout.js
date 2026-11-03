@@ -1,6 +1,8 @@
 import {autoArrange,pocketOutline,transformedPoints,validateLayout,exportSTL} from './geometry.js';
 import {automaticFingerGrips} from './finger-grip.js';
 import {analyzeToolShape,findToolSets,setCoherence} from './tool-sets.js';
+import {orderTools} from './tool-size.js';
+import {addToolGroup} from './set-module.js';
 
 const EPS=.001,copy=value=>structuredClone(value),area=m=>(m.width-.5)*(m.height-.5);
 const bounds=points=>{let x=Infinity,y=Infinity,maxX=-Infinity,maxY=-Infinity;for(const p of points){x=Math.min(x,p.x);y=Math.min(y,p.y);maxX=Math.max(maxX,p.x);maxY=Math.max(maxY,p.y);}return{x,y,maxX,maxY,width:maxX-x,height:maxY-y};};
@@ -17,7 +19,7 @@ function metric(project,sets){
 const better=(a,b)=>a.placed.size>b.placed.size||(a.placed.size===b.placed.size&&(a.score>b.score||(a.score===b.score&&(a.area<b.area-EPS||(Math.abs(a.area-b.area)<EPS&&(a.modules<b.modules||(a.modules===b.modules&&a.bbox<b.bbox-EPS)))))));
 function planOptions(project,set,allocate){
   const source=set.toolIds.map(id=>project.tools.find(t=>t.id===id)),padding=project.wall+.26,gap=Math.max(project.wall,project.gap),grid=project.grid;
-  const ordered=[...source].sort((a,b)=>analyzeToolShape(b).length-analyzeToolShape(a).length||a.id.localeCompare(b.id));
+  const ordered=set.arrangement||set.order?orderTools(source,set.order||'asc'):[...source].sort((a,b)=>analyzeToolShape(b).length-analyzeToolShape(a).length||a.id.localeCompare(b.id));
   const ids=new Map(source.map(t=>[t.id,allocate(`set-${hash(JSON.stringify([set.id,'uniform',t.id]))}`)])),sharedId=allocate(`set-${hash(JSON.stringify([set.id,'shared',set.toolIds.slice().sort()]))}`);
   const options=[];
   for(const layout of set.layout==='auto'?['uniform','shared']:[set.layout]){
@@ -26,6 +28,19 @@ function planOptions(project,set,allocate){
       try{tools=tools.map(t=>Object.hasOwn(t,'fingerGrips')?t:{...t,fingerGrips:automaticFingerGrips(t,{radius:9})});}
       catch{continue;}
       if(tools.some(t=>!t.fingerGrips?.length||polygonArea(pocketOutline(t,project.clearance))-polygonArea(transformedPoints(t,project.clearance))<6))continue;
+      // The shared packer nests actual pockets (including grips) while retaining nominal size order.
+      // Keep the regular shelf alternatives below as well: a different footprint may fit a free bay better.
+      if(set.arrangement){
+        try{
+          const result=addToolGroup({...project,tools:[],modules:[],toolSets:[]},tools,{name:set.name,moduleId:sharedId,arrangement:set.arrangement,order:set.order||'asc',toolSet:{id:set.id,name:set.name,layout:'shared'}});
+          const module=result.project.modules.find(m=>m.id===result.moduleId);
+          if(result.placed&&bedFits(module.width,module.height,project)){
+            const old=project.modules.find(m=>m.id===source[0].moduleId);
+            if(old&&Object.hasOwn(old,'unit'))module.unit=old.unit;else if(Object.hasOwn(project,'unit'))module.unit=project.unit;
+            options.push({set,layout,heading:-1,width:module.width,height:module.height,modules:[module],tools:result.project.tools,cost:area(module)});
+          }
+        }catch{}
+      }
     }
     for(const heading of [0,90]){
       const items=tools.map(t=>{const rotation=analyzeToolShape(t).rotation+heading,b=bounds(pocketOutline({...t,x:0,y:0,rotation},project.clearance));return{tool:t,rotation,b};});
@@ -57,22 +72,25 @@ function planOptions(project,set,allocate){
       }
     }
   }
+  // Explicit order is a requirement, including nested compact rows. Do not rank a visually reversed shelf as coherent.
+  if(set.arrangement||set.order)for(let i=options.length-1;i>=0;i--)if(!setCoherence({...project,tools:options[i].tools,modules:options[i].modules},[set]).satisfied.includes(set.id))options.splice(i,1);
   options.sort((a,b)=>a.cost-b.cost||a.width*a.height-b.width*b.height||a.heading-b.heading||a.width-b.width);
   const retained=options.slice(0,10);for(const layout of ['uniform','shared'])for(const heading of [0,90]){const option=options.find(p=>p.layout===layout&&p.heading===heading);if(option&&!retained.includes(option))retained.push(option);}
   return retained;
 }
 
-/** Coherent sets use complete rows with one common heading, never opposite pairs. */
+/** Coherent sets keep nominal order when requested. Explicit compact sets may use opposing 180° rows. */
 export async function arrangeToolSets(project,{onProgress,signal,compactArrange}={}){
   const source=copy(project),abort=()=>{if(signal?.aborted)throw new DOMException('Rozvržení sad bylo zrušeno.','AbortError');};
   let lastProgress=0;
   const progress=(value,message)=>{abort();lastProgress=Math.max(lastProgress,value);try{onProgress?.({stage:'sets',progress:lastProgress,message});}catch{}abort();};
   const pause=async()=>{await new Promise(resolve=>setTimeout(resolve,0));abort();};
-  abort();const warnings=[];let sets=[],before,best,bestMetric;
+  abort();const warnings=[],manufacturingFailures=new Map();let sets=[],before,best,bestMetric;
   const finish=()=>{
     const result={tools:best.tools,modules:best.modules},after=metric({...source,...result},sets),coherence=setCoherence({...source,...result},sets);
     const beforeCoherence=setCoherence(source,sets),setSummary=sets.map(set=>{const satisfied=coherence.satisfied.includes(set.id),shared=new Set(result.tools.filter(t=>set.toolIds.includes(t.id)).map(t=>t.moduleId)).size===1;
-      return{id:set.id,name:set.name,toolIds:set.toolIds,requested:set.layout,applied:satisfied?(shared?'shared':'uniform'):null,status:satisfied?(beforeCoherence.satisfied.includes(set.id)?'preserved':'applied'):'unavailable',...(!satisfied?{reason:warnings.find(w=>w.includes(set.name))||'Celá sada se bezpečně nevejde do dostupného prostoru.'}:{})};});
+      return{id:set.id,name:set.name,toolIds:set.toolIds,requested:set.layout,applied:satisfied?(shared?'shared':'uniform'):null,status:satisfied?(beforeCoherence.satisfied.includes(set.id)?'preserved':'applied'):'unavailable',...(!satisfied?{reason:warnings.find(w=>w.includes(set.name))||(manufacturingFailures.has(set.id)?manufacturingFailures.get(set.id)+' Sestava zůstává zachovaná.':'Celá sada se bezpečně nevejde do dostupného prostoru.')}:{})};});
+    for(const summary of setSummary)if(summary.applied==='uniform'&&manufacturingFailures.has(summary.id))warnings.push(manufacturingFailures.get(summary.id)+' Použity stejně velké samostatné moduly.');
     for(const summary of setSummary)if(summary.status==='unavailable'&&!warnings.some(w=>w.includes(summary.name)))warnings.push(`${summary.name}: ${summary.reason}`);
     progress(1,'Rozvržení sad je připravené.');
     return{...result,unplaced:result.tools.filter(t=>!after.placed.has(t.id)).map(t=>t.id),stats:{beforeArea:before.area,afterArea:after.area,savedPercent:before.area?Math.max(0,(1-after.area/before.area)*100):0,beforeModules:source.modules.length,afterModules:result.modules.length,sharedModules:result.modules.filter(m=>result.tools.filter(t=>t.moduleId===m.id).length>1).length,changed:JSON.stringify(result)!==JSON.stringify({tools:source.tools,modules:source.modules}),setScoreBefore:before.score,setScoreAfter:after.score,setsApplied:coherence.satisfied,setSummary,warnings}};
@@ -95,16 +113,15 @@ export async function arrangeToolSets(project,{onProgress,signal,compactArrange}
   let beams=[[]];for(const family of families){beams=beams.flatMap(choices=>[null,...family.options].map(option=>[...choices,option])).sort((a,b)=>b.reduce((s,p)=>s+(p?p.set.toolIds.length:0),0)-a.reduce((s,p)=>s+(p?p.set.toolIds.length:0),0)||a.reduce((s,p)=>s+(p?.cost||0),0)-b.reduce((s,p)=>s+(p?.cost||0),0)).slice(0,24);}
   // Also try each family alone so one blocked bay cannot prevent other sets.
   for(let i=0;i<families.length;i++){const alternatives=new Set(families[i].options.slice(0,3));for(const layout of ['uniform','shared']){const option=families[i].options.find(p=>p.layout===layout);if(option)alternatives.add(option);}for(const option of alternatives){const choices=families.map(()=>null);choices[i]=option;beams.push(choices);}}
-  const manufacturing=new Map(),failedSharedSets=new Set();
+  const manufacturing=new Map();
   const consider=async candidate=>{const value=metric(candidate,sets);if([...before.placed].some(id=>!value.placed.has(id))||!better(value,bestMetric))return;
     const modules=candidate.modules.filter(m=>inside(m,candidate)),ids=new Set(modules.map(m=>m.id));if(validateLayout({...candidate,modules,tools:candidate.tools.filter(t=>ids.has(t.moduleId))}).length)return;
     for(const module of modules.filter(m=>m.setLayout==='shared'&&!source.modules.some(old=>old.id===m.id))){
-      if(failedSharedSets.has(module.setId))return;
       const own=candidate.tools.filter(t=>t.moduleId===module.id),signature=JSON.stringify({module:{width:module.width,height:module.height},tools:own.map(t=>({...t,x:t.x-module.x,y:t.y-module.y})),config:[source.wall,source.clearance,source.base,source.insertHeight,source.printMode,source.bottomMode,source.magnetDiameter,source.magnetDepth]});
       if(!manufacturing.has(signature)){
         progress(.8,'Ověřuji výrobní složitost společného modulu…');await pause();
         try{exportSTL(candidate,{moduleId:module.id});manufacturing.set(signature,true);}
-        catch(error){manufacturing.set(signature,false);failedSharedSets.add(module.setId);const set=sets.find(s=>s.id===module.setId);warnings.push(`${set?.name||module.name}: společný model nelze bezpečně vyrobit (${error.message}). ${set?.layout==='shared'?'Sestava zůstává zachovaná.':'Zkouším stejné samostatné moduly.'}`);}
+        catch(error){manufacturing.set(signature,false);const set=sets.find(s=>s.id===module.setId);manufacturingFailures.set(module.setId,`${set?.name||module.name}: společný model nelze bezpečně vyrobit (${error.message}).`);}
       }
       if(!manufacturing.get(signature))return;
     }

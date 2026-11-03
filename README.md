@@ -45,9 +45,23 @@ Výpočet má průběh a lze jej zrušit. Přijaté rozvržení můžete celé v
 
 V nabídce **Sady nástrojů** můžete vybrané nástroje označit jako jednu sadu, pojmenovat ji a později změnit členy nebo ji zrušit. Zrušení sady nemaže nástroje. Podobné tvary aplikace také navrhuje automaticky; návrh neznamená jisté určení typu nástroje a můžete jej upravit.
 
-Pro sadu zvolte **Stejné moduly**, **Společný modul** nebo **Automaticky**. Stejné moduly mají společné vnější rozměry a nástroje míří stejným směrem. Společný modul obsahuje celou sadu v přehledném uspořádání. Automatická volba porovná bezpečné varianty. Obrysy, skutečné rozměry a vlastní hloubky nástrojů se nemění. Tisková plocha a zámky mohou společný modul omezit; aplikace uvede důvod, pokud požadovanou variantu nelze použít.
+U vybrané sady nebo jejího společného modulu otevřete **Uložení a pořadí sady**. K dispozici jsou tři varianty:
+
+- **Přehledně podle velikosti**: společný modul s řadami nástrojů ve stejném směru.
+- **Úsporně proti sobě**: společný modul s konturním skládáním; protilehlé otočení se použije, pokud zmenší půdorys v rastru. Počítá se i s výřezy pro prsty a stěnami.
+- **Stejné samostatné moduly**: každý nástroj dostane modul se stejnou šířkou i hloubkou.
+
+Zvolte **Od nejmenšího po největší** nebo **Od největšího po nejmenší** a potvrďte **Použít uložení**. Řazení používá jmenovitou velikost v mm nebo in; bez ní použije délku obrysu pouze pro pořadí. Jmenovitou velikost z fotografie neodhaduje. Změna zachová nástroje, jejich obrysy, hloubky a popisky a jde celá vrátit jedním krokem **Zpět**. Před přeuložením odemkněte všechny moduly sady. Editor členství navíc nabízí rozvržení **Automaticky**, které porovnává bezpečné varianty při chytrém rozvržení.
 
 Režim rozvržení **Sady nástrojů** dává přednost sjednocení sad. Volba **Nejmenší plocha** zachovává původní konturní párování. Sjednocení může zabrat více místa; výsledek tuto změnu ukazuje a lze jej celý vrátit přes **Zpět**. Ručně zadané sady se ukládají s projektem a do JSON.
+
+Referenční principy ukazují [Ernst Wrench Trays](https://www.ernstmfg.com/Wrench-Trays.aspx) pro uspořádání klíčů do řad a [Toolbox Widget](https://toolboxwidget.com/products/toolbox-wrench-organizer) pro samostatné držáky a velikostní štítky.
+
+## Hromadné úpravy
+
+Více nástrojů vyberete zaškrtávacími políčky v seznamu nebo pomocí **Shift/Ctrl+klepnutí** na nástroj v seznamu či na modul v ploše. **Ctrl+A** vybere všechny nástroje a **Esc** výběr zruší. **R** otočí výběr o 90°, **Delete/Backspace** jej smaže. Zkratky nezasahují do psaní v poli ani do otevřeného dialogu.
+
+Panel výběru nabízí také otočení o 180°, přesný posun, společnou hloubku kapes, zamknutí, odemknutí a vytvoření sady. Ve 2D můžete vybrané moduly přetáhnout společně. Přesun a zámek platí pro celý modul včetně ostatních nástrojů v něm; hloubka a smazání se týkají vybraných nástrojů. Kolize, přesahy nebo zamčený člen zabrání neplatnému přesunu či otočení. Každou úspěšnou hromadnou úpravu i celé tažení vrátíte jedním krokem **Zpět**.
 
 ## Ovládání 2D a 3D náhledu
 
@@ -63,7 +77,7 @@ Inzert lze navrhnout i bez fotografování. **Knihovna nástrojů** má složky 
 
 Kategorie **Sady nářadí** nabízí 38 sad podle složení běžně prodávaných sad, například sadu očkoplochých klíčů 6–32 mm (26 ks), imbusy 1,5–10 mm nebo sadu nástrčných hlavic 1/2" 10–32 mm. **Přidat sadu** vloží celou sadu jedním krokem, který jde vrátit přes Zpět. V obsahu sady lze odškrtnout velikosti, které nemáte. Nástroje, které se do šuplíku nevejdou, zůstanou v projektu a aplikace je ohlásí.
 
-Před přidáním sady zvolte **Jeden modul pro celou sadu** (výchozí) nebo **Samostatný modul pro každý nástroj**. Samostatné moduly mají stejné vnější rozměry a nástroje míří stejným směrem. Přidaná sada se objeví i v nabídce **Sady nástrojů**, kde ji lze dále upravovat. Při hromadném přidání zůstanou jednotlivé sady zachované a celé vložení vrátíte jedním krokem **Zpět**. Pokud se nevejdou, aplikace nabídne rozšíření nebo nový šuplík se zachováním skupin a sad; změnu tiskového omezení ukáže zvlášť.
+Před přidáním sady zvolte **Jeden modul pro celou sadu** (výchozí) nebo **Samostatný modul pro každý nástroj**. U společného modulu můžete vybrat přehledné nebo úsporné uložení; obě rozložení nabízejí vzestupné a sestupné pořadí velikostí. Samostatné moduly mají stejné vnější rozměry a nástroje míří stejným směrem. Volby konkrétní sady se pamatují po dobu otevřené aplikace. Přidaná sada se objeví i v nabídce **Sady nástrojů**, kde ji lze dále upravovat. Při hromadném přidání zůstanou jednotlivé sady zachované a celé vložení vrátíte jedním krokem **Zpět**. Pokud se nevejdou, aplikace nabídne rozšíření nebo nový šuplík se zachováním skupin a sad; změnu tiskového omezení ukáže zvlášť.
 
 V rozbalovací nabídce **Upravit měřítko** u katalogového nástroje nebo sady můžete zadat **20–500 %** nebo požadovanou délku. U sady se délka vztahuje k nejdelšímu vybranému nástroji a všechny vybrané obrysy se zvětší či zmenší stejným poměrem. Náhled ukazuje výslednou délku ještě před přidáním nebo uložením do knihovny.
 
@@ -74,6 +88,14 @@ Obrysy z katalogu jsou jmenovité. Konkrétní nástroj se může lišit, proto 
 Novým nástrojům se automaticky připraví dva boční výřezy pro snazší vyjmutí z kapsy. U vybraného nástroje je můžete znovu automaticky umístit, přidat další, upravit jejich polohu a průměr nebo je jednotlivě či všechny odstranit. Změny lze vrátit přes Zpět a ukládají se s projektem i do JSON. Smazané výřezy se při automatickém rozvržení samy neobnovují; u starších nástrojů se přidají až na vaše přání.
 
 Výřezy mají stejnou hloubku jako kapsa nástroje. Jejich prostor se započítává do automatické velikosti modulu a výrobních exportů STL, SVG, DXF i zkušebního PDF. Skutečný naměřený obrys a rozměry nástroje se nemění. U ručně zmenšeného nebo zamčeného modulu musí zbýt dost místa na stěnu; neplatné výřezy je potřeba upravit nebo modul zvětšit.
+
+## Popisky velikostí v modelu
+
+U vybraného nástroje upravte **Popisek velikosti**, například `13 mm`, `1/2 in` nebo `PH2`. Katalog předává jmenovité velikosti; u fotografie zadejte skutečnou velikost sami. Změna měřítka obrysu jmenovitou velikost nemění. Vlastní text má přednost a ukládá se do JSON.
+
+Volbu **Popisky velikostí v modelu** zapnete v rozměrech šuplíku, u vybraného nástroje nebo při exportu STL. Text se skutečně vyryje do výrobní geometrie do hloubky 0,35 mm. Plné provedení používá horní plochu dílu; úsporné provedení vytvoří nízký štítek spojený se dnem stejného tělesa. Umístění popisku respektuje kapsy, výřezy pro prsty a stěny.
+
+Tiskové písmo podporuje čísla, latinku bez diakritiky a běžné značky rozměrů. Pokud chybí velikost, text obsahuje nepodporované znaky nebo u kapsy nezbývá bezpečné místo, popisek se vynechá. Nastavení šuplíku a export zobrazí počet vynechaných popisků a konkrétní důvody.
 
 ## Výroba a modularita
 
