@@ -46,6 +46,7 @@ protectedProject.tools.filter(t=>t.moduleId===protectedProject.modules[0].id).fo
 protectedProject.modules[1].sizeMode='manual';
 localStorage.setItem('suplik-studio-projects-v1',JSON.stringify([fixture('smart-english',57),fixture('smart-normal',41),fixture('smart-cancel',43),fixture('smart-stale',44),fixture('smart-failure',45),protectedProject,fixture('smart-limited',53,{count:25,width:1260,height:1260}),fixture('smart-partial',42,{width:210,height:210})]));
 localStorage.setItem('suplik-studio-current',JSON.stringify('smart-normal'));
+localStorage.setItem('suplik-studio-smart-mode',JSON.stringify('compact'));
 localStorage.setItem('suplik-studio-lang',JSON.stringify('cs'));
 localStorage.setItem('suplik-studio-unit',JSON.stringify('mm'));
 const $=selector=>win.document.querySelector(selector);
