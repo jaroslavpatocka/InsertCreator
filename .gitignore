@@ -1,0 +1,6 @@
+node_modules/
+*.tar.gz
+*.tgz
+.sites-runtime/
+.DS_Store
+Thumbs.db

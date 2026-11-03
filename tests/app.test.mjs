@@ -1,0 +1,62 @@
+import {test} from 'node:test';
+import assert from 'node:assert/strict';
+import fs from 'node:fs/promises';
+import {Window} from 'happy-dom';
+import {createCanvas,ImageData} from '@napi-rs/canvas';
+
+const win=new Window({url:'http://localhost:5173'});
+const html=await fs.readFile(new URL('../dist/index.html',import.meta.url),'utf8');
+win.document.write(html.replace(/<script[^>]*>[\s\S]*?<\/script>/g,''));
+for(const key of ['window','document','localStorage','Image','ResizeObserver','HTMLElement'])globalThis[key]=key==='window'?win:win[key];
+Object.defineProperty(globalThis,'navigator',{value:win.navigator,configurable:true});
+globalThis.ImageData=ImageData;
+globalThis.requestAnimationFrame=callback=>setTimeout(()=>callback(Date.now()),0);
+globalThis.cancelAnimationFrame=clearTimeout;
+win.scrollTo=()=>{};
+const canvases=new WeakMap();
+const actual=element=>{
+  if(!canvases.has(element))canvases.set(element,createCanvas(element.width||300,element.height||150));
+  const canvas=canvases.get(element);
+  if(canvas.width!==element.width)canvas.width=element.width;
+  if(canvas.height!==element.height)canvas.height=element.height;
+  return canvas;
+};
+win.HTMLCanvasElement.prototype.getContext=function(type){
+  if(type!=='2d')return null;
+  const ctx=actual(this).getContext('2d');
+  return new Proxy(ctx,{get:(t,key)=>key==='drawImage'?((image,...args)=>t.drawImage(image instanceof win.HTMLCanvasElement?actual(image):image,...args)):typeof t[key]==='function'?t[key].bind(t):t[key],set:(t,k,v)=>(t[k]=v,true)});
+};
+const $=selector=>win.document.querySelector(selector);
+const click=selector=>{const el=$(selector);assert.ok(el,'Missing '+selector);el.click();};
+const waitFor=async fn=>{const start=Date.now();while(!fn()){if(Date.now()-start>12000)throw Error('Timed out waiting for UI');await new Promise(r=>setTimeout(r,15));}};
+const action=name=>click(`#app [data-action="${name}"]`);
+const saved=()=>JSON.parse(localStorage.getItem('suplik-studio-projects-v1')).find(p=>p.id===JSON.parse(localStorage.getItem('suplik-studio-current')));
+await import('../dist/app.js');
+
+test('editor workflows and actual photo pipeline integrate with persistent projects',async()=>{
+  assert.equal(win.document.querySelectorAll('.tool-row').length,6);
+  assert.equal(win.document.querySelectorAll('#board-svg .module').length,6);
+  assert.match($('#app').textContent,/Dílna · ruční nářadí/);
+  action('3d');assert.ok(win.document.querySelectorAll('#board-svg polygon').length>6);action('2d');
+  action('expand');const expandWidth=$('[data-field=expandWidth]');expandWidth.value='588';click('[data-confirm]');
+  assert.equal(saved().width,588);assert.ok(saved().modules.every(m=>m.locked));
+  action('library');click('[data-library-add="0"]');assert.equal(saved().tools.length,7);
+  const lockedPositions=saved().modules.filter(m=>m.locked).map(m=>[m.id,m.x,m.y]);
+  action('auto');assert.deepEqual(saved().modules.filter(m=>m.locked).map(m=>[m.id,m.x,m.y]),lockedPositions);
+  action('undo');assert.equal(saved().tools.length,7);action('redo');
+  action('capture');click('#sample-scan');await waitFor(()=>$('#calibration-canvas'));
+  assert.equal($('#calibration-canvas').width,1000);
+  click('#capture-continue');await waitFor(()=>$('#trace-items input[type=checkbox]'));
+  assert.equal(win.document.querySelectorAll('#trace-items input[type=checkbox]').length,2,'Actual sample raster must recover 2 separate tools');
+  assert.match($('#trace-summary').textContent,/2/);
+  click('#trace-mask');click('#capture-add');await waitFor(()=>!$('#modal-root').children.length);
+  assert.equal(saved().tools.length,9);
+  assert.ok(saved().tools.at(-1).points.length>10);
+  assert.ok(saved().tools.at(-1).points.every(p=>Number.isFinite(p.x)&&p.x>=0));
+  assert.equal(win.document.querySelectorAll('.tool-row').length,9);
+  action('export');assert.ok($('[data-do-export]'));click('[data-format=svg]');assert.match($('.modal-body').textContent,/Černá/);click('[data-modal-close]');
+  action('projects');click('[data-new]');assert.equal(saved().tools.length,0);assert.match($('#board-area').textContent,/Začněte/);
+  action('library');assert.ok(win.document.querySelectorAll('.library-item').length>=8);click('[data-modal-close]');
+  action('help');assert.equal(win.document.querySelectorAll('.modal-body a[target=_blank]').length,4);click('[data-modal-close-extra]');
+  await win.happyDOM.close();
+});
