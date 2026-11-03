@@ -141,7 +141,7 @@ export function autoArrange(project,{preserveLocked=true}={}) {
   const lockedIds=new Set(oldModules.filter(m=>!tools.some(t=>t.moduleId===m.id)||(preserveLocked&&(m.locked||tools.some(t=>t.moduleId===m.id&&t.locked)))).map(m=>m.id));
   const modules=oldModules.filter(m=>lockedIds.has(m.id));
   const reservedTools=new Set(tools.filter(t=>lockedIds.has(t.moduleId)||invalid.has(t.id)).map(t=>t.id));
-  for(const tool of tools.filter(t=>invalid.has(t.id)&&!lockedIds.has(t.moduleId)&&!oldModules.some(m=>m.id===t.moduleId&&m.sizeMode==='manual'))){tool.moduleId=null;tool.x=n(project.width)+grid;tool.y=0;}
+  for(const tool of tools.filter(t=>invalid.has(t.id)&&!lockedIds.has(t.moduleId)&&!oldModules.some(m=>m.id===t.moduleId&&(m.sizeMode==='manual'||m.grouped===true)))){tool.moduleId=null;tool.x=n(project.width)+grid;tool.y=0;}
   // A fixed tool without a module receives a stationary enclosing module.
   for(const t of tools.filter(t=>preserveLocked&&t.locked&&!reservedTools.has(t.id))){
     const b=footprints.get(t.id),padding=n(project.wall,2.4)+.25;
@@ -149,18 +149,27 @@ export function autoArrange(project,{preserveLocked=true}={}) {
     const module={id:t.moduleId||`mod-${t.id}`,name:t.name,x,y,width:Math.ceil((b.maxX+padding-x)/grid)*grid,height:Math.ceil((b.maxY+padding-y)/grid)*grid,locked:true,sizeMode:'auto'};
     t.moduleId=module.id;modules.push(module);reservedTools.add(t.id);
   }
-  // A manual footprint is a movable group; size selection does not lock position.
-  const manual=oldModules.filter(m=>m.sizeMode==='manual'&&!lockedIds.has(m.id)).sort((a,b)=>b.width*b.height-a.width*a.height||String(a.id).localeCompare(String(b.id)));
-  for(const original of manual){
-    const own=tools.filter(t=>t.moduleId===original.id);let position=null;
-    const fitsBed=!project.limitToBed||((original.width-.5<=n(project.bedWidth,220)&&original.height-.5<=n(project.bedHeight,220))||(original.height-.5<=n(project.bedWidth,220)&&original.width-.5<=n(project.bedHeight,220)));
-    if(fitsBed&&!own.some(t=>invalid.has(t.id)))for(let y=0;y+original.height<=n(project.height)+EPS&&!position;y+=grid)for(let x=0;x+original.width<=n(project.width)+EPS;x+=grid){
-      const candidate={x,y,width:original.width,height:original.height};
+  // Manual sizes and explicitly shared modules remain movable, rigid groups.
+  const groups=oldModules.filter(m=>(m.sizeMode==='manual'||m.grouped===true)&&!lockedIds.has(m.id)).map(original=>{
+    const own=tools.filter(t=>t.moduleId===original.id);let content=null,width=original.width,height=original.height,valid=!own.some(t=>invalid.has(t.id));
+    if(valid&&original.grouped===true&&original.sizeMode!=='manual'){
+      content=box(own.flatMap(t=>{const b=footprints.get(t.id);return[{x:b.x,y:b.y},{x:b.maxX,y:b.maxY}];}));
+      const padding=n(project.wall,2.4)+.25;
+      width=Math.ceil((content.width+2*padding-EPS)/grid)*grid;height=Math.ceil((content.height+2*padding-EPS)/grid)*grid;
+      if(width>3000||height>3000){valid=false;width=original.width;height=original.height;content=null;}
+    }
+    return{original,own,width,height,content,valid};
+  }).sort((a,b)=>b.width*b.height-a.width*a.height||String(a.original.id).localeCompare(String(b.original.id)));
+  for(const {original,own,width,height,content,valid} of groups){
+    let position=null;
+    const fitsBed=!project.limitToBed||((width-.5<=n(project.bedWidth,220)&&height-.5<=n(project.bedHeight,220))||(height-.5<=n(project.bedWidth,220)&&width-.5<=n(project.bedHeight,220)));
+    if(fitsBed&&valid)for(let y=0;y+height<=n(project.height)+EPS&&!position;y+=grid)for(let x=0;x+width<=n(project.width)+EPS;x+=grid){
+      const candidate={x,y,width,height};
       if(!modules.some(m=>intersectsRect(candidate,m))){position={x,y};break;}
     }
     // Keep the group and its size reloadable even when the drawer is too small.
-    const module={...original,...(position||{x:n(project.width)+grid,y:0})};
-    const dx=module.x-original.x,dy=module.y-original.y;
+    const module={...original,width,height,...(position||{x:n(project.width)+grid,y:0})};
+    const dx=content?module.x+(width-content.width)/2-content.x:module.x-original.x,dy=content?module.y+(height-content.height)/2-content.y:module.y-original.y;
     for(const tool of own){tool.x=n(tool.x)+dx;tool.y=n(tool.y)+dy;reservedTools.add(tool.id);if(!position)markUnplaced(tool.id);}
     modules.push(module);
   }

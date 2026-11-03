@@ -20,6 +20,7 @@ Aktivní projekt je v tomto adresáři. ZIP se zdroji a dva deployment archivy v
 | Rozpoznávání | `dist/recognize.js`, `dist/recognize-worker.js` | Souběh klasické a neuronové analýzy, klasický worker a fallback |
 | Neuronová inference | `dist/neural.js`, `dist/neural-worker.js`, `dist/neural-core.js` | Sdílený worker, fronta inference, ONNX session, preprocessing a masky |
 | Geometrie a výroba | `dist/geometry.js` | Transformace, rozvržení, validace sestavy, SVG/DXF/ZIP a rozhraní STL |
+| Chytré rozvržení | `dist/smart-layout.js`, `dist/smart-layout-client.js`, `dist/smart-layout-worker.js` | Hledání orientací a společných modulů, průběh výpočtu a zrušení mimo hlavní vlákno |
 | Konstrukce pro tisk — souběžný vývoj | `dist/print-geometry.js` | Konstrukce sítě, konfigurace tisku, kontrola tiskové plochy, objem a binární STL |
 | Náhled sítě | `dist/preview3d.js` | Ortografická 3D kamera, projekce skutečné STL sítě, viditelnost stěn a cache geometrie |
 | Ovládání kamery | `dist/view-controls.js` | Levé tažení pro orbit, pravé pro posun a kolečko pro zoom kolem kurzoru |
@@ -112,6 +113,8 @@ Geometrická vrstva nemá závislost na DOM. Používá lokální Clipper pro po
 - JSON uchovává editovatelný projekt a lze jej uložit i pro výrobně neplatnou sestavu.
 
 Souběžné vlákno rozšiřuje tisková nastavení, typy dna, odhady tisku a zkušební výstupy. Jejich rozpracovaná pole `printMode`, `bottomMode`, `bedWidth/bedHeight`, `limitToBed` a parametry magnetů nelze považovat za samostatně dokončenou funkci jen podle přítomnosti v datovém modelu.
+
+`smartArrange()` hledá vhodné orientace obrysů a menší společné moduly. Optimalizace používá úplné kapsy včetně výřezů pro prsty, zachovává zámky a ruční skupiny a před přijetím kontroluje výrobní geometrii. Odpovídající moduly mají volitelné `grouped: true`; normalizace JSON a běžné `autoArrange()` tuto skupinu zachovávají. Výpočet běží přes samostatný worker a klient ruší nebo odmítá zastaralé výsledky. Přijetí je jediná transakce historie. Hlášená úspora porovnává součet vnějších obdélníkových půdorysů modulů (šířka − 0,5 mm) × (hloubka − 0,5 mm); hledání má omezený rozsah a není důkazem globálního optima.
 
 ## Spuštění a offline režim
 

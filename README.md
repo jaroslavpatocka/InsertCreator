@@ -21,6 +21,12 @@ Otevřete `http://localhost:5173`. V PowerShellu s blokovanými skripty použijt
 5. Spusťte automatické rozvržení. Velikost nového modulu se přizpůsobí nástroji včetně vůle a stěn. U vybraného modulu můžete zadat vlastní šířku a hloubku nebo znovu použít automatickou velikost podle nástroje. Změna modulu neškáluje obrys nástroje. Ručně zadané rozměry zůstávají zachované při uložení i dalším rozvržení. Moduly lze přesouvat a nástroje otáčet; zamknuté polohy zůstanou při dalším rozvržení na místě.
 6. Vyřešte hlášené kolize, přesahy a neplatné hloubky. Potom exportujte podklady.
 
+## Chytré rozvržení
+
+Tlačítko **Chytré rozvržení** hledá úspornější orientaci nástrojů a kombinuje vhodné nástroje do společných modulů. Porovnává skutečné tvary kapes včetně vůle a prostoru výřezů pro prsty. Mezi kapsami ponechává alespoň větší z hodnot **stěna** a **mezera**. Zámky, ruční rozměry modulů a prázdné výplně respektuje. Ručně smazané výřezy pro prsty neobnovuje.
+
+Výpočet má průběh a lze jej zrušit. Přijaté rozvržení můžete celé vrátit jedním krokem **Zpět**; společné moduly a jejich výřezy zůstávají upravitelné a ukládají se do JSON. Běžné **Auto rozložení** společné moduly zachová. Výsledek uvádí změnu součtu vnějších půdorysů modulů (jmenovité rozměry minus montážní mezera 0,5 mm), nikoli změnu fyzické velikosti šuplíku. Jde o omezené hledání pro nejvýše 24 nástrojů a přiměřeně složité obrysy; nezaručuje matematicky nejmenší možné řešení. Příliš velkou sestavu ponechá beze změny a uvede důvod.
+
 ## Ovládání 3D náhledu
 
 V režimu **3D** otáčíte pohledem tažením levým tlačítkem myši, posouváte jej tažením pravým tlačítkem a kolečkem přibližujete či oddalujete. Funguje to nad modelem i nad prázdnou částí plochy. Tlačítka přiblížení ovládají aktuální pohled; **Zobrazit vše** vrátí výchozí kameru. Přepnutí do 2D a zpět zachová 3D pohled, otevření jiného šuplíku jej obnoví.
