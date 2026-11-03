@@ -159,7 +159,7 @@ function sceneFor(project){
 }
 
 /** Orthographic orbit of the actual STL; framing is independent of yaw/pitch. */
-export function printPreview(project,selected,selectedModule,camera={},viewport={width:1000,height:600}){
+export function printPreview(project,selected,selectedModule,camera={},viewport={width:1000,height:600},selectedToolIds=[]){
   project=project||{};
   const scene=sceneFor(project),state=normalizeCamera3D(camera),size=viewportSize(viewport),aspect=size.width/size.height;
   const width=scene.fitSize*Math.max(1,aspect)/state.zoom,height=scene.fitSize*Math.max(1,1/aspect)/state.zoom;
@@ -171,7 +171,7 @@ export function printPreview(project,selected,selectedModule,camera={},viewport=
   const projectPoint=point=>{const p=relative(point);return{x:dot(p,right),y:dot(p,down)};};
   const polygon=points=>points.map(point=>{const p=projectPoint(point);return`${p.x.toFixed(3)},${p.y.toFixed(3)}`;}).join(' ');
   const tools=Array.isArray(project.tools)?project.tools:[];
-  const activeIds=new Set([selectedModule,...tools.filter(tool=>tool.id===selected).map(tool=>tool.moduleId)]);
+  const selectedTools=new Set(selectedToolIds),activeIds=new Set([selectedModule,...tools.filter(tool=>tool.id===selected||selectedTools.has(tool.id)).map(tool=>tool.moduleId)]);
   const faces=painterFaces(scene.painter,towards);
   // Keep the drawer reference behind the mesh, including views from underneath.
   let html=`<polygon data-reference="drawer" points="${polygon(scene.reference)}" fill="#eef3e8" fill-opacity=".5" stroke="#b9c9a8" stroke-width="1" vector-effect="non-scaling-stroke"/>`;
@@ -179,13 +179,13 @@ export function printPreview(project,selected,selectedModule,camera={},viewport=
   // Same-color subpixel overlap seals antialias cracks between render fragments.
   for(const {face,module,facing,points} of faces){
     const light=clamp(42+Math.max(0,dot(face.normal,sun))*22+facing*15,40,82),color=activeIds.has(module.id)?`hsl(39 47% ${light.toFixed(1)}%)`:`hsl(88 23% ${light.toFixed(1)}%)`;
-    html+=`<polygon data-module="${esc(module.id)}" data-face-index="${face.index}" points="${polygon(points)}" fill="${color}" stroke="${color}" stroke-width=".6" vector-effect="non-scaling-stroke" aria-label="${esc(module.name)}"/>`;
+    html+=`<polygon data-module="${esc(module.id)}" data-face-index="${face.index}" points="${polygon(points)}" fill="${color}" stroke="${color}" stroke-width=".6" vector-effect="non-scaling-stroke" aria-label="${esc(module.name)}" data-module-selected="${activeIds.has(module.id)}"/>`;
   }
   for(const module of scene.modules.filter(module=>module.wire)){
     const color=activeIds.has(module.id)?'#bf8d35':'#b56c52';
     const edges=[[0,1],[1,2],[2,3],[3,0],[4,5],[5,6],[6,7],[7,4],[0,4],[1,5],[2,6],[3,7]];
     const lines=edges.map(([a,b])=>{const p=projectPoint(module.wire[a]),q=projectPoint(module.wire[b]);return`M${p.x.toFixed(3)} ${p.y.toFixed(3)}L${q.x.toFixed(3)} ${q.y.toFixed(3)}`;}).join('');
-    html+=`<g data-module="${esc(module.id)}" data-invalid-module="true" role="button" tabindex="0" aria-label="${esc(module.name)} — neplatný modul"><path d="${lines}" fill="none" stroke="${color}" stroke-width="1.2" stroke-dasharray="5 3" vector-effect="non-scaling-stroke"/></g>`;
+    html+=`<g data-module="${esc(module.id)}" data-invalid-module="true" role="button" tabindex="0" aria-label="${esc(module.name)} — neplatný modul" data-module-selected="${activeIds.has(module.id)}"><path d="${lines}" fill="none" stroke="${color}" stroke-width="1.2" stroke-dasharray="5 3" vector-effect="non-scaling-stroke"/></g>`;
   }
   const font=height/70,hudX=state.panX,hudY=state.panY+height/2-font;
   html+=`<text x="${hudX}" y="${hudY}" text-anchor="middle" font-size="${font}" fill="#6f805e">${esc(t('Skutečná geometrie STL · {mode}',{mode:t(project.printMode==='light'?'úsporný tisk':'plný blok')}))}</text>`;

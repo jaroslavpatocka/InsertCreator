@@ -65,11 +65,17 @@ Referenční principy ukazují [Ernst Wrench Trays](https://www.ernstmfg.com/Wre
 
 ## Hromadné úpravy
 
-Více nástrojů vyberete zaškrtávacími políčky v seznamu nebo pomocí **Shift/Ctrl+klepnutí** na nástroj v seznamu či na modul v ploše. **Ctrl+A** vybere všechny nástroje a **Esc** výběr zruší. **R** otočí výběr o 90°, **Delete/Backspace** jej smaže. Zkratky nezasahují do psaní v poli ani do otevřeného dialogu.
+Více nástrojů vyberete zaškrtávacími políčky v seznamu nebo pomocí **Shift/Ctrl/Cmd+klepnutí** na konkrétní obrys či položku nástroje. Všechny označené obrysy, řádky a členové modulu mají stejné zvýraznění. Obyčejné klepnutí bez modifikátoru ukončí hromadný výběr a otevře vlastnosti jednotlivého nástroje. **Ctrl/Cmd+A** vybere všechny nástroje a **Esc** výběr zruší. **R** otočí výběr o 90°, **Delete/Backspace** jej smaže. Zkratky nezasahují do psaní v poli ani do otevřeného dialogu.
 
-Panel výběru nabízí také otočení o 180°, přesný posun, společnou hloubku kapes, zamknutí, odemknutí a vytvoření sady. Ve 2D můžete vybrané moduly přetáhnout společně. Přesun a zámek platí pro celý modul včetně ostatních nástrojů v něm; hloubka a smazání se týkají vybraných nástrojů. Kolize, přesahy nebo zamčený člen zabrání neplatnému přesunu či otočení. Každou úspěšnou hromadnou úpravu i celé tažení vrátíte jedním krokem **Zpět**.
+Panel výběru je nahoře v pravé nabídce a zůstává dostupný při posouvání nastavení. Hned nabízí **Otočit o 90°**, **Úhel otočení…**, **Přesunout vybrané** a **Smazat vybrané**. Nabídka **Další úpravy** obsahuje otočení o 180°, zarovnání a rozestupy, společnou hloubku kapes, výřezy pro prsty, zámky a vytvoření sady. Při hromadném výběru pravý panel ukazuje jeho skutečné členy; klepnutím na jméno přejdete k vlastnostem tohoto nástroje.
+
+Ve 2D můžete vybrané moduly přetáhnout společně. V přesném přesunu lze zvolit celé moduly nebo samotné nástroje uvnitř nich. Zámek platí pro celý modul včetně ostatních nástrojů; hloubka a smazání se týkají vybraných nástrojů. Kolize, přesahy nebo zamčený člen zabrání neplatnému přesunu či otočení. Každou úspěšnou hromadnou úpravu i celé tažení vrátíte jedním krokem **Zpět**.
 
 ## Ovládání 2D a 3D náhledu
+
+Na široké obrazovce zůstává náhled šuplíku viditelný a pravé nastavení má vlastní posouvání. Výška ploch vychází ze skutečného místa pod záhlavím a přizpůsobuje se velikosti okna i posunu stránky. Seznam **Nástroje v modulu** je kompaktní a posouvá se uvnitř svého rámečku. Základní vlastnosti jsou nahoře; pokročilé volby jsou seskupené do pojmenovaných rozbalovacích sekcí. Při překreslení stejného kontextu zůstane zachované otevření sekcí i místo v nastavení. Při výběru klávesnicí zůstane zaměření na stejném zaškrtávacím políčku.
+
+Rozložení používá principy [viditelných akcí místo vybavování z paměti](https://www.nngroup.com/articles/recognition-and-recall/), [kontextových akcí pro označené položky](https://m1.material.io/patterns/selection.html) a [nezastíněného zaměření ovládacích prvků](https://www.w3.org/WAI/WCAG22/Understanding/focus-not-obscured-minimum.html).
 
 V režimu **2D** posouváte pohled tažením pravým tlačítkem myši a kolečkem přibližujete či oddalujete kolem kurzoru. Levé tlačítko slouží k výběru, přesunu modulů a změně jejich velikosti přes úchyty. **Zobrazit vše** obnoví výchozí pohled.
 
