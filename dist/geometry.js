@@ -1,5 +1,5 @@
-import earcut from './vendor/earcut.js';
 import Clipper from './vendor/clipper.js';
+import {buildPrintTriangles,encodeSTL,trianglesVolume,printConfig,validatePrintBed} from './print-geometry.js';
 
 const EPS = 1e-7;
 const copy = value => JSON.parse(JSON.stringify(value));
@@ -60,12 +60,27 @@ function pointInside(p,poly) {
   return inside;
 }
 function polygonsOverlap(a,b) {
-  if(!a.length||!b.length||!intersectsRect(box(a),box(b)))return false;
+  // A shared edge or vertex also makes separate pocket meshes invalid.
+  if(!a.length||!b.length||!intersectsRect(box(a),box(b),-EPS))return false;
   for(let i=0;i<a.length;i++)for(let j=0;j<b.length;j++){
     const p=a[i],q=a[(i+1)%a.length],r=b[j],s=b[(j+1)%b.length];
     if(cross(p,q,r)*cross(p,q,s)<-EPS && cross(r,s,p)*cross(r,s,q)<-EPS)return true;
   }
   return a.some(p=>pointInside(p,b))||b.some(p=>pointInside(p,a));
+}
+function pointSegmentDistanceSquared(p,a,b) {
+  const dx=b.x-a.x,dy=b.y-a.y,length=dx*dx+dy*dy;
+  const t=length?Math.max(0,Math.min(1,((p.x-a.x)*dx+(p.y-a.y)*dy)/length)):0;
+  return (p.x-a.x-t*dx)**2+(p.y-a.y-t*dy)**2;
+}
+function polygonsTooClose(a,b,distance) {
+  if(distance<=0||!a.length||!b.length||!intersectsRect(box(a),box(b),-distance))return false;
+  const limit=distance*distance;
+  for(let i=0;i<a.length;i++)for(let j=0;j<b.length;j++){
+    const p=a[i],q=a[(i+1)%a.length],r=b[j],s=b[(j+1)%b.length];
+    if(pointSegmentDistanceSquared(p,r,s)<limit||pointSegmentDistanceSquared(r,p,q)<limit)return true;
+  }
+  return false;
 }
 function selfIntersects(p) {
   const on=(a,b,c)=>Math.abs(cross(a,b,c))<EPS&&c.x>=Math.min(a.x,b.x)-EPS&&c.x<=Math.max(a.x,b.x)+EPS&&c.y>=Math.min(a.y,b.y)-EPS&&c.y<=Math.max(a.y,b.y)+EPS;
@@ -75,6 +90,40 @@ function selfIntersects(p) {
     if((cross(a,b,c)*cross(a,b,d)<-EPS&&cross(c,d,a)*cross(c,d,b)<-EPS)||on(a,b,c)||on(a,b,d)||on(c,d,a)||on(c,d,b))return true;
   }
   return false;
+}
+
+/** Resize the nominal footprint without scaling or rotating any tool contour. */
+export function resizeModule(project,moduleId,{width,height,mode='manual'}={}) {
+  if(!['manual','auto'].includes(mode))throw new Error('Zvolte ruční nebo automatickou velikost modulu.');
+  const next=copy(project),module=(next.modules||[]).find(m=>m.id===moduleId);
+  if(!module)throw new Error('Vybraný modul neexistuje.');
+  const tools=(next.tools||[]).filter(t=>t.moduleId===moduleId),clearance=n(next.clearance,.8);
+  const points=tools.flatMap(t=>transformedPoints(t,clearance)),content=points.length?box(points):null;
+  if(mode==='auto'){
+    if(!tools.length)throw new Error('Automatickou velikost prázdného modulu nelze určit. Zadejte jeho rozměry.');
+    if(!content)throw new Error('Nástroj nemá platnou konturu pro určení velikosti modulu.');
+    const grid=n(next.grid,42),padding=n(next.wall,2.4)+.25;
+    if(grid<=0)throw new Error('Rastr modulů musí být kladný.');
+    width=Math.ceil((content.width+2*padding-EPS)/grid)*grid;
+    height=Math.ceil((content.height+2*padding-EPS)/grid)*grid;
+  }
+  width=Number(width);height=Number(height);
+  if(!Number.isFinite(width)||!Number.isFinite(height)||width<5||height<5||width>3000||height>3000)throw new Error('Rozměry modulu musí být od 5 do 3000 mm.');
+  module.width=width;module.height=height;module.sizeMode=mode;
+  if(content){
+    const dx=module.x+(width-content.width)/2-content.x,dy=module.y+(height-content.height)/2-content.y;
+    for(const tool of tools){tool.x=n(tool.x)+dx;tool.y=n(tool.y)+dy;}
+  }
+  const issue=validateLayout({...next,modules:[module],tools})[0];
+  if(issue)throw new Error(issue.message);
+  const collision=next.modules.find(m=>m.id!==moduleId&&intersectsRect(module,m,.001));
+  if(collision)throw new Error(`Modul „${module.name||module.id}“ by se překrýval s modulem „${collision.name||collision.id}“.`);
+  if(next.bottomMode==='grid'){
+    if(Math.abs(n(next.grid,42)-42)>.001)throw new Error('Gridfinity patky vyžadují rastr přesně 42 mm.');
+    if([module.x,module.y,width,height].some(value=>Math.abs(value/42-Math.round(value/42))>.0001))throw new Error('Rozměry i poloha modulu musí být v násobcích 42 mm pro Gridfinity patky.');
+  }
+  validatePrintBed(next,[module]);
+  return next;
 }
 
 /** Deterministic grid packing. Locked modules and every tool inside them stay in place. */
@@ -88,17 +137,33 @@ export function autoArrange(project,{preserveLocked=true}={}) {
   for(const t of tools.filter(t=>preserveLocked&&t.locked&&!reservedTools.has(t.id))){
     const b=bounds(t),padding=n(project.wall,2.4)+n(project.clearance,.8)+.25;
     const x=Math.floor((b.x-padding)/grid)*grid,y=Math.floor((b.y-padding)/grid)*grid;
-    const module={id:t.moduleId||`mod-${t.id}`,name:t.name,x,y,width:Math.ceil((b.maxX+padding-x)/grid)*grid,height:Math.ceil((b.maxY+padding-y)/grid)*grid,locked:true};
+    const module={id:t.moduleId||`mod-${t.id}`,name:t.name,x,y,width:Math.ceil((b.maxX+padding-x)/grid)*grid,height:Math.ceil((b.maxY+padding-y)/grid)*grid,locked:true,sizeMode:'auto'};
     t.moduleId=module.id;modules.push(module);reservedTools.add(t.id);
+  }
+  const unplaced=[];
+  // A manual footprint is a movable group; size selection does not lock position.
+  const manual=oldModules.filter(m=>m.sizeMode==='manual'&&!lockedIds.has(m.id)).sort((a,b)=>b.width*b.height-a.width*a.height||String(a.id).localeCompare(String(b.id)));
+  for(const original of manual){
+    const own=tools.filter(t=>t.moduleId===original.id);let position=null;
+    const fitsBed=!project.limitToBed||((original.width-.5<=n(project.bedWidth,220)&&original.height-.5<=n(project.bedHeight,220))||(original.height-.5<=n(project.bedWidth,220)&&original.width-.5<=n(project.bedHeight,220)));
+    if(fitsBed)for(let y=0;y+original.height<=n(project.height)+EPS&&!position;y+=grid)for(let x=0;x+original.width<=n(project.width)+EPS;x+=grid){
+      const candidate={x,y,width:original.width,height:original.height};
+      if(!modules.some(m=>intersectsRect(candidate,m))){position={x,y};break;}
+    }
+    // Keep the group and its size reloadable even when the drawer is too small.
+    const module={...original,...(position||{x:n(project.width)+grid,y:0})};
+    const dx=module.x-original.x,dy=module.y-original.y;
+    for(const tool of own){tool.x=n(tool.x)+dx;tool.y=n(tool.y)+dy;reservedTools.add(tool.id);if(!position)unplaced.push(tool.id);}
+    modules.push(module);
   }
   const padding=Math.max(n(project.wall,2.4),n(project.gap,3)/2)+.25;
   const pending=tools.filter(t=>!reservedTools.has(t.id)).sort((a,b)=>{const x=bounds(a),y=bounds(b);return y.width*y.height-x.width*x.height||String(a.id).localeCompare(String(b.id));});
-  const unplaced=[];
   for(const tool of pending){
     const candidates=[];
     for(const rotation of [n(tool.rotation),n(tool.rotation)+90]){
       const b=box(transformedPoints({...tool,x:0,y:0,rotation},n(project.clearance,.8))),width=Math.ceil((b.width+2*padding)/grid)*grid,height=Math.ceil((b.height+2*padding)/grid)*grid;
       if(width>n(project.width)||height>n(project.height))continue;
+      if(project.limitToBed&&!((width-.5<=n(project.bedWidth,220)&&height-.5<=n(project.bedHeight,220))||(height-.5<=n(project.bedWidth,220)&&width-.5<=n(project.bedHeight,220))))continue;
       for(let y=0;y+height<=n(project.height)+EPS;y+=grid){
         for(let x=0;x+width<=n(project.width)+EPS;x+=grid){
           const candidate={x,y,width,height,rotation,b};
@@ -114,7 +179,7 @@ export function autoArrange(project,{preserveLocked=true}={}) {
     const chosen=candidates[0];
     if(!chosen){tool.moduleId=null;tool.x=n(project.width)+grid;tool.y=unplaced.reduce((y,id)=>y+bounds(tools.find(t=>t.id===id)).height+grid,0);unplaced.push(tool.id);continue;}
     const id=tool.moduleId&&!modules.some(m=>m.id===tool.moduleId)?tool.moduleId:`mod-${tool.id}`;
-    const module={id,name:tool.name,x:chosen.x,y:chosen.y,width:chosen.width,height:chosen.height,locked:false};
+    const module={id,name:tool.name,x:chosen.x,y:chosen.y,width:chosen.width,height:chosen.height,locked:false,sizeMode:'auto'};
     modules.push(module);
     tool.moduleId=id;tool.rotation=((chosen.rotation%360)+360)%360;
     tool.x=module.x+(module.width-chosen.b.width)/2-chosen.b.x;tool.y=module.y+(module.height-chosen.b.height)/2-chosen.b.y;
@@ -139,7 +204,11 @@ export function validateLayout(project) {
     else if(poly.some(p=>p.x<m.x+wall+.25-.001||p.y<m.y+wall+.25-.001||p.x>m.x+m.width-wall-.25+.001||p.y>m.y+m.height-wall-.25+.001))issues.push({type:'outside',ids:[t.id,m.id],message:`Kolem „${t.name}“ není dost místa na stěnu. Zvětšete modul nebo spusťte rozvržení.`});
     if(!(n(t.depth,10)>0&&n(t.depth,10)<=height-base+.001))issues.push({type:'depth',ids:[t.id],message:`Hloubka kapsy „${t.name}“ musí být větší než 0 a nejvýše ${(height-base).toFixed(1)} mm.`});
   }
-  for(let i=0;i<tools.length;i++)for(let j=i+1;j<tools.length;j++)if(polygonsOverlap(polygons.get(tools[i].id),polygons.get(tools[j].id)))issues.push({type:'overlap',ids:[tools[i].id,tools[j].id],message:`Kapsy „${tools[i].name}“ a „${tools[j].name}“ se překrývají.`});
+  for(let i=0;i<tools.length;i++)for(let j=i+1;j<tools.length;j++){
+    const a=tools[i],b=tools[j],pa=polygons.get(a.id),pb=polygons.get(b.id);
+    if(polygonsOverlap(pa,pb))issues.push({type:'overlap',ids:[a.id,b.id],message:`Kapsy „${a.name}“ a „${b.name}“ se překrývají nebo dotýkají.`});
+    else if(a.moduleId&&a.moduleId===b.moduleId&&polygonsTooClose(pa,pb,wall-.001))issues.push({type:'overlap',ids:[a.id,b.id],message:`Mezi kapsami „${a.name}“ a „${b.name}“ není dost místa na stěnu ${wall} mm.`});
+  }
   return issues;
 }
 function selected(project,moduleId) {
@@ -169,35 +238,31 @@ export function exportDXF(project,{moduleId=null}={}) {
   add(0,'ENDSEC');add(0,'EOF');return lines.join('\r\n')+'\r\n';
 }
 
-/** Binary STL, millimetres. Each module is a watertight solid with real recessed pockets. */
-export function exportSTL(project,{moduleId=null}={}) {
-  const {modules,tools,origin}=selected(project,moduleId),triangles=[],height=n(project.insertHeight,20);
-  const vertex=(p,z)=>[p.x-origin.x,p.y-origin.y,z];
-  const triangle=(a,b,c)=>triangles.push([a,b,c]);
-  function face(polys,z,up=true){
-    const flat=[],holes=[];let count=0;
-    for(let i=0;i<polys.length;i++){if(i)holes.push(count);for(const p of polys[i]){flat.push(p.x,p.y);count++;}}
-    const index=earcut(flat,holes,2);
-    for(let i=0;i<index.length;i+=3){let a={x:flat[index[i]*2],y:flat[index[i]*2+1]},b={x:flat[index[i+1]*2],y:flat[index[i+1]*2+1]},c={x:flat[index[i+2]*2],y:flat[index[i+2]*2+1]};if((cross(a,b,c)>0)!==up)[b,c]=[c,b];triangle(vertex(a,z),vertex(b,z),vertex(c,z));}
-  }
-  function sides(poly,z0,z1,inner=false){
-    let p=poly;if((area(p)>0)===inner)p=[...p].reverse();
-    for(let i=0;i<p.length;i++){const a=p[i],b=p[(i+1)%p.length];triangle(vertex(a,z0),vertex(b,z0),vertex(b,z1));triangle(vertex(a,z0),vertex(b,z1),vertex(a,z1));}
-  }
-  for(const m of modules){
-    const outer=[{x:m.x+.25,y:m.y+.25},{x:m.x+m.width-.25,y:m.y+.25},{x:m.x+m.width-.25,y:m.y+m.height-.25},{x:m.x+.25,y:m.y+m.height-.25}];
-    const pockets=tools.filter(t=>t.moduleId===m.id).map(t=>({poly:clean(transformedPoints(t,n(project.clearance,.8))),z:height-n(t.depth,10)}));
-    face([outer,...pockets.map(p=>p.poly)],height,true);face([outer],0,false);sides(outer,0,height);
-    for(const p of pockets){face([p.poly],p.z,true);sides(p.poly,p.z,height,true);}
-  }
-  const bytes=new Uint8Array(84+triangles.length*50),view=new DataView(bytes.buffer);
-  bytes.set(new TextEncoder().encode('Suplik Studio | mm | modular flat-bottom inserts').slice(0,80));view.setUint32(80,triangles.length,true);
-  let offset=84;
-  for(const [a,b,c] of triangles){
-    const u=b.map((v,i)=>v-a[i]),v=c.map((v,i)=>v-a[i]);let normal=[u[1]*v[2]-u[2]*v[1],u[2]*v[0]-u[0]*v[2],u[0]*v[1]-u[1]*v[0]],length=Math.hypot(...normal);normal=normal.map(v=>length?v/length:0);
-    for(const xyz of [normal,a,b,c])for(const value of xyz){view.setFloat32(offset,value,true);offset+=4;}view.setUint16(offset,0,true);offset+=2;
-  }
-  return bytes;
+const printTools=(project,tools)=>tools.map(t=>({...t,poly:clean(transformedPoints(t,n(project.clearance,.8)))}));
+/** Binary STL in mm: solid or open contour walls, with the selected real underside. */
+export function exportSTL(project,{moduleId=null}={}){
+  const {modules,tools,origin}=selected(project,moduleId);validatePrintBed(project,modules);
+  return encodeSTL(buildPrintTriangles(project,modules,printTools(project,tools),origin),'Suplik Studio | mm | '+(project.printMode||'solid')+' | '+(project.bottomMode||'plain'));
+}
+/** One millimetre high contour ring: same pocket clearance, no full block or base. */
+export function exportFitSTL(project,{moduleId=null}={}){
+  const {modules,tools,origin}=selected(project,moduleId);
+  const triangles=buildPrintTriangles(project,modules,printTools(project,tools),origin,{fit:true});
+  if(project.limitToBed&&triangles.length){let minX=Infinity,minY=Infinity,maxX=-Infinity,maxY=-Infinity;for(const triangle of triangles)for(const p of triangle){minX=Math.min(minX,p[0]);minY=Math.min(minY,p[1]);maxX=Math.max(maxX,p[0]);maxY=Math.max(maxY,p[1]);}const width=maxX-minX,height=maxY-minY,bw=n(project.bedWidth,220),bh=n(project.bedHeight,220);if(!((width<=bw&&height<=bh)||(width<=bh&&height<=bw)))throw new Error('Testovací obrys se nevejde na tiskovou plochu. Vyberte jeden menší modul.');}
+  return encodeSTL(triangles,'Suplik Studio | mm | 1mm contour fit test');
+}
+/** Geometric volume only; does not pretend to predict slicer infill or print duration. */
+export function printStats(project,{moduleId=null}={}){
+  const {modules,tools,origin}=selected(project,moduleId),prepared=printTools(project,tools),cfg=printConfig(project);
+  const triangles=buildPrintTriangles(project,modules,prepared,origin),volumeMm3=trianglesVolume(triangles);
+  const solidVolumeMm3=cfg.printMode==='solid'?volumeMm3:trianglesVolume(buildPrintTriangles({...project,printMode:'solid'},modules,prepared,origin));
+  let heightMm=0;for(const triangle of triangles)for(const p of triangle)heightMm=Math.max(heightMm,p[2]);
+  const notes=[];
+  if(cfg.printMode==='light')notes.push('Úsporný model má ploché dno a pouze obrysové stěny; každá stěna stoupá od dna o hloubku své kapsy. Okolí zůstává nízké a otevřené.');
+  if(cfg.bottomMode==='grid')notes.push('Gridfinity patky mají profil 0,8 + 1,8 + 2,15 mm, rozteč 42 mm a přidávají 4,75 mm pod tělo inzertu. Bez horního stohovacího lemu.');
+  if(cfg.bottomMode==='magnet')notes.push(`Čtyři slepé kapsy na modul: Ø ${cfg.magnetDiameter} × ${cfg.magnetDepth} mm. Dno je automaticky nejméně ${cfg.effectiveBaseMm.toFixed(1)} mm, aby nad magnety zůstalo alespoň 1,2 mm materiálu.`);
+  if(cfg.bottomMode==='adhesive')notes.push('Rovné souvislé dno pro oboustrannou pásku; tloušťka pásky se do modelu nezapočítává.');
+  return {volumeMm3,volumeCm3:volumeMm3/1000,solidVolumeMm3,savingPercent:solidVolumeMm3?Math.max(0,(1-volumeMm3/solidVolumeMm3)*100):0,heightMm,effectiveBaseMm:cfg.effectiveBaseMm,footHeightMm:cfg.footHeight,printMode:cfg.printMode,bottomMode:cfg.bottomMode,triangles:triangles.length,notes};
 }
 
 const crcTable=Uint32Array.from({length:256},(_,n)=>{for(let i=0;i<8;i++)n=n&1?0xedb88320^(n>>>1):n>>>1;return n>>>0;});
@@ -229,7 +294,7 @@ export function createDemoProject() {
   // A readable first project: tool silhouettes stay upright, while Auto can compact later.
   const layout=[[0,0,84,168],[84,0,84,168],[168,0,42,168],[210,0,42,168],[252,0,84,126],[0,168,168,84]];
   tools.forEach((t,i)=>{
-    const [x,y,width,height]=layout[i],m={id:`mod-${t.id}`,name:t.name,x,y,width,height,locked:false};
+    const [x,y,width,height]=layout[i],m={id:`mod-${t.id}`,name:t.name,x,y,width,height,locked:false,sizeMode:'auto'};
     const b=box(transformedPoints(t,project.clearance));
     t.moduleId=m.id;t.x=x+(width-b.width)/2-b.x;t.y=y+(height-b.height)/2-b.y;
     project.modules.push(m);

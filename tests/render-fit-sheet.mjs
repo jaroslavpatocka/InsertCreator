@@ -1,0 +1,14 @@
+import fs from 'node:fs/promises';
+import {createCanvas,Path2D,DOMMatrix,ImageData} from '@napi-rs/canvas';
+import {fileURLToPath} from 'node:url';
+import {exportFitPDF} from '../dist/fit-sheet.js';
+import {createDemoProject} from '../dist/geometry.js';
+await fs.mkdir('tmp/pdfs',{recursive:true});
+Object.assign(globalThis,{Path2D,DOMMatrix,ImageData});
+const {getDocument}=await import('pdfjs-dist/legacy/build/pdf.mjs');
+const pdf=exportFitPDF(createDemoProject());await fs.writeFile('tmp/pdfs/fit-check.pdf',pdf);
+const doc=await getDocument({data:pdf,standardFontDataUrl:fileURLToPath(new URL('../node_modules/pdfjs-dist/standard_fonts/',import.meta.url))}).promise;
+const page=await doc.getPage(1),viewport=page.getViewport({scale:1.25}),canvas=createCanvas(Math.ceil(viewport.width),Math.ceil(viewport.height));
+await page.render({canvasContext:canvas.getContext('2d'),viewport}).promise;
+await fs.writeFile('tmp/pdfs/fit-check.png',canvas.toBuffer('image/png'));await doc.destroy();
+console.log('PDF parsed and rendered: tmp/pdfs/fit-check.png');

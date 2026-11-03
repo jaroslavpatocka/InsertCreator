@@ -14,24 +14,24 @@ Otevřete `http://localhost:5173`. V PowerShellu s blokovanými skripty použijt
 
 ## Od fotografie k inzertu
 
-1. Zadejte vnitřní šířku a hloubku šuplíku v milimetrech.
+1. V nabídce **Moje šuplíky** založte nový šuplík, pojmenujte jej a zadejte vnitřní šířku a hloubku v milimetrech. Šuplíků můžete mít několik a přepínat mezi nimi. Tlačítko **Rozměry šuplíku** umožňuje rozměry později změnit.
 2. Vyfoťte oddělené nástroje shora na matném světlém podkladu. Nechte kolem nich volné místo a omezte stíny. Pro kalibraci použijte celý viditelný papír A4 nebo pravítko s dobře viditelným známým úsekem.
 3. Při použití A4 aplikace sama najde papír, určí orientaci a narovná perspektivu. Celý bílý list musí být viditelný na odlišném podkladu. U pravítka označte jen dva body a zadejte skutečnou vzdálenost; tento režim předpokládá fotografii kolmo k podkladu.
-4. Obrysy se načtou automaticky. Aplikace kombinuje lokální model U²-Net s barvou podkladu a hranami v původním rozlišení. Kontrast, odstranění šumu, potlačení stínů i vyhlazení vybírá sama. Nepoužívají se posuvníky ani ruční úprava bodů. Připravené nástroje jen pojmenujte a přidejte. Pokud je výsledek příliš nejistý, aplikace požádá o novou fotografii a nedovolí nejistou konturu přidat.
-5. Spusťte automatické rozvržení. Moduly lze přesouvat a nástroje otáčet. Zamknuté moduly a nástroje zůstanou při dalším rozvržení na místě. Přidejte další nástroje nebo rozšiřte rozměry šuplíku a pokračujte ve stejné sestavě.
+4. Obrysy se načtou automaticky. Aplikace kombinuje lokální model U²-Net s barvou podkladu a hranami v původním rozlišení. Zachovává úzké mezery mezi nástroji a dotýkající se protáhlé nástroje umí rozdělit podle viditelné hranice a oddělených částí. Kontrast, odstranění šumu, potlačení stínů i vyhlazení vybírá sama. Nepoužívají se posuvníky ani ruční úprava bodů. Připravené nástroje jen pojmenujte a přidejte. Pokud je výsledek příliš nejistý, aplikace požádá o novou fotografii a nedovolí nejistou konturu přidat.
+5. Spusťte automatické rozvržení. Velikost nového modulu se přizpůsobí nástroji včetně vůle a stěn. U vybraného modulu můžete zadat vlastní šířku a hloubku nebo znovu použít automatickou velikost podle nástroje. Změna modulu neškáluje obrys nástroje. Ručně zadané rozměry zůstávají zachované při uložení i dalším rozvržení. Moduly lze přesouvat a nástroje otáčet; zamknuté polohy zůstanou při dalším rozvržení na místě.
 6. Vyřešte hlášené kolize, přesahy a neplatné hloubky. Potom exportujte podklady.
 
 ## Výroba a modularita
 
-Výchozí rastr je **42 mm**. Každý modul je samostatný blok s plochým dnem; rozměry modulu jsou násobky rastru. Skutečné vnější rozměry jsou o 0,5 mm menší, aby sousední díly měly montážní mezeru. Systém nemá standardní patky, magnety ani stohovací lem Gridfinity a nepředstavuje plně kompatibilní Gridfinity model.
+Výchozí rastr je **42 mm**. Automatická velikost modulu se zaokrouhluje nahoru do rastru; ručně lze zadat vlastní rozměry v milimetrech. Skutečné vnější rozměry jsou o 0,5 mm menší než jmenovité rozměry modulu, aby sousední díly měly montážní mezeru. Nabídka exportu obsahuje plné a úsporné provedení, hladké dno, patky Gridfinity, kapsy pro magnety a variantu k lepení. Patky Gridfinity vyžadují rastr a rozměry v násobcích 42 mm; systém neobsahuje stohovací lem.
 
 **STL** obsahuje uzavřenou trojúhelníkovou geometrii s opravdovými zapuštěnými kapsami a dnem; jednotky jsou milimetry. ZIP umožňuje získat samostatné díly pro tisk. **SVG a DXF** obsahují obrysy modulů a kapes v milimetrech pro další zpracování, například řezání pěny. Nevytvářejí dráhy CNC ani G-code. Nastavená vůle zvětšuje obrys kapsy; rohy se zaoblují s tolerancí přibližně 0,015 mm.
 
 Fotografie nedává zaručenou výrobní přesnost. Stíny, lesklé plochy, výška nástroje nad papírem a perspektiva ovlivňují obrys. Překrývající se nástroje se mohou spojit. Automatické hodnocení kvality je heuristické a nepředstavuje záruku rozměrové přesnosti. Nečitelnou hranu nelze z chybějící obrazové informace spolehlivě odhadnout. Kontrolujte měřítko podle skutečného rozměru a před tiskem celé sestavy vytiskněte jeden zkušební díl. Hloubku kapsy určujete sami; z jedné fotografie ji nelze spolehlivě změřit.
 
-## Projekty a soukromí
+## Šuplíky a soukromí
 
-Rozpracované projekty se ukládají v úložišti daného prohlížeče. Export JSON slouží jako záloha a pro přenos na jiný počítač či telefon; import vrátí upravitelný projekt. Smazání dat prohlížeče může lokální projekty odstranit. Automatická synchronizace mezi zařízeními není součástí aplikace. Fotografie se neodesílají k rozpoznávání na vzdálený server.
+Každý šuplík se ukládá jako samostatný projekt s vlastním názvem, rozměry, nástroji a moduly v úložišti daného prohlížeče. Export JSON slouží jako záloha a pro přenos na jiný počítač či telefon; import vrátí upravitelný projekt. Smazání dat prohlížeče může lokální šuplíky odstranit. Automatická synchronizace mezi zařízeními není součástí aplikace. Fotografie se neodesílají k rozpoznávání na vzdálený server.
 
 ## Ověření a knihovny
 

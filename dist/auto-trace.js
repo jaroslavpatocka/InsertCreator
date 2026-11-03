@@ -1,4 +1,4 @@
-import { traceImage, polygonArea } from './trace.js';
+import { traceMask, polygonArea } from './trace.js';
 
 // These are measured image-evidence scores, not a probability of dimensional accuracy.
 // A single photograph cannot recover an edge with the same appearance as its background.
@@ -178,11 +178,157 @@ function overlap(a, b) {
   return union ? intersection / union : 0;
 }
 
+function contourAxis(points) {
+  // Area moments avoid bias from unevenly spaced vertices on simplified contours.
+  let weight = 0, cx = 0, cy = 0, xx = 0, yy = 0, xy = 0;
+  for (let i = 0; i < points.length; i++) {
+    const p = points[i], q = points[(i + 1) % points.length], cross = p.x * q.y - q.x * p.y;
+    weight += cross; cx += (p.x + q.x) * cross; cy += (p.y + q.y) * cross;
+    xx += (p.x * p.x + p.x * q.x + q.x * q.x) * cross;
+    yy += (p.y * p.y + p.y * q.y + q.y * q.y) * cross;
+    xy += (2 * p.x * p.y + p.x * q.y + q.x * p.y + 2 * q.x * q.y) * cross;
+  }
+  cx /= 3 * weight; cy /= 3 * weight;
+  const angle = .5 * Math.atan2(2 * (xy / (12 * weight) - cx * cy), xx / (6 * weight) - cx * cx - yy / (6 * weight) + cy * cy);
+  return { x: Math.cos(angle), y: Math.sin(angle) };
+}
+
+function projection(points, axis) {
+  let lo = Infinity, hi = -Infinity;
+  for (const p of points) { const v = p.x * axis.x + p.y * axis.y; lo = Math.min(lo, v); hi = Math.max(hi, v); }
+  return { lo, hi, length: hi - lo };
+}
+
+function pointSegmentDistance(p, a, b) {
+  const dx = b.x - a.x, dy = b.y - a.y, length = dx * dx + dy * dy;
+  const t = length ? clamp(((p.x - a.x) * dx + (p.y - a.y) * dy) / length) : 0;
+  return Math.hypot(p.x - a.x - t * dx, p.y - a.y - t * dy);
+}
+
+function hasWidthTransition(points, axis) {
+  const along = projection(points, axis), normal = { x: -axis.y, y: axis.x }, widths = [];
+  for (let sample = 1; sample < 20; sample++) {
+    const s = along.lo + along.length * sample / 20, crossings = [];
+    for (let i = 0; i < points.length; i++) {
+      const a = points[i], b = points[(i + 1) % points.length], sa = a.x * axis.x + a.y * axis.y, sb = b.x * axis.x + b.y * axis.y;
+      if ((sa > s) !== (sb > s)) { const t = (s - sa) / (sb - sa); crossings.push((a.x + (b.x - a.x) * t) * normal.x + (a.y + (b.y - a.y) * t) * normal.y); }
+    }
+    if (crossings.length >= 2) widths.push(Math.max(...crossings) - Math.min(...crossings));
+  }
+  widths.sort((a, b) => a - b);
+  // Sustained narrow and broad sections distinguish two whole variable-width
+  // outlines from the uniform shaft and separate handle of one broken outline.
+  return widths.length >= 12 && widths[Math.floor(widths.length * .8)] > widths[Math.floor(widths.length * .2)] * 1.7;
+}
+
+function possibleFragments(a, b, pxPerMm) {
+  const aa = contourAxis(a.contour.points), ba = contourAxis(b.contour.points);
+  const alignment = aa.x * ba.x + aa.y * ba.y;
+  if (Math.abs(alignment) < .94) return false;
+  const sign = alignment < 0 ? -1 : 1, length = Math.hypot(aa.x + sign * ba.x, aa.y + sign * ba.y);
+  const axis = { x: (aa.x + sign * ba.x) / length, y: (aa.y + sign * ba.y) / length }, normal = { x: -axis.y, y: axis.x };
+  const al = projection(a.contour.points, axis), bl = projection(b.contour.points, axis);
+  const aw = projection(a.contour.points, normal), bw = projection(b.contour.points, normal);
+  const gap = Math.max(al.lo - bl.hi, bl.lo - al.hi);
+  const limit = Math.max(2, pxPerMm * 4);
+  // Side-by-side tools have overlapping longitudinal intervals. Only aligned
+  // end-to-end pieces can be a shaft separated from its handle by a reflection.
+  if (gap <= 0 || gap >= limit || Math.min(al.length / Math.max(1, aw.length), bl.length / Math.max(1, bw.length)) < 1.5) return false;
+  if (Math.min(aw.hi, bw.hi) - Math.max(aw.lo, bw.lo) < Math.min(aw.length, bw.length) * .65) return false;
+  if (hasWidthTransition(a.contour.points, axis) && hasWidthTransition(b.contour.points, axis)) return false;
+  const ap = a.contour.points, bp = b.contour.points;
+  for (let i = 0; i < ap.length; i++) for (let j = 0; j < bp.length; j++) {
+    if (pointSegmentDistance(ap[i], bp[j], bp[(j + 1) % bp.length]) < limit || pointSegmentDistance(bp[j], ap[i], ap[(i + 1) % ap.length]) < limit) return true;
+  }
+  return false;
+}
+
+function independentStems(pieces, axis, labels, binary, im, features, pxPerMm) {
+  const normal = { x: -axis.y, y: axis.x }, step = .5;
+  const spans = pieces.map(piece => ({ id: piece.componentId, along: projection(piece.points, axis), across: projection(piece.points, normal) })).sort((a, b) => a.across.lo + a.across.hi - b.across.lo - b.across.hi);
+  for (let i = 1; i < spans.length; i++) {
+    const a = spans[i - 1], b = spans[i], lo = Math.max(a.along.lo, b.along.lo), hi = Math.min(a.along.hi, b.along.hi);
+    let supported = 0;
+    for (let sample = 1; sample < 48; sample++) {
+      const s = lo + (hi - lo) * sample / 48; let seenA = false, gap = 0;
+      for (let t = a.across.lo; t <= b.across.hi; t += step) {
+        const x = Math.floor(axis.x * s + normal.x * t), y = Math.floor(axis.y * s + normal.y * t);
+        if (x < 0 || y < 0 || x >= im.width || y >= im.height) { seenA = false; gap = 0; continue; }
+        const p = y * im.width + x;
+        if (labels[p] === a.id) { seenA = true; gap = 0; }
+        else if (labels[p] === b.id) {
+          if (seenA && gap >= Math.max(1, pxPerMm * .25)) { supported++; break; }
+          seenA = false; gap = 0;
+        } else if (seenA && !binary[p] && features.dark[p] < Math.max(8, features.noise * 3.5) && features.color[p] < Math.max(6, features.noise * 3) && features.bright[p] < Math.max(8, features.noise * 3.5)) gap += step;
+        // An antialiased rim can sit between a labelled region and clean paper.
+        // Keep which object we left, but count only pixels supported as paper.
+        else gap = 0;
+      }
+    }
+    // A paint seam alone is not evidence of two objects. Require a visible run
+    // of paper between two independently exposed parts outside their contact.
+    if (supported < 3) return false;
+  }
+  return true;
+}
+
+function separateTouching(binary, result, im, features, pxPerMm, options) {
+  const { width, height, data } = im, axes = new Map(), barriers = new Uint8Array(binary.length);
+  for (const contour of result.contours) {
+    const axis = contourAxis(contour.points), along = projection(contour.points, axis), across = projection(contour.points, { x: -axis.y, y: axis.x });
+    if (along.length > across.length * 2.5) axes.set(contour.componentId, { axis, along, contour });
+  }
+  if (!axes.size) return result.contours;
+  const threshold = Math.max(26, features.noise * 8); let edges = 0;
+  const boundary = (p, q, vertical, axis) => {
+    let delta = 0, gx = 0, gy = 0, strongest = 0;
+    for (let c = 0; c < 3; c++) {
+      const difference = data[q * 4 + c] - data[p * 4 + c]; delta += difference * difference;
+      const dx = vertical ? (data[(p + 1) * 4 + c] + data[(q + 1) * 4 + c] - data[(p - 1) * 4 + c] - data[(q - 1) * 4 + c]) / 4 : difference;
+      const dy = vertical ? difference : (data[(p + width) * 4 + c] + data[(q + width) * 4 + c] - data[(p - width) * 4 + c] - data[(q - width) * 4 + c]) / 4;
+      const strength = dx * dx + dy * dy;
+      if (strength > strongest) { strongest = strength; gx = dx; gy = dy; }
+    }
+    if (delta < threshold * threshold || !strongest) return false;
+    const alongNormal = Math.abs(gx * axis.x + gy * axis.y) / Math.sqrt(strongest);
+    const exterior = !binary[p - width] || !binary[p + width] || !binary[p - 1] || !binary[p + 1] || !binary[q - width] || !binary[q + width] || !binary[q - 1] || !binary[q + 1];
+    // A shaft-to-handle transition is transverse. A separating contact edge runs
+    // along the tools, from the visible gap between their shafts to the outside.
+    return alongNormal < (exterior ? .85 : .55);
+  };
+  for (let y = 1; y < height - 2; y++) for (let x = 1; x < width - 2; x++) {
+    const p = y * width + x, parent = result.labels[p], entry = axes.get(parent);
+    if (!binary[p] || !entry) continue;
+    if (binary[p + 1] && result.labels[p + 1] === parent && boundary(p, p + 1, false, entry.axis)) { barriers[p] |= 1; edges++; }
+    if (binary[p + width] && result.labels[p + width] === parent && boundary(p, p + width, true, entry.axis)) { barriers[p] |= 2; edges++; }
+  }
+  if (!edges) return result.contours;
+  const separated = traceMask(binary, width, height, { ...options, barriers, includeLabels: true }), groups = new Map();
+  for (const contour of separated.contours) {
+    const parent = result.labels[contour.seed];
+    if (!groups.has(parent)) groups.set(parent, []);
+    groups.get(parent).push(contour);
+  }
+  return result.contours.flatMap(original => {
+    const entry = axes.get(original.componentId), pieces = groups.get(original.componentId);
+    if (!entry || !pieces || pieces.length < 2) return [original];
+    const complete = pieces.filter(piece => {
+      const axis = contourAxis(piece.points), along = projection(piece.points, entry.axis), own = projection(piece.points, axis), across = projection(piece.points, { x: -axis.y, y: axis.x });
+      return piece.area > original.area * .08 && along.length > entry.along.length * .72 && own.length > Math.max(across.length * 2.5, pxPerMm * 10) && Math.abs(axis.x * entry.axis.x + axis.y * entry.axis.y) > .92;
+    });
+    // Short paint patches, enclosed highlights and detached handles cannot stand
+    // in for complete tools. Keep the original silhouette unless two long pieces
+    // account for essentially all its measured foreground.
+    if (complete.length < 2 || complete.reduce((sum, piece) => sum + piece.area, 0) < original.area * .92 || !independentStems(complete, entry.axis, separated.labels, binary, im, features, pxPerMm)) return [original];
+    return complete;
+  });
+}
+
 function evaluateCandidate(name, binary, im, features, pxPerMm) {
-  const rgba = new Uint8ClampedArray(binary.length * 4);
-  for (let i = 0; i < binary.length; i++) { const value = binary[i] ? 0 : 255; rgba[i * 4] = value; rgba[i * 4 + 1] = value; rgba[i * 4 + 2] = value; rgba[i * 4 + 3] = 255; }
-  const result = traceImage({ data: rgba, width: im.width, height: im.height }, { threshold: 127, smoothing: Math.max(.25, .15 * pxPerMm), minArea: Math.max(im.width * im.height * .00016, 4 * pxPerMm * pxPerMm) });
-  const measured = result.contours.map(contour => ({ contour, ...boundaryEvidence(contour, features, im.width, im.height) }));
+  const options = { smoothing: Math.max(.25, .15 * pxPerMm), minArea: Math.max(im.width * im.height * .00016, 4 * pxPerMm * pxPerMm) };
+  const result = traceMask(binary, im.width, im.height, { ...options, includeLabels: true });
+  const contours = separateTouching(binary, result, im, features, pxPerMm, options);
+  const measured = contours.map(contour => ({ contour, ...boundaryEvidence(contour, features, im.width, im.height) }));
   const accepted = measured.filter(c => (c.coverage >= .28 || c.strength >= .37) && c.thickness >= Math.max(1.15, .35 * pxPerMm) && c.contour.width >= 1.5 * pxPerMm && c.contour.height >= 1.5 * pxPerMm);
   const mask = rasterize(accepted.map(c => c.contour), im.width, im.height);
   let count = 0, strong = 0, prior = 0;
@@ -192,11 +338,7 @@ function evaluateCandidate(name, binary, im, features, pxPerMm) {
   coverage = perimeter ? coverage / perimeter : 0; strength = perimeter ? strength / perimeter : 0;
   let fragments = 0;
   for (let i = 0; i < accepted.length; i++) for (let j = i + 1; j < accepted.length; j++) {
-    const a = accepted[i].bounds, b = accepted[j].bounds, dx = Math.max(0, a.x0 - b.x1, b.x0 - a.x1), dy = Math.max(0, a.y0 - b.y1, b.y0 - a.y1);
-    const overlapX = Math.max(0, Math.min(a.x1, b.x1) - Math.max(a.x0, b.x0)) / Math.max(1, Math.min(a.x1 - a.x0, b.x1 - b.x0));
-    const overlapY = Math.max(0, Math.min(a.y1, b.y1) - Math.max(a.y0, b.y0)) / Math.max(1, Math.min(a.y1 - a.y0, b.y1 - b.y0));
-    const collinearGap = (dx === 0 && dy > 0 && dy < pxPerMm * 4 && overlapX > .65) || (dy === 0 && dx > 0 && dx < pxPerMm * 4 && overlapY > .65);
-    if (Math.hypot(dx, dy) < Math.max(2, pxPerMm * 1.2) || collinearGap) fragments++;
+    if (possibleFragments(accepted[i], accepted[j], pxPerMm)) fragments++;
   }
   const fill = count / mask.length, foregroundEvidence = count ? strong / count : 0, neuralAgreement = count && im.prior ? prior / count : null;
   const rawScore = .44 * coverage + .28 * strength + .16 * foregroundEvidence + .12 - Math.min(.25, fragments * .075) - Math.max(0, fill - .65) * 1.5 - Math.max(0, accepted.length - 15) * .012;
@@ -267,5 +409,5 @@ export async function autoTraceImage(imageData, { pxPerMm = 1, kind = 'paper', p
   if (status === 'ready') reasons.push('Obrys má souvislou obrazovou hranu a automatické metody se na něm shodují.');
   const restored = restore(best, imageData, im);
   progress('complete', 1, status === 'ready' ? 'Kontury jsou připravené.' : 'Fotografie potřebuje ověření.');
-  return { ...restored, threshold: strictDark, method: best.name, quality: { status, score0to1: score, reasons, methods }, diagnostics: { elapsedMs: performance.now() - started, processingWidth: im.width, processingHeight: im.height, noise: features.noise, backgroundResidual: model.fitResidual, illuminationRange: features.illuminationRange, boundaryCoverage: best.coverage, candidateAgreement: best.agreement, clippedForeground, candidates: candidates.map(c => ({ method: c.name, score: c.score, agreement: c.agreement, contours: c.contours.length, boundaryCoverage: c.coverage, areaFraction: c.fill, rejected: c.rejected, neuralAgreement: c.neuralAgreement })) } };
+  return { ...restored, threshold: strictDark, method: best.name, quality: { status, score0to1: score, reasons, methods }, diagnostics: { elapsedMs: performance.now() - started, processingWidth: im.width, processingHeight: im.height, noise: features.noise, backgroundResidual: model.fitResidual, illuminationRange: features.illuminationRange, boundaryCoverage: best.coverage, candidateAgreement: best.agreement, clippedForeground, candidates: candidates.map(c => ({ method: c.name, score: c.score, agreement: c.agreement, contours: c.contours.length, boundaryCoverage: c.coverage, areaFraction: c.fill, rejected: c.rejected, fragments: c.fragments, neuralAgreement: c.neuralAgreement })) } };
 }

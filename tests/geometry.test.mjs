@@ -71,6 +71,39 @@ test('raw crossing and self-touching contours are rejected before clearance can 
     assert.ok(validateLayout(p).some(i=>i.type==='overlap'&&i.ids.includes('bad')));assert.throws(()=>exportSTL(p));
   }
 });
+function twoPocketProject(x,y,{clearance=0}={}){
+  const points=[{x:0,y:0},{x:20,y:0},{x:20,y:20},{x:0,y:20}];
+  return {width:84,height:84,grid:42,clearance,wall:2.4,base:2.4,insertHeight:20,modules:[{id:'m',x:0,y:0,width:84,height:84}],tools:[
+    {id:'a',name:'A',points,x:10,y:10,rotation:0,depth:8,moduleId:'m'},
+    {id:'b',name:'B',points,x,y,rotation:0,depth:12,moduleId:'m'}
+  ]};
+}
+test('pockets touching along an edge or at a vertex block every manufacturing export',()=>{
+  for(const [x,y] of [[30,10],[30,30]]){
+    const p=twoPocketProject(x,y);
+    assert.ok(validateLayout(p).some(i=>i.type==='overlap'&&i.ids.includes('a')&&i.ids.includes('b')&&/dotýkají/.test(i.message)));
+    for(const exporter of [exportSTL,exportSVG,exportDXF]){
+      assert.throws(()=>exporter(p),/dotýkají/);
+      assert.throws(()=>exporter(p,{moduleId:'m'}),/dotýkají/);
+    }
+  }
+});
+test('minimum internal wall is measured between the pockets after clearance',()=>{
+  const p=twoPocketProject(32,10,{clearance:.5});
+  assert.ok(validateLayout(p).some(i=>i.ids.includes('a')&&i.ids.includes('b')&&/stěnu 2.4 mm/.test(i.message)));
+  for(const exporter of [exportSTL,exportSVG,exportDXF])assert.throws(()=>exporter(p),/stěnu/);
+  p.tools[1].x=33.4;
+  assert.deepEqual(validateLayout(p),[]);
+  assert.ok(inspectSTL(exportSTL(p)).volume>0);
+  assert.ok(exportSVG(p));assert.ok(exportDXF(p));
+});
+test('diagonal pocket spacing uses contour distance rather than bounding box padding',()=>{
+  const p=twoPocketProject(31.6,31.6);
+  assert.ok(validateLayout(p).some(i=>/stěnu/.test(i.message)));
+  p.tools[1].x=31.8;p.tools[1].y=31.8;
+  assert.deepEqual(validateLayout(p),[]);
+  assert.ok(inspectSTL(exportSTL(p)).volume>0);
+});
 test('increasing clearance beyond module wall blocks manufacturing export',()=>{
   const p=createDemoProject();p.clearance=30;assert.ok(validateLayout(p).some(i=>i.type==='outside'));assert.throws(()=>exportSTL(p));
 });

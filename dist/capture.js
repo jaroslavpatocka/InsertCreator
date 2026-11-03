@@ -64,20 +64,34 @@ export function openCapture({onAdd,toast=()=>{}}){
     if(!file||state.busy)return;
     setError('');
     if(file.size>20*1024*1024)return setError('Fotografie je větší než 20 MB. Vyberte menší soubor.');
-    if(/\.(heic|heif)$/i.test(file.name)||/image\/hei[cf]/.test(file.type))return setError('Vyberte JPG, PNG nebo WebP. HEIC nejprve uložte v telefonu jako JPG.');
-    if(!file.type.startsWith('image/')&&!/\.(jpe?g|png|webp|avif|bmp)$/i.test(file.name))return setError('Vyberte fotografii ve formátu JPG, PNG nebo WebP.');
+    const heic=/\.(heic|heif)$/i.test(file.name)||/^image\/hei[cf](?:-sequence)?(?:;|$)/i.test(file.type);
+    if(!/^image\//i.test(file.type)&&!/\.(jpe?g|png|webp|avif|bmp|heic|heif)$/i.test(file.name))return setError('Vyberte fotografii z telefonu nebo soubor JPG, PNG či WebP.');
     state.busy=true;let bitmap,url;
     const button=modal.body.querySelector('#gallery-pick');if(button)button.textContent='Načítám…';
+    modal.body.querySelector('.upload-zone')?.setAttribute('aria-busy','true');
+    modal.body.querySelectorAll('.upload-zone button,#sample-scan,#photo-reference').forEach(element=>element.disabled=true);
     try{
-      await frame();
-      try{bitmap=await createImageBitmap(file,{imageOrientation:'from-image'});}catch{url=URL.createObjectURL(file);bitmap=new Image();bitmap.src=url;await bitmap.decode();}
+      await frame();if(closed)return;
+      // The system image decoder may support HEIC even when ImageBitmap does not
+      // (notably phone browsers), so try both native paths before asking for JPG.
+      try{
+        try{bitmap=await createImageBitmap(file,{imageOrientation:'from-image'});}
+        catch{if(closed)return;url=URL.createObjectURL(file);bitmap=new Image();bitmap.src=url;await bitmap.decode();}
+      }catch{
+        throw Error(heic?'Tento prohlížeč nedokáže otevřít HEIC. V telefonu fotku nasdílejte nebo uložte jako JPG a vyberte ji znovu.':'Fotografii se nepodařilo otevřít. Zkuste jinou fotku nebo soubor JPG, PNG či WebP.');
+      }
       if(closed)return;
       const w=bitmap.width||bitmap.naturalWidth,h=bitmap.height||bitmap.naturalHeight;
+      if(!Number.isFinite(w)||!Number.isFinite(h)||w<=0||h<=0)throw Error('Fotografie nemá platné rozlišení. Zkuste jinou fotku.');
       if(w<100||h<100)throw Error('Fotografie je příliš malá. Vyfoťte nástroj znovu blíž a ostřeji.');
       const ratio=Math.min(1,1400/Math.max(w,h)),canvas=document.createElement('canvas');canvas.width=Math.round(w*ratio);canvas.height=Math.round(h*ratio);
+      if(canvas.width<16||canvas.height<16)throw Error('Fotografie má příliš úzký výřez. Vyfoťte celý papír a nástroje.');
       const ctx=canvas.getContext('2d',{willReadFrequently:true});ctx.fillStyle='#fff';ctx.fillRect(0,0,canvas.width,canvas.height);ctx.drawImage(bitmap,0,0,canvas.width,canvas.height);
-      await beginPhoto(ctx.getImageData(0,0,canvas.width,canvas.height));
-    }catch(error){if(error.name!=='AbortError'){state.busy=false;setError(error.message||'Fotografii se nepodařilo otevřít.');toast('Fotografii se nepodařilo zpracovat.');}}
+      const pixels=ctx.getImageData(0,0,canvas.width,canvas.height);
+      // Release the full camera bitmap before recognition allocates its working data.
+      bitmap?.close?.();bitmap=null;if(url){URL.revokeObjectURL(url);url=null;}
+      await beginPhoto(pixels);
+    }catch(error){if(!closed&&error.name!=='AbortError'){state.busy=false;setError(error.message||'Fotografii se nepodařilo otevřít.');toast('Fotografii se nepodařilo zpracovat.');}}
     finally{bitmap?.close?.();if(url)URL.revokeObjectURL(url);if(!closed){state.busy=false;if(state.step===0)render();}}
   }
   async function beginPhoto(image){
@@ -111,7 +125,7 @@ export function openCapture({onAdd,toast=()=>{}}){
     }
   }
   function renderUpload(){
-    modal.body.innerHTML=steps()+`<label class="field" style="max-width:340px"><span>Měřítko na fotografii</span><select id="photo-reference"><option value="a4">A4 papír · měřítko najdeme automaticky</option><option value="ruler">Pravítko · označím dvě známé značky</option></select></label><div class="upload-zone" tabindex="0" role="button" aria-label="Vybrat nebo přetáhnout fotografii"><div class="upload-symbol">${icon('camera')}</div><strong>Vy jen vyfotíte. Zbytek zařídíme.</strong><p>Nástroje odděleně na bílý papír A4. Celý list do záběru, ideálně na tmavším stole.</p><div class="upload-buttons"><button class="btn btn-primary" id="camera-pick">${icon('camera')}Vyfotit</button><button class="btn btn-light" id="gallery-pick">${icon('upload')}Vybrat fotku</button></div><small style="color:#92a086;margin-top:15px;font-size:10px">JPG, PNG, WebP · nejvýše 20 MB</small></div><input type="file" accept="image/*" capture="environment" id="camera-file" hidden><input type="file" accept="image/*" id="gallery-file" hidden>${errorHTML()}<div class="capture-note"><div><b>Automatické měřítko</b>Najdeme rohy A4 a narovnáme perspektivu.</div><div><b>Automatický obrys</b>Rozpoznáme nástroj, potlačíme stín a vyčistíme hrany.</div><div><b>Rovnou do šuplíku</b>Bez prahů a kreslení bodů. Jen pojmenujete a přidáte.</div></div><button class="sample-button" id="sample-scan">Vyzkoušet na ukázkové fotografii</button>`;
+    modal.body.innerHTML=steps()+`<label class="field" style="max-width:340px"><span>Měřítko na fotografii</span><select id="photo-reference"><option value="a4">A4 papír · měřítko najdeme automaticky</option><option value="ruler">Pravítko · označím dvě známé značky</option></select></label><div class="upload-zone" tabindex="0" role="button" aria-label="Vybrat nebo přetáhnout fotografii"><div class="upload-symbol">${icon('camera')}</div><strong>Vy jen vyfotíte. Zbytek zařídíme.</strong><p>Nástroje položte odděleně na bílý papír A4, aby se nedotýkaly. Vyfoťte celý list shora, ideálně na tmavším stole.</p><div class="upload-buttons"><button class="btn btn-primary" id="camera-pick">${icon('camera')}Vyfotit</button><button class="btn btn-light" id="gallery-pick">${icon('upload')}Vybrat fotku</button></div><small style="color:#92a086;margin-top:15px;font-size:10px">Fotky z telefonu, JPG, PNG, WebP · nejvýše 20 MB</small></div><input type="file" accept="image/*,.heic,.heif" capture="environment" id="camera-file" hidden><input type="file" accept="image/*,.heic,.heif" id="gallery-file" hidden>${errorHTML()}<div class="capture-note"><div><b>Automatické měřítko</b>Najdeme rohy A4 a narovnáme perspektivu.</div><div><b>Každý nástroj zvlášť</b>Rozpoznáme oddělené nástroje, potlačíme stín a vyčistíme hrany.</div><div><b>Rovnou do šuplíku</b>Bez prahů a kreslení bodů. Jen pojmenujete a přidáte.</div></div><button class="sample-button" id="sample-scan">Vyzkoušet na ukázkové fotografii</button>`;
     modal.footer.innerHTML='<span class="footnote">Fotka se zpracuje ve vašem zařízení a nikam se neodesílá.</span><button class="btn btn-light" id="capture-cancel">Zavřít</button>';
     const reference=modal.body.querySelector('#photo-reference');reference.value=state.reference;reference.onchange=()=>state.reference=reference.value;
     const pick=selector=>{if(!state.busy)modal.body.querySelector(selector).click();};

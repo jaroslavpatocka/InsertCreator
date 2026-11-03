@@ -4,3 +4,4 @@ node_modules/
 .sites-runtime/
 .DS_Store
 Thumbs.db
+tmp/
