@@ -14,6 +14,7 @@
 // }
 import parametric from './parametric.js';
 import imported from './imported.js';
+import sets from './sets.js';
 
 export const CATEGORIES=[
   {id:'wrenches',cs:'Klíče',en:'Wrenches'},
@@ -27,7 +28,13 @@ export const CATEGORIES=[
   {id:'other',cs:'Ostatní',en:'Other'}
 ];
 
-let cache=null;
+// Tool sets ('Sady nářadí'): ready-made groups of catalogue items, e.g. a 6–32 mm wrench set.
+// Shape: {id:'combination-wrench-set-6-32mm', category:'wrenches' (the category of its contents),
+//   name:{cs,en}, description:{cs,en}?, items:['catalogue-item-id', ...] (may repeat an id for duplicates),
+//   unit:'mm'|'in', tags:[...], source:{name,note,url?} (what real sets the composition is based on)}
+export const SETS_CATEGORY={id:'sets',cs:'Sady nářadí',en:'Tool sets'};
+
+let cache=null,setCache=null;
 /** All catalogue items, validated and de-duplicated by id (parametric wins). */
 export function catalogItems(){
   if(cache)return cache;
@@ -38,4 +45,12 @@ export function catalogItems(){
     seen.add(item.id);out.push(item);
   }
   return cache=out;
+}
+
+/** Tool sets whose every item exists in the catalogue (incomplete sets are dropped). Each set gets resolved `tools` (catalogue items, in order). */
+export function catalogSets(){
+  if(setCache)return setCache;
+  const byId=new Map(catalogItems().map(i=>[i.id,i]));
+  return setCache=sets.filter(set=>set&&set.id&&Array.isArray(set.items)&&set.items.length&&set.items.every(id=>byId.has(id)))
+    .map(set=>({...set,tools:set.items.map(id=>byId.get(id))}));
 }

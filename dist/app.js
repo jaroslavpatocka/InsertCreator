@@ -299,7 +299,10 @@ function addTools(tools){
     if(!Object.prototype.hasOwnProperty.call(t,'fingerGrips'))item.fingerGrips=automaticFingerGrips(item,{radius:9});
     pocketOutline(item,project.clearance);return item;
   });
-  commit(()=>{for(const item of prepared){project.tools.push(item);if(!library.some(l=>l.name===item.name&&JSON.stringify(l.points)===JSON.stringify(item.points)&&JSON.stringify(l.fingerGrips)===JSON.stringify(item.fingerGrips)))library.push({...clone(item),x:0,y:0,moduleId:null});}writeLocal(libraryKey,library);selected=project.tools.at(-1)?.id;inspectorTab='tool';arrange(false);},plural(tools.length,['Přidán {n} nástroj. Kontura je také v knihovně.','Přidány {n} nástroje. Kontury jsou také v knihovně.','Přidáno {n} nástrojů. Kontury jsou také v knihovně.']));
+  let unplaced=0;
+  commit(()=>{for(const item of prepared){project.tools.push(item);if(!library.some(l=>l.name===item.name&&JSON.stringify(l.points)===JSON.stringify(item.points)&&JSON.stringify(l.fingerGrips)===JSON.stringify(item.fingerGrips)))library.push({...clone(item),x:0,y:0,moduleId:null});}writeLocal(libraryKey,library);selected=project.tools.at(-1)?.id;inspectorTab='tool';const added=new Set(prepared.map(x=>x.id));unplaced=arrange(false).unplaced.filter(id=>added.has(id)).length;});
+  // One toast for the whole addition (e.g. a catalogue tool set), including tools that did not fit.
+  toast(plural(tools.length,['Přidán {n} nástroj. Kontura je také v knihovně.','Přidány {n} nástroje. Kontury jsou také v knihovně.','Přidáno {n} nástrojů. Kontury jsou také v knihovně.'])+(unplaced?' '+plural(unplaced,['{n} nástroj se nevešel. Zkontrolujte rozměry šuplíku a tiskové plochy nebo odemkněte moduly.','{n} nástroje se nevešly. Zkontrolujte rozměry šuplíku a tiskové plochy nebo odemkněte moduly.','{n} nástrojů se nevešlo. Zkontrolujte rozměry šuplíku a tiskové plochy nebo odemkněte moduly.']):''));
 }
 function capture(){openCapture({onAdd:addTools,toast});}
 function undo(){if(!undoStack.length)return;redoStack.push(clone(project));project=undoStack.pop();persist();render();}

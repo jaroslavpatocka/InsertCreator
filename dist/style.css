@@ -119,3 +119,44 @@
   .modal-foot:has(.catalog-foot-actions){flex-direction:column;align-items:stretch}
   .catalog-foot-actions .btn{flex:1}
 }
+
+/* Tool sets in the catalogue ("Sady nářadí", catalog-ui.js) */
+.catalog-chip-sets{border-color:var(--amber);background:#fff6e5;color:#7a5a22;font-weight:700}
+.catalog-chip-sets .icon{width:13px;height:13px}
+.catalog-chip-sets.active{background:#8b672a;border-color:#8b672a;color:#fff}
+.catalog-sets-preview{margin-bottom:16px;padding-bottom:14px;border-bottom:1px dashed var(--line)}
+.catalog-section-head{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:8px}
+.catalog-section-head .section-link{padding:4px 0}
+.catalog-group-title{display:flex;align-items:center;gap:6px;font-size:13px;font-weight:700;margin:14px 0 8px}
+.catalog-section-head .catalog-group-title{margin:0}
+.catalog-group-title .icon{width:15px;height:15px;color:#8b672a}
+.catalog-group-title span{font-size:11px;font-weight:500;color:var(--muted)}
+.catalog-set-group:first-of-type .catalog-group-title{margin-top:4px}
+.catalog-set-grid{grid-template-columns:repeat(auto-fill,minmax(250px,1fr))}
+.catalog-set{border-left:3px solid #e2c48e}
+.catalog-set.expanded{grid-column:1/-1}
+.catalog-set-thumb{position:relative}
+.catalog-item .catalog-set-thumb svg{width:92%;height:76px}
+.catalog-set-more{position:absolute;right:6px;bottom:4px;padding:1px 6px;border-radius:999px;background:#2e3a2b;color:#fff;font-size:10px;font-weight:700}
+.catalog-set-desc{font-size:11px;color:var(--muted);line-height:1.45;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.catalog-set .unit-badge{margin-left:0}
+.catalog-set-toggle{display:inline-flex;align-items:center;gap:5px;align-self:flex-start;padding:4px 0;border:0;background:none;font:inherit;font-size:11px;font-weight:600;color:#6c7d5e;cursor:pointer;min-height:30px}
+.catalog-set-toggle .icon{width:13px;height:13px;transition:transform .15s}
+.catalog-set-toggle[aria-expanded=true] .icon{transform:rotate(90deg)}
+.catalog-set-toggle small{font-weight:600;color:#9a7330}
+.catalog-set-toggle:focus-visible{outline:2px solid var(--amber);outline-offset:2px}
+.catalog-set-members{border-top:1px solid var(--line);padding-top:6px}
+.catalog-set-bulk{display:flex;gap:14px}
+.catalog-set-members ul{list-style:none;margin:4px 0 0;padding:0;display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:2px 12px;max-height:280px;overflow:auto}
+.catalog-set-members label{display:flex;align-items:center;gap:7px;font-size:11px;padding:4px 0;cursor:pointer;min-height:28px}
+.catalog-set-members input{width:15px;height:15px;accent-color:var(--green);flex-shrink:0}
+.catalog-set-members label span{flex:1;min-width:0;overflow-wrap:anywhere}
+.catalog-set-members small{color:var(--muted);white-space:nowrap}
+.catalog-actions .btn:disabled,.catalog-actions .icon-btn:disabled{opacity:.45;cursor:not-allowed}
+@media(max-width:700px){
+  .catalog-set-grid{grid-template-columns:1fr}
+  .catalog-set-members ul{grid-template-columns:1fr;max-height:50vh}
+  .catalog-set-members label{min-height:40px;font-size:12px}
+  .catalog-set-members input{width:18px;height:18px}
+  .catalog-set-toggle{min-height:40px}
+}

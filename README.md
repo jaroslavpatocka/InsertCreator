@@ -43,6 +43,14 @@ V režimu **3D** otáčíte pohledem tažením levým tlačítkem myši, posouv�
 
 Navigace mění pouze kameru. Nepřesouvá moduly, neotáčí nástroje a nepřidává záznamy do historie úprav projektu.
 
+## Katalog a sady nářadí
+
+Inzert lze navrhnout i bez fotografování. **Knihovna nástrojů** má složky **Moje nástroje** a **Katalog**. Katalog obsahuje 247 hotových obrysů ve skupinách klíče, imbusy a torxy, nástrčné hlavice a bity, šroubováky, kleště, měření, řezání a kladiva. Lze v něm hledat česky i anglicky a filtrovat metrické a palcové velikosti. Většina obrysů je vygenerovaná podle rozměrů norem DIN/ISO (štítek *podle normy*) nebo představuje typický tvar (*typický tvar*). 17 obrysů pochází z modelů skutečných nástrojů z otevřených knihoven Poly Haven (CC0) a FreeCAD-library (CC-BY-3.0, autor hasecilu). Originály a licence jsou v `dist/catalog/sources/`.
+
+Kategorie **Sady nářadí** nabízí 38 sad podle složení běžně prodávaných sad, například sadu očkoplochých klíčů 6–32 mm (26 ks), imbusy 1,5–10 mm nebo sadu nástrčných hlavic 1/2" 10–32 mm. **Přidat sadu** vloží celou sadu jedním krokem, který jde vrátit přes Zpět. V obsahu sady lze odškrtnout velikosti, které nemáte. Nástroje, které se do šuplíku nevejdou, zůstanou v projektu a aplikace je ohlásí.
+
+Obrysy z katalogu jsou jmenovité. Konkrétní nástroj se může lišit, proto ho před tiskem porovnejte se zkušebním PDF 1:1.
+
 ## Výřezy pro prsty
 
 Novým nástrojům se automaticky připraví dva boční výřezy pro snazší vyjmutí z kapsy. U vybraného nástroje je můžete znovu automaticky umístit, přidat další, upravit jejich polohu a průměr nebo je jednotlivě či všechny odstranit. Změny lze vrátit přes Zpět a ukládají se s projektem i do JSON. Smazané výřezy se při automatickém rozvržení samy neobnovují; u starších nástrojů se přidají až na vaše přání.

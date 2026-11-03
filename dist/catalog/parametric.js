@@ -8,27 +8,30 @@
 // * DIN 3113 form A / ISO 7738 combination wrench, overall length l (mm), max values per size s:
 //   6:105 7:110 8:120 9:130 10:140 11:150 12:160 13:170 14:180 15:190 16:200 17:210 18:220 19:230
 //   20:245 21:255 22:270 23:280 24:290 27:320 30:350 32:370.
+//   Sizes 25:300 26:310 28:330 29:340 (needed by 6–32 mm sets) = lengths interpolated between those → 'typical'.
 //   Head widths from ISO 3318 limit formulae (≈): open end b1 ≈ 2.1·s + 7, ring end d ≈ 1.45·s + 4;
 //   thickness open ≈ 0.33·s + 3, ring ≈ 0.38·s + 4.5; open jaw angled 15° to the shank axis.
 // * DIN 3110 / ISO 10102 double open-end wrench overall length (mm, ≈ max): 6×7:120 8×9:135 8×10:140
 //   10×11:150 10×13:160 12×13:170 13×15:180 13×17:185 14×15:185 16×17:200 17×19:210 18×19:215
 //   19×22:230 21×23:250 22×24:255 24×27:280 27×30:300 30×32:320; heads as above, 15° jaws.
+//   Pairs 20×22:235 24×26:270 25×28:285 27×32:310 (common in sets) = interpolated lengths → 'typical'.
 // * SAE combination wrenches (ASME B107.100 sets only minima) – typical overall lengths (in):
 //   1/4:4.2 5/16:4.7 3/8:5.3 7/16:6.0 1/2:6.6 9/16:7.3 5/8:8.0 11/16:8.6 3/4:9.3 13/16:10 7/8:10.6
 //   15/16:11.3 1:12; heads from the ISO 3318 formulae with s converted to mm  → accuracy 'typical'.
 // * ISO 2936 hex key (L), long leg l1 / short leg l2 (mm): 1.5:46.5/15.5 2:52/18 2.5:58.5/20.5 3:66/23
 //   4:74/29 5:85/33 6:96/38 8:108/44 10:122/50 12:137/57; bar width = across corners s/cos30°.
-//   SAE keys and Torx keys: legs interpolated from that table  → 'typical'.
-//   Torx tip size (ISO 10664, across points, mm): T10 2.74 T15 3.27 T20 3.86 T25 4.43 T27 4.99
+//   SAE keys (0.050"–3/8") and Torx keys: legs interpolated from that table  → 'typical'.
+//   Torx tip size (ISO 10664, across points, mm): T8 2.31 T9 2.50 T10 2.74 T15 3.27 T20 3.86 T25 4.43 T27 4.99
 //   T30 5.52 T40 6.65 T45 7.82 T50 8.83.
 // * DIN 3124 / ISO 2725-1 sockets (short series), lying on side: length 1/4" 25 mm; 3/8" 28 mm (≤19),
-//   31 mm (>19); 1/2" 38 mm (≤24), 42 mm (>24). Outer diameter (≈ ISO 3318 max) socket end 1.3·s + 2.2,
+//   31 mm (>19); 1/2" 38 mm (8–24), 42 mm (>24). Outer diameter (≈ ISO 3318 max) socket end 1.3·s + 2.2,
 //   drive end 1/4" 12.5, 3/8" 17, 1/2" 22 mm. SAE 3/8" sockets same formulae → 'typical'.
 // * ISO 1173 bits: hex 6.35 mm across flats (7.33 across corners), C6.3 length 25 mm, E6.3 length 50 mm.
-// * ISO 2380-2 slotted blade widths/lengths (2.5×75, 3×100, 4×100, 5.5×125, 6.5×150, 8×175),
+// * ISO 2380-2 slotted blade widths/lengths (2.5×75, 3×100 (+ 3×80 common in sets → typical), 4×100, 5.5×125, 6.5×150, 8×175),
 //   ISO 8764-2 cross-recess blade lengths (PH0×60, PH1×80, PH2×100, PH3×150; PZ same); handles typical.
 // * Everything else (ratchets, extensions, pliers, measuring, cutting, striking) = representative
-//   shapes from common catalogue dimensions → accuracy 'typical'.
+//   shapes from common catalogue dimensions → accuracy 'typical'. Extra sizes (1/2" joint, T-bar, 1/4" bit adapter,
+//   chisels 18/26 mm, pin punch 7 mm) exist because common commercial tool sets contain them.
 import Clipper from '../vendor/clipper.js';
 
 const SRC={name:'Šuplík Studio parametric (DIN/ISO dimensions)',license:'CC0-1.0',url:''};
@@ -99,10 +102,11 @@ function doubleOpen(s1,s2,L){
   return shape([[P(x1,-w1/2),P(x2,-w2/2),P(x2,w2/2),P(x1,w1/2)],...h1.body,...h2.body],[h1.notch,h2.notch]);
 }
 const DIN3113={6:105,7:110,8:120,9:130,10:140,11:150,12:160,13:170,14:180,15:190,16:200,17:210,18:220,19:230,20:245,21:255,22:270,23:280,24:290,27:320,30:350,32:370};
-for(const [k,L] of Object.entries(DIN3113)){
-  const s=+k;
+const DIN3113X={25:300,26:310,28:330,29:340};
+for(const [k,L] of Object.entries({...DIN3113,...DIN3113X})){
+  const s=+k,std=k in DIN3113;
   add(`combination-wrench-${s}mm`,'wrenches',`Očkoplochý klíč ${s} mm`,`Combination wrench ${s} mm`,comboWrench(s,L),thick(s).ring+2,'mm',s,
-    [`${s} mm`,'DIN 3113','ISO 7738','očkoplochý','combination','ring','open end'],'standard',`DIN 3113 A overall length ${L} mm; head widths ≈ ISO 3318 limits.`);
+    [`${s} mm`,'DIN 3113','ISO 7738','očkoplochý','combination','ring','open end'],std?'standard':'typical',std?`DIN 3113 A overall length ${L} mm; head widths ≈ ISO 3318 limits.`:`Length ${L} mm interpolated between DIN 3113 sizes; heads ≈ ISO 3318 formulae.`);
 }
 const SAE_COMBO=[['1/4',4.2],['5/16',4.7],['3/8',5.3],['7/16',6.0],['1/2',6.6],['9/16',7.3],['5/8',8.0],['11/16',8.6],['3/4',9.3],['13/16',10],['7/8',10.6],['15/16',11.3],['1',12]];
 for(const [f,Lin] of SAE_COMBO){
@@ -111,9 +115,10 @@ for(const [f,Lin] of SAE_COMBO){
     [q.label,'SAE','ASME B107.100','imperial','palcový','combination'],'typical',`Typical SAE length ${Lin} in; heads ≈ ISO 3318 formulae.`);
 }
 const DIN3110=[[6,7,120],[8,9,135],[8,10,140],[10,11,150],[10,13,160],[12,13,170],[13,15,180],[13,17,185],[14,15,185],[16,17,200],[17,19,210],[18,19,215],[19,22,230],[21,23,250],[22,24,255],[24,27,280],[27,30,300],[30,32,320]];
-for(const [a,b,L] of DIN3110){
+const DIN3110X=[[20,22,235],[24,26,270],[25,28,285],[27,32,310]];
+for(const [a,b,L,x] of [...DIN3110,...DIN3110X.map(r=>[...r,1])]){
   add(`double-open-end-wrench-${a}x${b}mm`,'wrenches',`Plochý oboustranný klíč ${a}×${b} mm`,`Double open-end wrench ${a}×${b} mm`,doubleOpen(a,b,L),thick(b).open+2,'mm',a,
-    [`${a} mm`,`${b} mm`,`${a}x${b}`,'DIN 3110','ISO 10102','plochý','open end'],'standard',`DIN 3110 overall length ≈ ${L} mm; heads ≈ ISO 3318 limits.`);
+    [`${a} mm`,`${b} mm`,`${a}x${b}`,'DIN 3110','ISO 10102','plochý','open end'],x?'typical':'standard',x?`Length ≈ ${L} mm interpolated between DIN 3110 sizes; heads ≈ ISO 3318 formulae.`:`DIN 3110 overall length ≈ ${L} mm; heads ≈ ISO 3318 limits.`);
 }
 
 /* ---------- hex & torx keys ---------- */
@@ -131,12 +136,12 @@ for(const [s,L1,L2] of ISO2936){
   add(`hex-key-l-${slug(s)}mm`,'hex-keys',`Imbusový klíč ${cz(s)} mm`,`Hex key ${s} mm`,lKey(e,L1,L2,.6*s),e+2,'mm',s,
     [`${s} mm`,'ISO 2936','DIN 911','imbus','inbus','allen','L-key'],'standard',`ISO 2936 legs ${L1}/${L2} mm, across corners ${e.toFixed(2)} mm.`);
 }
-for(const f of ['1/16','5/64','3/32','7/64','1/8','9/64','5/32','3/16','7/32','1/4','5/16','3/8']){
-  const q=FR(f),s=q.v*25.4,e=s/Math.cos(30*D2R),[L1,L2]=legs(s);
+for(const q of [{label:'0.050"',id:'0-050in',v:.05},...['1/16','5/64','3/32','7/64','1/8','9/64','5/32','3/16','7/32','1/4','5/16','3/8'].map(FR)]){
+  const s=q.v*25.4,e=s/Math.cos(30*D2R),[L1,L2]=legs(s);
   add(`hex-key-l-${q.id}`,'hex-keys',`Imbusový klíč ${q.label}`,`Hex key ${q.label}`,lKey(e,L1,L2,.6*s),e+2,'in',q.v,
     [q.label,'SAE','ASME B18.3','imperial','imbus','allen','L-key'],'typical','Legs interpolated from ISO 2936 by across-flats size.');
 }
-for(const [t,e] of [[10,2.74],[15,3.27],[20,3.86],[25,4.43],[27,4.99],[30,5.52],[40,6.65],[45,7.82],[50,8.83]]){
+for(const [t,e] of [[8,2.31],[9,2.5],[10,2.74],[15,3.27],[20,3.86],[25,4.43],[27,4.99],[30,5.52],[40,6.65],[45,7.82],[50,8.83]]){
   const [L1,L2]=legs(e*.9);
   add(`torx-key-l-t${t}`,'hex-keys',`Klíč Torx T${t}`,`Torx L-key T${t}`,lKey(e,L1,L2,.6*e),e+2,'mm',e,
     [`T${t}`,'Torx','ISO 10664','hexalobular','L-key'],'typical',`Tip ${e} mm across points (ISO 10664); legs interpolated from ISO 2936.`);
@@ -147,7 +152,7 @@ function socket(len,dd,ds){
   const xs=len*.45;
   return shape([box(0,xs+.5,dd,.8),box(xs,len,ds,.8)]);
 }
-const DRIVES={'1/4':{dd:12.5,len:s=>25,sizes:[4,5,5.5,6,7,8,9,10,11,12,13,14]},'3/8':{dd:17,len:s=>s>19?31:28,sizes:[8,9,10,11,12,13,14,15,16,17,18,19,20,21,22]},'1/2':{dd:22,len:s=>s>24?42:38,sizes:[10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,27,30,32]}};
+const DRIVES={'1/4':{dd:12.5,len:s=>25,sizes:[4,5,5.5,6,7,8,9,10,11,12,13,14]},'3/8':{dd:17,len:s=>s>19?31:28,sizes:[8,9,10,11,12,13,14,15,16,17,18,19,20,21,22]},'1/2':{dd:22,len:s=>s>24?42:38,sizes:[8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,27,30,32]}};
 const sockD=s=>1.3*s+2.2;
 for(const [dr,cfg] of Object.entries(DRIVES)){
   const q=FR(dr);
@@ -176,6 +181,9 @@ for(const [dr,c] of Object.entries(EXT)){
     shape([box(0,c.le,c.de,.8),box(c.le-1,L-c.lm,c.db,.5),box(L-c.lm-.5,L,c.sq,.6)]),roundDepth(c.de),'in',q.v,[q.label,`${L} mm`,'prodloužení','extension','DIN 3123'],'typical',`Typical ${L} mm extension, female end Ø ${c.de} mm.`);
 }
 add('bit-holder-1-4in','sockets','Držák bitů 1/4" 60 mm','Bit holder 1/4" 60 mm',shape([box(0,45,12.5,1),box(44.5,60,7.33,.6)]),roundDepth(12.5),'in',.25,['1/4"','bit','držák','holder','magnetic'],'typical','Typical magnetic bit holder, ISO 1173 hex shank.');
+add('bit-adapter-1-4in','sockets','Adaptér na bity 1/4" (čtyřhran → šestihran)','Bit adapter 1/4" square to 1/4" hex',shape([box(0,26,12.5,.8),box(25.5,32,6.35,.5)]),roundDepth(12.5),'in',.25,['1/4"','bit','adaptér','adapter','bit holder'],'typical','Typical 1/4" square-drive bit adapter, ~32 mm.');
+add('universal-joint-1-2in','sockets','Kloub 1/2"','Universal joint 1/2"',shape([box(0,27,22,.8),box(25,47,26,2),box(45,72,22,.8)]),roundDepth(26),'in',.5,['1/2"','kloub','universal joint','kardan','DIN 3123'],'typical','Typical 1/2" universal joint, ~72 mm, lying straight on its side.');
+add('sliding-t-bar-1-2in','sockets','Posuvná T-rukojeť 1/2" 250 mm','Sliding T-bar 1/2" 250 mm',shape([box(0,250,14,.6),rrect(110,-14,140,14,4)]),roundDepth(28),'in',.5,['1/2"','T-rukojeť','sliding T-bar','DIN 3122'],'typical','Typical 250 mm sliding T-bar, Ø 14 mm, head parked mid-bar.');
 const bitTip=(L)=>shape([box(0,L-5,7.33,.5),[P(L-5.2,-3.67),P(L,-1.5),P(L,1.5),P(L-5.2,3.67)]]);
 add('bit-25mm-c6-3','sockets','Bit 25 mm (1/4")','Bit 25 mm (1/4" hex)',bitTip(25),roundDepth(7.33),'mm',25,['1/4"','C6.3','ISO 1173','bit','25 mm'],'standard','ISO 1173 C6.3: 6.35 mm hex across flats, length 25 mm.');
 add('bit-50mm-e6-3','sockets','Bit 50 mm (1/4")','Bit 50 mm (1/4" hex)',shape([box(0,11,7.33,.5),box(10.5,45,4.5,.3),[P(44.8,-2.25),P(50,-1.2),P(50,1.2),P(44.8,2.25)]]),roundDepth(7.33),'mm',50,['1/4"','E6.3','ISO 1173','bit','50 mm'],'standard','ISO 1173 E6.3: 6.35 mm hex, length 50 mm.');
@@ -188,9 +196,9 @@ function screwdriver(Lh,Dh,ds,Lb,tip,w){
   else parts.push([P(end-tl,-ds/2),P(end-1,-.5),P(end,-.25),P(end,.25),P(end-1,.5),P(end-tl,ds/2)]);
   return shape(parts);
 }
-for(const [w,L,ds,Dh,Lh] of [[2.5,75,2.5,20,80],[3,100,3,22,85],[4,100,4,25,95],[5.5,125,5,30,105],[6.5,150,6,33,110],[8,175,7,36,115]]){
+for(const [w,L,ds,Dh,Lh] of [[2.5,75,2.5,20,80],[3,80,3,22,85],[3,100,3,22,85],[4,100,4,25,95],[5.5,125,5,30,105],[6.5,150,6,33,110],[8,175,7,36,115]]){
   add(`screwdriver-slotted-${slug(w)}x${L}`,'screwdrivers',`Šroubovák plochý ${cz(w)} × ${L} mm`,`Slotted screwdriver ${w} × ${L} mm`,screwdriver(Lh,Dh,ds,L,'sl',w),roundDepth(Dh),'mm',w,
-    [`${w} mm`,`SL ${w}`,'ISO 2380','plochý','slotted','flat'],'typical',`Blade ${w} × ${L} mm per ISO 2380-2; handle typical.`);
+    [`${w} mm`,`SL ${w}`,'ISO 2380','plochý','slotted','flat'],'typical',L===80?`Blade ${w} × ${L} mm (length common in sets); handle typical.`:`Blade ${w} × ${L} mm per ISO 2380-2; handle typical.`);
 }
 const CROSS=[[0,60,3,25,95],[1,80,4.5,30,105],[2,100,6,33,110],[3,150,8,38,120]];
 for(const [k,name,cs] of [['ph','Phillips','křížový'],['pz','Pozidriv','Pozidriv']])for(const [n,L,ds,Dh,Lh] of CROSS){
@@ -237,7 +245,7 @@ add('scriber','measuring','Rýsovací jehla','Scriber',shape([box(0,128,6,.6),[P
 add('utility-knife-18mm','cutting','Odlamovací nůž 18 mm','Utility knife 18 mm',shape([hull([...circle(15,0,14),...circle(140,0,11.5)]),[P(140,-9),P(176,-9),P(165,9),P(140,9)],circle(72,13,5)]),20,'mm',18,['18 mm','odlamovací','nůž','cutter','snap-off'],'typical','Typical 18 mm snap-off knife, blade extended 25 mm.');
 add('utility-knife-9mm','cutting','Odlamovací nůž 9 mm','Utility knife 9 mm',shape([hull([...circle(9,0,9),...circle(112,0,7.5)]),[P(112,-4.5),P(138,-4.5),P(132,4.5),P(112,4.5)],circle(55,8.5,3.5)]),14,'mm',9,['9 mm','odlamovací','nůž','cutter','snap-off'],'typical','Typical 9 mm snap-off knife.');
 add('junior-hacksaw','cutting','Pilka na kov junior','Junior hacksaw',shape([hull([...circle(26,48,24),...circle(150,78,8),...circle(258,16,8),...circle(8,6,6),...circle(258,4,4)])]),16,'mm',150,['pilka','na kov','junior','hacksaw','150 mm'],'typical','Typical junior hacksaw for 150 mm blades (outer silhouette, frame filled).');
-for(const w of [6,8,10,12,16,20,25]){
+for(const w of [6,8,10,12,16,18,20,25,26]){
   const bl=w<12?115:125,h=118;
   add(`wood-chisel-${w}mm`,'cutting',`Dláto ${w} mm`,`Wood chisel ${w} mm`,shape([hull([...circle(14,0,13),...circle(98,0,15),...circle(h-2,0,10)]),box(h-3,h+12,Math.max(9,w*.6),1),box(h+11,h+12+bl,w,.4)]),20,'mm',w,
     [`${w} mm`,'dláto','chisel','DIN 5139'],'typical',`Typical bench chisel, blade ${w} × ${bl} mm, handle Ø 30 mm.`);
@@ -263,7 +271,7 @@ for(const [g,L,H,hw,dep] of [[300,300,100,22,26],[500,330,115,26,30]]){
   add(`machinist-hammer-${g}g`,'striking',`Zámečnické kladivo ${g} g`,`Machinist (cross-pein) hammer ${g} g`,peinHammer(L,H,hw,false),dep,'mm',L,[`${g} g`,'kladivo','zámečnické','DIN 1041','cross pein'],'typical',`Typical DIN 1041 style ${g} g hammer, handle ${L} mm.`);
 }
 add('centre-punch','striking','Důlčík','Centre punch',shape([box(0,95,10,1.2),[P(94.8,-5),P(116,-1.6),P(120,-.4),P(120,.4),P(116,1.6),P(94.8,5)]]),roundDepth(10),'mm',120,['důlčík','centre punch','center punch','DIN 7250'],'typical','Typical Ø 10 × 120 mm centre punch.');
-for(const d of [2,3,4,5,6,8]){
+for(const d of [2,3,4,5,6,7,8]){
   const B=d<=3?8:d<=5?10:12,L=150,pl=Math.min(40,8*d+12);
   add(`pin-punch-${d}mm`,'striking',`Vyrážeč ${d} mm`,`Pin punch ${d} mm`,shape([box(0,L-pl-12,B,1),[P(L-pl-12.2,-B/2),P(L-pl,-d/2),P(L-pl,d/2),P(L-pl-12.2,B/2)],box(L-pl-.2,L,d,Math.min(.4,d/6))]),roundDepth(B),'mm',d,
     [`${d} mm`,'vyrážeč','průbojník','pin punch','DIN 6450'],'typical',`Typical pin punch, tip Ø ${d} mm, body Ø ${B} mm, ${L} mm.`);
