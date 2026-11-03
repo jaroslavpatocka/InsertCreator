@@ -129,11 +129,14 @@ function stitchBoundaryEdges(triangles){
   const key=p=>p.map(v=>Math.round(v*1e5)).join(','),edges=new Map();
   for(const t of triangles)for(let i=0;i<3;i++){const a=t[i],b=t[(i+1)%3],ka=key(a),kb=key(b),k=ka<kb?ka+'|'+kb:kb+'|'+ka;const e=edges.get(k)||{count:0,a,b};e.count++;edges.set(k,e);}
   const unmatched=[...edges.values()].filter(e=>e.count!==2),points=[...new Map(unmatched.flatMap(e=>[e.a,e.b]).map(p=>[key(p),p])).values()];
-  if(!points.length)return triangles;
+  if(!points.length)return cancelOppositeFaces(triangles);
   const splits=new Map();
   for(const e of unmatched){
     const d=e.b.map((v,i)=>v-e.a[i]),length=d.reduce((s,v)=>s+v*v,0),on=[];
-    for(const p of points){const t=p.reduce((s,v,i)=>s+(v-e.a[i])*d[i],0)/length;if(t<1e-7||t>1-1e-7)continue;const distance=Math.hypot(...p.map((v,i)=>v-e.a[i]-t*d[i]));if(distance<.00016)on.push({p,t});}
+    // Allow sub-grid clipping error at real T-junctions. A tolerance larger than
+    // the clipping grid also admitted nearby distinct edges and made thin
+    // triangle perimeters backtrack over their own corners.
+    for(const p of points){const t=p.reduce((s,v,i)=>s+(v-e.a[i])*d[i],0)/length;if(t<1e-7||t>1-1e-7)continue;const distance=Math.hypot(...p.map((v,i)=>v-e.a[i]-t*d[i]));if(distance<.00004)on.push({p,t});}
     if(on.length){on.sort((a,b)=>a.t-b.t);splits.set(key(e.a)+'|'+key(e.b),on.map(x=>x.p));splits.set(key(e.b)+'|'+key(e.a),on.map(x=>x.p).reverse());}
   }
   const result=[];
@@ -144,7 +147,25 @@ function stitchBoundaryEdges(triangles){
     const center=[0,1,2].map(i=>(t[0][i]+t[1][i]+t[2][i])/3);
     for(let i=0;i<perimeter.length;i++)result.push([center,perimeter[i],perimeter[(i+1)%perimeter.length]]);
   }
-  return result;
+  return cancelOppositeFaces(result);
+}
+
+// Nearly collinear Boolean edges can visit the same stitching interval twice.
+// Opposing, coincident fan patches have no boundary surface. Cancel only exact
+// pairs at STL float precision; keep any unmatched face and its winding.
+function cancelOppositeFaces(triangles){
+  const pending=new Map(),keep=new Uint8Array(triangles.length).fill(1);
+  for(let i=0;i<triangles.length;i++){
+    const keys=triangles[i].map(p=>p.map(Math.fround).join(',')),sorted=[...keys].sort();
+    // A stitching point may round onto its neighbour in the binary STL. This
+    // collapsed fan has no area and must not contribute the same edge twice.
+    if(new Set(keys).size<3){keep[i]=0;continue;}
+    const start=keys.indexOf(sorted[0]),direction=keys[(start+1)%3]<keys[(start+2)%3]?0:1,key=sorted.join('|'),pair=pending.get(key)||[[],[]];
+    if(pair[1-direction].length){keep[pair[1-direction].pop()]=0;keep[i]=0;}
+    else pair[direction].push(i);
+    pending.set(key,pair);
+  }
+  return triangles.filter((triangle,i)=>keep[i]);
 }
 
 export function trianglesVolume(triangles){return Math.abs(triangles.reduce((s,[a,b,c])=>s+(a[0]*(b[1]*c[2]-b[2]*c[1])-a[1]*(b[0]*c[2]-b[2]*c[0])+a[2]*(b[0]*c[1]-b[1]*c[0]))/6,0));}

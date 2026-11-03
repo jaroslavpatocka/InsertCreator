@@ -141,7 +141,7 @@ export function autoArrange(project,{preserveLocked=true}={}) {
   const lockedIds=new Set(oldModules.filter(m=>!tools.some(t=>t.moduleId===m.id)||(preserveLocked&&(m.locked||tools.some(t=>t.moduleId===m.id&&t.locked)))).map(m=>m.id));
   const modules=oldModules.filter(m=>lockedIds.has(m.id));
   const reservedTools=new Set(tools.filter(t=>lockedIds.has(t.moduleId)||invalid.has(t.id)).map(t=>t.id));
-  for(const tool of tools.filter(t=>invalid.has(t.id)&&!lockedIds.has(t.moduleId)&&!oldModules.some(m=>m.id===t.moduleId&&(m.sizeMode==='manual'||m.grouped===true)))){tool.moduleId=null;tool.x=n(project.width)+grid;tool.y=0;}
+  for(const tool of tools.filter(t=>invalid.has(t.id)&&!lockedIds.has(t.moduleId)&&!oldModules.some(m=>m.id===t.moduleId&&(m.sizeMode==='manual'||m.grouped===true||m.setLayout==='uniform')))){tool.moduleId=null;tool.x=n(project.width)+grid;tool.y=0;}
   // A fixed tool without a module receives a stationary enclosing module.
   for(const t of tools.filter(t=>preserveLocked&&t.locked&&!reservedTools.has(t.id))){
     const b=footprints.get(t.id),padding=n(project.wall,2.4)+.25;
@@ -150,7 +150,7 @@ export function autoArrange(project,{preserveLocked=true}={}) {
     t.moduleId=module.id;modules.push(module);reservedTools.add(t.id);
   }
   // Manual sizes and explicitly shared modules remain movable, rigid groups.
-  const groups=oldModules.filter(m=>(m.sizeMode==='manual'||m.grouped===true)&&!lockedIds.has(m.id)).map(original=>{
+  const groups=oldModules.filter(m=>(m.sizeMode==='manual'||m.grouped===true||m.setLayout==='uniform')&&!lockedIds.has(m.id)).map(original=>{
     const own=tools.filter(t=>t.moduleId===original.id);let content=null,width=original.width,height=original.height,valid=!own.some(t=>invalid.has(t.id));
     if(valid&&original.grouped===true&&original.sizeMode!=='manual'){
       content=box(own.flatMap(t=>{const b=footprints.get(t.id);return[{x:b.x,y:b.y},{x:b.maxX,y:b.maxY}];}));

@@ -1,4 +1,5 @@
 import {validateFingerGrips} from './finger-grip.js';
+import {validateToolSets} from './tool-sets.js';
 
 export const uid=()=>globalThis.crypto?.randomUUID?.()||`id-${Date.now()}-${Math.random().toString(36).slice(2)}`;
 export const clone=value=>JSON.parse(JSON.stringify(value));
@@ -19,7 +20,12 @@ export function validateProject(input){
   const ids=new Set();
   out.modules=p.modules.map(m=>{
     const id=text(m.id||uid());if(ids.has(id))throw Error('Duplicitní identifikátor modulu.');ids.add(id);
-    return{id,name:text(m.name||'Modul'),x:finite(m.x,0,4000,'pozice X'),y:finite(m.y,0,4000,'pozice Y'),width:finite(m.width,5,3000,'šířka modulu'),height:finite(m.height,5,3000,'hloubka modulu'),locked:!!m.locked,sizeMode:m.sizeMode==='manual'?'manual':'auto',...(m.grouped===true?{grouped:true}:{})};
+    let setFields={};
+    if(Object.hasOwn(m,'setId')||Object.hasOwn(m,'setLayout')){
+      if(typeof m.setId!=='string'||!m.setId.trim()||m.setId.length>100||!['uniform','shared'].includes(m.setLayout))throw Error('Modul sady musí mít platný identifikátor sady a způsob uspořádání.');
+      setFields={setId:m.setId,setLayout:m.setLayout};
+    }
+    return{id,name:text(m.name||'Modul'),x:finite(m.x,0,4000,'pozice X'),y:finite(m.y,0,4000,'pozice Y'),width:finite(m.width,5,3000,'šířka modulu'),height:finite(m.height,5,3000,'hloubka modulu'),locked:!!m.locked,sizeMode:m.sizeMode==='manual'?'manual':'auto',...(m.grouped===true?{grouped:true}:{}),...setFields};
   });
   const toolIds=new Set();
   out.tools=p.tools.map(t=>{
@@ -31,7 +37,9 @@ export function validateProject(input){
     if(width<.1||height<.1)throw Error('Kontura nemá platnou plochu.');
     if(width>3000||height>3000)throw Error('Kontura nesmí v žádném směru přesáhnout 3000 mm.');
     return{id,name:text(t.name||'Nástroj'),points,x:finite(t.x??0,-1000000,1000000,'X nástroje'),y:finite(t.y??0,-1000000,1000000,'Y nástroje'),rotation:finite(t.rotation??0,-3600,3600,'otočení'),depth:finite(t.depth??12,.5,99,'hloubka kapsy'),locked:!!t.locked,moduleId:ids.has(t.moduleId)?t.moduleId:null,...(Object.hasOwn(t,'fingerGrips')?{fingerGrips:validateFingerGrips(t.fingerGrips,{minX,minY})}:{})};
-  });return out;
+  });
+  if(Object.hasOwn(p,'toolSets'))out.toolSets=validateToolSets(p.toolSets,toolIds);
+  return out;
 }
 export function readLocal(key,fallback){try{const value=localStorage.getItem(key);return value?JSON.parse(value):fallback;}catch{return fallback;}}
 export function writeLocal(key,value){try{localStorage.setItem(key,JSON.stringify(value));return true;}catch{return false;}}

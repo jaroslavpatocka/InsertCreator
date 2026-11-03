@@ -27,6 +27,14 @@ Tlačítko **Chytré rozvržení** hledá úspornější orientaci nástrojů a 
 
 Výpočet má průběh a lze jej zrušit. Přijaté rozvržení můžete celé vrátit jedním krokem **Zpět**; společné moduly a jejich výřezy zůstávají upravitelné a ukládají se do JSON. Běžné **Auto rozložení** společné moduly zachová. Výsledek uvádí změnu součtu vnějších půdorysů modulů (jmenovité rozměry minus montážní mezera 0,5 mm), nikoli změnu fyzické velikosti šuplíku. Jde o omezené hledání pro nejvýše 24 nástrojů a přiměřeně složité obrysy; nezaručuje matematicky nejmenší možné řešení. Příliš velkou sestavu ponechá beze změny a uvede důvod.
 
+## Sady nástrojů
+
+V nabídce **Sady nástrojů** můžete vybrané nástroje označit jako jednu sadu, pojmenovat ji a později změnit členy nebo ji zrušit. Zrušení sady nemaže nástroje. Podobné tvary aplikace také navrhuje automaticky; návrh neznamená jisté určení typu nástroje a můžete jej upravit.
+
+Pro sadu zvolte **Stejné moduly**, **Společný modul** nebo **Automaticky**. Stejné moduly mají společné vnější rozměry a nástroje míří stejným směrem. Společný modul obsahuje celou sadu v přehledném uspořádání. Automatická volba porovná bezpečné varianty. Obrysy, skutečné rozměry a vlastní hloubky nástrojů se nemění. Tisková plocha a zámky mohou společný modul omezit; aplikace uvede důvod, pokud požadovanou variantu nelze použít.
+
+Režim rozvržení **Sady nástrojů** dává přednost sjednocení sad. Volba **Nejmenší plocha** zachovává původní konturní párování. Sjednocení může zabrat více místa; výsledek tuto změnu ukazuje a lze jej celý vrátit přes **Zpět**. Ručně zadané sady se ukládají s projektem a do JSON.
+
 ## Ovládání 3D náhledu
 
 V režimu **3D** otáčíte pohledem tažením levým tlačítkem myši, posouváte jej tažením pravým tlačítkem a kolečkem přibližujete či oddalujete. Funguje to nad modelem i nad prázdnou částí plochy. Tlačítka přiblížení ovládají aktuální pohled; **Zobrazit vše** vrátí výchozí kameru. Přepnutí do 2D a zpět zachová 3D pohled, otevření jiného šuplíku jej obnoví.

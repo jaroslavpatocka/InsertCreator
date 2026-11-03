@@ -1,6 +1,7 @@
 import Clipper from './vendor/clipper.js';
 import {pocketOutline,transformedPoints,validateLayout} from './geometry.js';
 import {automaticFingerGrips} from './finger-grip.js';
+import {arrangeToolSets} from './set-layout.js';
 
 const EPS=.001,SCALE=10000,CELL=2,MAX_CANDIDATES=32000;
 const copy=value=>typeof structuredClone==='function'?structuredClone(value):JSON.parse(JSON.stringify(value));
@@ -132,7 +133,7 @@ function pack(project,fixed,atoms,order){
 }
 
 /** Bounded contour-aware pair nesting, followed by deterministic modular packing. */
-export async function smartArrange(project,{onProgress,signal}={}){
+async function compactArrange(project,{onProgress,signal}={}){
   const abort=()=>{if(signal?.aborted)throw new DOMException('Chytré rozvržení bylo zrušeno.','AbortError');};
   const progress=(stage,value,message)=>{abort();try{onProgress?.({stage,progress:value,message});}catch{}abort();};
   const pause=async()=>{await new Promise(resolve=>setTimeout(resolve,0));abort();};
@@ -166,7 +167,7 @@ export async function smartArrange(project,{onProgress,signal}={}){
   for(const module of source.modules){
     const own=byModule.get(module.id),locked=module.locked||own.some(tool=>tool.locked);
     if(locked||!own.length){fixed.push(copy(module));for(const tool of own)reserved.add(tool.id);continue;}
-    if(module.sizeMode==='manual'||module.grouped||own.length>1){
+    if(module.sizeMode==='manual'||module.grouped||module.setLayout==='uniform'||own.length>1){
       rigid.push({id:module.id,module:copy(module),options:[{width:module.width,height:module.height,items:own.map(tool=>({tool,x:tool.x-module.x,y:tool.y-module.y,rotation:tool.rotation||0}))}]});for(const tool of own)reserved.add(tool.id);
     }
   }
@@ -221,4 +222,9 @@ export async function smartArrange(project,{onProgress,signal}={}){
   }
   progress('validate',.96,'Ověřuji stěny, vůli a zachování celé sestavy…');await pause();
   return finish(best===original?'Úspornější bezpečné rozvržení nebylo nalezeno.':'Chytré rozvržení je připravené.');
+}
+
+export async function smartArrange(project,{mode='compact',onProgress,signal}={}){
+  if(!['compact','sets'].includes(mode))throw Error('Neznámý režim chytrého rozvržení.');
+  return mode==='sets'?arrangeToolSets(project,{onProgress,signal,compactArrange}):compactArrange(project,{onProgress,signal});
 }

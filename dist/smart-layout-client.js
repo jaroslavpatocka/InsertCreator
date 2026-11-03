@@ -3,7 +3,8 @@ const copy=value=>typeof structuredClone==='function'?structuredClone(value):JSO
 let nextId=0;
 
 /** One isolated worker per run; no project state is owned by the transport. */
-export function runSmartLayout(project,{signal,onProgress,workerFactory,fallback}={}){
+export function runSmartLayout(project,{mode='compact',signal,onProgress,workerFactory,fallback}={}){
+  if(!['compact','sets'].includes(mode))return Promise.reject(new Error('Neplatný režim chytrého rozvržení.'));
   if(signal?.aborted)return Promise.reject(abortError());
   let input;try{input=copy(project);}catch{return Promise.reject(new Error('Projekt nelze předat chytrému rozvržení.'));}
   const id=++nextId;
@@ -23,7 +24,7 @@ export function runSmartLayout(project,{signal,onProgress,workerFactory,fallback
       try{
         await new Promise(resolve=>setTimeout(resolve,0));if(finished)return;
         const arrange=fallback||(await import('./smart-layout.js')).smartArrange;
-        const result=await arrange(input,{signal,onProgress:progress});
+        const result=await arrange(input,{mode,signal,onProgress:progress});
         if(!signal?.aborted)finish(null,result);else cancel();
       }catch(error){finish(error);}
     };
@@ -43,6 +44,6 @@ export function runSmartLayout(project,{signal,onProgress,workerFactory,fallback
     };
     worker.onerror=event=>{event.preventDefault?.();finish(new Error('Chytré rozvržení se nepodařilo spustit. Zkuste to znovu.'));};
     worker.onmessageerror=()=>finish(new Error('Výsledek chytrého rozvržení se nepodařilo načíst.'));
-    try{worker.postMessage({type:'arrange',id,project:input});}catch(error){finish(new Error('Projekt nelze předat chytrému rozvržení. '+error.message));}
+    try{worker.postMessage({type:'arrange',id,mode,project:input});}catch(error){finish(new Error('Projekt nelze předat chytrému rozvržení. '+error.message));}
   });
 }
