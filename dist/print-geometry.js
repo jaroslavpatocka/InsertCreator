@@ -55,6 +55,7 @@ export function printConfig(project){
   return {printMode,bottomMode,base,wall,height,magnetDiameter,magnetDepth,effectiveBaseMm,extraBase,footHeight};
 }
 
+/** Export-only printer check; drawer editing and previews use the drawer dimensions. */
 export function validatePrintBed(project,modules){
   if(!project.limitToBed)return;
   const width=number(project.bedWidth,220),height=number(project.bedHeight,220);

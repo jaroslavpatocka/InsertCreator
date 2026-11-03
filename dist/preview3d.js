@@ -121,7 +121,7 @@ function sceneFor(project){
     const entry={id:module.id,name:module.name||'Modul',faces:[],wire:null};
     try{
       // Cache every facet, including bottom and walls hidden in the initial view.
-      const bytes=exportSTL({...project,limitToBed:false},{moduleId:module.id}),view=new DataView(bytes.buffer,bytes.byteOffset,bytes.byteLength);
+      const bytes=exportSTL(project,{moduleId:module.id,checkBed:false}),view=new DataView(bytes.buffer,bytes.byteOffset,bytes.byteLength);
       for(let i=0;i<view.getUint32(80,true);i++){
         const offset=84+i*50,normal=[0,1,2].map(c=>view.getFloat32(offset+c*4,true));
         const points=[0,1,2].map(j=>[view.getFloat32(offset+12+j*12,true)+module.x,view.getFloat32(offset+16+j*12,true)+module.y,view.getFloat32(offset+20+j*12,true)]);

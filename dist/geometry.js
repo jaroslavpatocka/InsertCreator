@@ -130,7 +130,6 @@ export function resizeModule(project,moduleId,{width,height,mode='manual'}={}) {
     if(Math.abs(n(next.grid,42)-42)>.001)throw i18nError('Gridfinity patky vyžadují rastr přesně 42 mm.');
     if([module.x,module.y,width,height].some(value=>Math.abs(value/42-Math.round(value/42))>.0001))throw i18nError('Rozměry i poloha modulu musí být v násobcích 42 mm pro Gridfinity patky.');
   }
-  validatePrintBed(next,[module]);
   return next;
 }
 
@@ -184,8 +183,7 @@ export function autoArrange(project,{preserveLocked=true}={}) {
   });
   for(const {original,own,width,height,content,valid} of groups){
     let position=null;
-    const fitsBed=!project.limitToBed||((width-.5<=n(project.bedWidth,220)&&height-.5<=n(project.bedHeight,220))||(height-.5<=n(project.bedWidth,220)&&width-.5<=n(project.bedHeight,220)));
-    if(fitsBed&&valid)for(let y=0;y+height<=n(project.height)+EPS&&!position;y+=grid)for(let x=0;x+width<=n(project.width)+EPS;x+=grid){
+    if(valid)for(let y=0;y+height<=n(project.height)+EPS&&!position;y+=grid)for(let x=0;x+width<=n(project.width)+EPS;x+=grid){
       const candidate={x,y,width,height};
       if(!modules.some(m=>intersectsRect(candidate,m))){position={x,y};break;}
     }
@@ -203,7 +201,6 @@ export function autoArrange(project,{preserveLocked=true}={}) {
       let b;try{b=box(pocketOutline({...tool,x:0,y:0,rotation},clearance));}catch{continue;}
       const width=Math.ceil((b.width+2*padding)/grid)*grid,height=Math.ceil((b.height+2*padding)/grid)*grid;
       if(width>n(project.width)||height>n(project.height))continue;
-      if(project.limitToBed&&!((width-.5<=n(project.bedWidth,220)&&height-.5<=n(project.bedHeight,220))||(height-.5<=n(project.bedWidth,220)&&width-.5<=n(project.bedHeight,220))))continue;
       for(let y=0;y+height<=n(project.height)+EPS;y+=grid){
         for(let x=0;x+width<=n(project.width)+EPS;x+=grid){
           const candidate={x,y,width,height,rotation,b};
@@ -282,8 +279,8 @@ export function exportDXF(project,{moduleId=null}={}) {
 
 const printTools=(project,tools)=>tools.map(t=>({...t,poly:clean(pocketOutline(t,n(project.clearance,.8)))}));
 /** Binary STL in mm: solid or open contour walls, with the selected real underside. */
-export function exportSTL(project,{moduleId=null}={}){
-  const {modules,tools,origin}=selected(project,moduleId);validatePrintBed(project,modules);
+export function exportSTL(project,{moduleId=null,checkBed=true}={}){
+  const {modules,tools,origin}=selected(project,moduleId);if(checkBed)validatePrintBed(project,modules);
   return encodeSTL(buildPrintTriangles(project,modules,printTools(project,tools),origin),'Suplik Studio | mm | '+(project.printMode||'solid')+' | '+(project.bottomMode||'plain'));
 }
 /** One millimetre high contour ring: same pocket clearance, no full block or base. */
@@ -294,8 +291,9 @@ export function exportFitSTL(project,{moduleId=null}={}){
   return encodeSTL(triangles,'Suplik Studio | mm | 1mm contour fit test');
 }
 /** Geometric volume only; does not pretend to predict slicer infill or print duration. */
-export function printStats(project,{moduleId=null}={}){
+export function printStats(project,{moduleId=null,checkBed=true}={}){
   const {modules,tools,origin}=selected(project,moduleId),prepared=printTools(project,tools),cfg=printConfig(project);
+  if(checkBed)validatePrintBed(project,modules);
   const triangles=buildPrintTriangles(project,modules,prepared,origin),volumeMm3=trianglesVolume(triangles);
   const solidVolumeMm3=cfg.printMode==='solid'?volumeMm3:trianglesVolume(buildPrintTriangles({...project,printMode:'solid'},modules,prepared,origin));
   let heightMm=0;for(const triangle of triangles)for(const p of triangle)heightMm=Math.max(heightMm,p[2]);

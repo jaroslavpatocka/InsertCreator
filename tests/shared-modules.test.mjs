@@ -89,7 +89,9 @@ test('an oversized shared group remains reloadable and recovers without losing m
   const restored=validateProject(JSON.parse(JSON.stringify({...source,...result}))),larger={...restored,width:420,height:336},packed={...larger,...autoArrange(larger)};
   assert.equal(group(packed).grouped,true);assert.equal(packed.unplaced.length,0);preserved(source,packed);assert.deepEqual(validateLayout(packed),[]);
   const bedLimited={...packed,limitToBed:true,bedWidth:100,bedHeight:100},bedResult=autoArrange(bedLimited);
-  assert.deepEqual([...bedResult.unplaced].sort(),['a','b']);assert.equal(bedResult.modules.length,1);preserved(packed,{...bedLimited,...bedResult});
+  assert.deepEqual(bedResult.unplaced,[]);assert.equal(bedResult.modules.length,1);preserved(packed,{...bedLimited,...bedResult});
+  assert.deepEqual(bedResult.modules,autoArrange({...bedLimited,limitToBed:false}).modules);
+  assert.deepEqual(validateLayout({...bedLimited,...bedResult}),[]);
   assert.throws(()=>exportSTL(bedLimited),/tiskovou plochu/);
 });
 

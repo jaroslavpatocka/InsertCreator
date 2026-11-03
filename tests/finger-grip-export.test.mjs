@@ -80,6 +80,27 @@ test('automatic grips enlarge manufacturing footprints and manual modules enforc
   assert.deepEqual(validateLayout({...locked,...stationary}),[]);assert.equal(stationary.tools[0].x,42);assert.equal(stationary.tools[0].y,42);
 });
 
+test('central automatic wrench grips survive rotated layout and cut real printable cavities',()=>{
+  const points=[[0,-25],[28,-25],[35,-8],[195,-8],[202,-48],[240,-48],[240,48],[202,48],[195,8],[35,8],[28,25],[0,25],[0,12],[17,12],[17,-12],[0,-12]].map(([x,y])=>({x,y:y+48}));
+  for(const printMode of ['solid','light'])for(const rotation of [0,37]){
+    const p={...project(),width:504,height:420,printMode,modules:[{id:'m',name:'Klíč',x:0,y:0,width:336,height:336,sizeMode:'manual'}],tools:[{...tool(),points,x:30,y:30,rotation}]};
+    p.tools[0].fingerGrips=automaticFingerGrips(p.tools[0]);
+    assert.ok(p.tools[0].fingerGrips.every(g=>Math.abs(g.x-120)<.001),'a broad head must not displace the grip from the shaft centre');
+    const packed={...p,...autoArrange(p)},own=packed.tools[0],before=structuredClone(own);
+    assert.deepEqual(own.fingerGrips,p.tools[0].fingerGrips);assert.deepEqual(validateLayout(packed),[]);
+    const plain=structuredClone(packed);plain.tools[0].fingerGrips=[];
+    const mesh=inspectSTL(exportSTL(packed)),original=inspectSTL(exportSTL(plain)),cfg=printConfig(packed);
+    const angle=own.rotation*Math.PI/180,c=Math.cos(angle),s=Math.sin(angle),rotated=points.map(p=>({x:p.x*c-p.y*s,y:p.x*s+p.y*c})),b=extent(rotated);
+    const sample={x:120*c-38*s-b.x+own.x,y:120*s+38*c-b.y+own.y};
+    const z=printMode==='solid'?cfg.height-5:cfg.effectiveBaseMm+5;
+    assert.equal(materialAt(original,sample.x,sample.y,z),true,'the uncut shaft side has material');
+    assert.equal(materialAt(mesh,sample.x,sample.y,z),false,'the central finger circle opens the actual pocket');
+    assert.equal(materialAt(mesh,sample.x,sample.y,cfg.effectiveBaseMm/2),true,'the shared floor is retained');
+    inspectSTL(exportFitSTL(packed));
+    assert.deepEqual(own,before,'manufacturing exports preserve stored centres, radius and contour');
+  }
+});
+
 test('expanded pockets participate in neighbouring pocket and module wall validation',()=>{
   const p=project();p.tools[0].x=20;
   p.tools.push({...tool(),id:'second',name:'Vedlejší',x:60,fingerGrips:[]});

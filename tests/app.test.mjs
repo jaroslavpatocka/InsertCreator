@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import {Window} from 'happy-dom';
 import {createCanvas,ImageData} from '@napi-rs/canvas';
-import {bounds} from '../dist/geometry.js';
+import {bounds,validateLayout} from '../dist/geometry.js';
 import {validateProject} from '../dist/model.js';
 
 const win=new Window({url:'http://localhost:5173'});
@@ -64,14 +64,22 @@ function stlHeight(bytes){
 await import('../dist/app.js');
 
 test('rotation shortcut ignores Ctrl, Meta and Alt while plain R still rotates',()=>{
-  const rotation=saved().tools[0].rotation;
-  for(const modifier of ['ctrlKey','metaKey','altKey']){
-    win.document.body.dispatchEvent(new win.KeyboardEvent('keydown',{key:'r',[modifier]:true,bubbles:true}));
-    assert.equal(saved().tools[0].rotation,rotation,modifier+' must not rotate the tool');
+  const original=saved(),scratch=createDrawerFromUI('Otočení klávesou R',588,420);
+  try{
+    action('add-shape');change('#shape-type','rect');change('[data-field=shapeWidth]',40);change('[data-field=shapeHeight]',80);click('[data-confirm]');
+    // Leave room for either orientation so this test checks keyboard handling, not an invalid pocket rotation.
+    action('resize-module');change('[data-field=moduleWidth]',168);change('[data-field=moduleHeight]',168);click('[data-resize-module]');
+    const before=saved(),rotation=before.tools[0].rotation;assert.deepEqual(validateLayout(before),[]);
+    for(const modifier of ['ctrlKey','metaKey','altKey']){
+      win.document.body.dispatchEvent(new win.KeyboardEvent('keydown',{key:'r',[modifier]:true,bubbles:true}));
+      assert.deepEqual(saved().tools,before.tools,modifier+' must not rotate the tool');assert.deepEqual(saved().modules,before.modules);
+    }
+    win.document.body.dispatchEvent(new win.KeyboardEvent('keydown',{key:'r',bubbles:true}));
+    assert.equal(saved().tools[0].rotation,(rotation+90)%360);assert.deepEqual(validateLayout(saved()),[]);
+    action('undo');assert.deepEqual(saved().tools,before.tools);assert.deepEqual(saved().modules,before.modules);
+  }finally{
+    action('projects');click(`[data-open="${original.id}"]`);action('projects');click(`[data-remove-project="${scratch.id}"]`);click('[data-modal-close]');
   }
-  win.document.body.dispatchEvent(new win.KeyboardEvent('keydown',{key:'r',bubbles:true}));
-  assert.equal(saved().tools[0].rotation,(rotation+90)%360);
-  action('undo');assert.equal(saved().tools[0].rotation,rotation);
 });
 
 test('legacy projects keep their original pockets until finger grips are explicitly requested',()=>{

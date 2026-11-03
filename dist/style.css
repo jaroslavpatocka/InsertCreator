@@ -212,16 +212,7 @@
 /* Why an unplaced tool has no module (selected-tool panel) */
 .unplaced-why p{margin:0 0 4px}.unplaced-why .section-link{min-height:32px;margin-right:6px}
 
-/* Print bed choice after adding tools (offerBedFit): inline bed size inputs inside an option card. */
-.fit-option.fit-bed{cursor:default}
-.fit-option.fit-bed .fields-row{width:100%;margin-top:6px}
-.fit-option.fit-bed .field{margin:0}
-.fit-option.fit-bed .btn{margin-top:6px;min-height:36px}
-.fit-option.fit-bed:focus-within{border-color:var(--green)}
-.tool-select-row{display:flex;align-items:center;gap:4px;border-radius:10px}
-.tool-select-row>input{flex:none;width:17px;height:17px;margin:8px 0 8px 2px;accent-color:#bb8c38;cursor:pointer}
-.tool-select-row .tool-row{flex:1;min-width:0;width:calc(100% - 23px)}
-.tool-select-row.batch-selected{background:#f9f0dc;outline:1px solid #e1cda0}
+
 .bulk-controls{margin:12px 17px 14px;padding:10px 0;border-top:1px solid #e3e7dd;border-bottom:1px solid #e3e7dd}
 .bulk-heading{display:flex;align-items:center;gap:12px;flex-wrap:wrap;font-size:12px}
 .bulk-heading strong{margin-right:auto}
@@ -234,3 +225,21 @@
 .model-size-label{opacity:.9}
 .label-warning p{font-size:12px}
 @media(max-width:760px){.tool-select-row>input{width:22px;height:22px;margin:10px 3px}.bulk-actions .btn{min-height:40px}.bulk-heading{gap:10px}}
+
+/* Printer controls are scoped to the manufacturing export dialog. */
+.export-printer{margin-top:14px}
+.export-bed-warning ul{list-style:none;margin:10px 0 0;padding:0}
+.export-bed-warning li{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;padding:8px 0;border-top:1px solid #dbcfc2}
+.export-bed-warning .btn{white-space:normal}
+
+.module-members{padding:12px 0;border-bottom:1px solid #e3e7dd;margin-bottom:12px}
+.module-members>strong{display:block;font-size:12px;margin-bottom:8px}
+.module-members>div{display:flex;gap:6px;flex-wrap:wrap}
+.module-members .btn{font-size:11px;padding:7px 10px}
+.module-members .btn.active{background:#fcf0d7;border-color:#dab06b}
+.board-svg [data-tool]{cursor:pointer}
+.board-svg .tool-outline:focus-visible{outline:none;stroke:#b17f28;stroke-width:2;vector-effect:non-scaling-stroke}
+
+.tool-position{margin:12px 0 4px}
+.tool-position>strong{display:block;font-size:12px;margin-bottom:8px}
+.module-position{margin-top:12px}

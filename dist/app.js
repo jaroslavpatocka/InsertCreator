@@ -1,5 +1,6 @@
 import {bounds,transformedPoints,autoArrange,resizeModule,validateLayout,exportSVG,exportDXF,exportSTL,exportFitSTL,printStats,zipFiles,createDemoProject} from './geometry.js';
 import {printPreview,createCamera3D,normalizeCamera3D} from './preview3d.js';
+import {validatePrintBed} from './print-geometry.js';
 import {createViewControls,createViewControls2D} from './view-controls.js';
 import {exportFitPDF} from './fit-sheet.js';
 import {openCapture} from './capture.js';
@@ -8,6 +9,7 @@ import {addToolGroup,splitForBed,scaleTool} from './set-module.js';
 import {sizeText} from './tool-size.js';
 import {planSizeLabels,SIZE_LABEL_REASONS} from './size-labels.js';
 import * as bulk from './bulk-edit.js';
+import * as moduleEdit from './module-edit.js';
 import {esc,icon,openModal,closeModal,toast,download} from './ui.js';
 import {uid,clone,validateProject,readLocal,writeLocal,blankProject} from './model.js';
 import {automaticFingerGrips,pocketOutline,validateFingerGrips} from './finger-grip.js';
@@ -192,18 +194,19 @@ function editSelectedToolSet(){const t=tool();if(!t)return;const manual=(project
 function removeToolSetMember(id){if(Object.hasOwn(project,'toolSets'))project.toolSets=project.toolSets.map(s=>({...s,toolIds:s.toolIds.filter(member=>member!==id)})).filter(s=>s.toolIds.length);}
 function toolSetResultSummary(definitions,before,next,result){
   const old=setCoherence(before,definitions),after=setCoherence(next,definitions),records=result.stats?.setSummary??[],warnings=Array.isArray(result.stats?.warnings)?result.stats.warnings:Array.isArray(result.warnings)?result.warnings:[];
-  const rows=definitions.map(s=>{const satisfied=after.satisfied.includes(s.id),record=records.find(r=>r.id===s.id),status=satisfied?(old.satisfied.includes(s.id)?tr('Zůstává sjednocená'):'Sjednocena'):tr('Zatím nesjednocena');let reason=!satisfied?(record?.reason||tr('Celou sadu se nepodařilo bezpečně umístit podle zvolené volby.')):'';if(!satisfied&&s.layout==='shared')reason+=tr(' Zvolte stejné moduly nebo upravte rozměry šuplíku či tiskovou plochu.');return `<li><strong>${esc(s.name)}: ${status}</strong>${record?.applied?` · ${esc(setLayoutNames()[record.applied]||record.applied)}`:''}${reason?`<p>${esc(reason)}</p>`:''}</li>`;}).join('');
+  const rows=definitions.map(s=>{const satisfied=after.satisfied.includes(s.id),record=records.find(r=>r.id===s.id),status=satisfied?(old.satisfied.includes(s.id)?tr('Zůstává sjednocená'):'Sjednocena'):tr('Zatím nesjednocena');let reason=!satisfied?(record?.reason||tr('Celou sadu se nepodařilo bezpečně umístit podle zvolené volby.')):'';if(!satisfied&&s.layout==='shared')reason+=tr(' Zvolte stejné moduly nebo upravte rozměry šuplíku.');return `<li><strong>${esc(s.name)}: ${status}</strong>${record?.applied?` · ${esc(setLayoutNames()[record.applied]||record.applied)}`:''}${reason?`<p>${esc(reason)}</p>`:''}</li>`;}).join('');
   return `<div class="tool-set-result"><h4>${tr("Sady nástrojů")}</h4>${definitions.length?`<p>${tr('Sjednocené sady: {before} → {after}',{before:old.satisfied.length,after:after.satisfied.length})}</p><ul>${rows}</ul>`:tr('<p>Žádná sada nebyla nalezena. Vlastní sadu můžete vytvořit v nabídce Sady nástrojů.</p>')}${warnings.length?`<ul class="tool-set-warnings">${warnings.map(message=>`<li>${esc(message)}</li>`).join('')}</ul>`:''}</div>`;
 }
 // End tool set editor.
 const toolUnit=t=>unitFor(t?.unit),moduleUnit=m=>unitFor(m?.unit);
 const unitBadge=u=>u?`<span class="unit-badge" title="${tr('Vlastní jednotky: {unit}',{unit:u})}">${u}</span>`:'';
 function unitSelect(label,value,scope){return `<label class="field unit-field"><span>${label}</span><select data-field="unit" data-scope="${scope}" aria-label="${label}"><option value="" ${value?'':'selected'}>${tr('Podle šuplíku ({unit})',{unit:unit()})}</option>${UNITS.map(u=>`<option value="${u}" ${value===u?'selected':''}>${u}</option>`).join('')}</select></label>`;}
-function arrange(message=true){const result=autoArrange(project);project.tools=result.tools;project.modules=result.modules;if(message)toast(result.unplaced.length?plural(result.unplaced.length,['{n} nástroj se nevešel. Zkontrolujte rozměry šuplíku a tiskové plochy nebo odemkněte moduly.','{n} nástroje se nevešly. Zkontrolujte rozměry šuplíku a tiskové plochy nebo odemkněte moduly.','{n} nástrojů se nevešlo. Zkontrolujte rozměry šuplíku a tiskové plochy nebo odemkněte moduly.']):tr('Rozložení hotové. Zamčené moduly zůstaly na svém místě.'));return result;}
+function arrange(message=true){const result=autoArrange(project);project.tools=result.tools;project.modules=result.modules;if(message)toast(result.unplaced.length?plural(result.unplaced.length,['{n} nástroj se nevešel. Zkontrolujte rozměry šuplíku nebo odemkněte moduly.','{n} nástroje se nevešly. Zkontrolujte rozměry šuplíku nebo odemkněte moduly.','{n} nástrojů se nevešlo. Zkontrolujte rozměry šuplíku nebo odemkněte moduly.']):tr('Rozložení hotové. Zamčené moduly zůstaly na svém místě.'));return result;}
 function thumb(t){const b=bounds({...t,x:0,y:0,rotation:0});return `<svg viewBox="${-3} ${-3} ${b.width+6} ${b.height+6}" aria-hidden="true"><path d="${paths(transformedPoints({...t,x:0,y:0,rotation:0}))}" fill="${t.id===selected?'#c79c53':'#9fae90'}" stroke="none"/></svg>`;}
-// Every numeric field is a length: shown in the effective unit, stored in mm, typed text may carry any unit.
+// Lengths follow display units; angle fields always use degrees.
 function input(label,value,key,{unit:u,min=0,max=3000,scope='project',type='length'}={}){
   if(type==='text')return `<label class="field"><span>${label}</span><div class="input-wrap"><input type="text" value="${esc(value)}" data-field="${key}" data-scope="${scope}" aria-label="${label}"></div></label>`;
+  if(type==='angle')return `<label class="field"><span>${label}</span><div class="input-wrap"><input type="number" inputmode="decimal" min="${min}" max="${max}" step="0.01" value="${esc(Math.min(max,Math.max(min,Math.round(value*100)/100)))}" data-angle data-field="${key}" data-scope="${scope}" aria-label="${label} (°)"><em>°</em></div></label>`;
   u=u||unit();
   return `<label class="field"><span>${label}</span><div class="input-wrap"><input type="text" inputmode="decimal" autocomplete="off" spellcheck="false" value="${esc(inputValue(value,{unit:u}))}" data-length data-mm="${esc(value)}" data-unit="${u}" data-min="${min}" data-max="${max}" data-field="${key}" data-scope="${scope}" aria-label="${label} (${u})"><em>${u}</em></div></label>`;
 }
@@ -263,7 +266,7 @@ function editFingerGrips(){
   redraw();
 }
 function showDrawerDimensions(){inspectorTab='drawer';render();if(window.innerWidth<=760)$('#drawer-settings')?.scrollIntoView({block:'start',behavior:'smooth'});}
-function moduleSizing(m){const u=moduleUnit(m),count=project.tools.filter(t=>t.moduleId===m.id).length;return `<div class="module-sizing"><strong>${m.sizeMode==='manual'?tr('Rozměry modulu · ruční'):tr('Rozměry modulu · automatické')}${unitBadge(m.unit)}</strong><small>${tr('Jmenovité {size}',{size:fmtSize(m.width,m.height,{unit:u})})}<br>${tr('Vnější {size}',{size:fmtSize(m.width-.5,m.height-.5,{unit:u})})}${count>1?`<br>${tr('Nástrojů ve společném modulu: {n}',{n:count})}`:''}</small>${unitSelect(tr('Jednotky modulu'),m.unit,'module')}${moduleStepControls(m)}<div class="selected-actions"><button class="btn btn-soft module-resize-button" data-action="resize-module">${icon('ruler')}${tr('Změnit velikost')}</button>${project.tools.some(t=>t.moduleId===m.id)?`<button class="btn btn-light" data-action="size-module-auto">${tr('Podle nástroje')}</button>`:''}${count>1?`<button class="btn btn-light" data-action="split-module">${tr('Rozdělit modul')}</button>`:''}</div></div>`;}
+function moduleSizing(m){const u=moduleUnit(m),count=project.tools.filter(t=>t.moduleId===m.id).length;return `<div class="module-sizing"><strong>${m.sizeMode==='manual'?tr('Rozměry modulu · ruční'):tr('Rozměry modulu · automatické')}${unitBadge(m.unit)}</strong><small>${tr('Jmenovité {size}',{size:fmtSize(m.width,m.height,{unit:u})})}<br>${tr('Vnější {size}',{size:fmtSize(m.width-.5,m.height-.5,{unit:u})})}${count>1?`<br>${tr('Nástrojů ve společném modulu: {n}',{n:count})}`:''}</small><div class="fields-row module-position">${input(tr('X · poloha v šuplíku'),m.x,'moduleX',{unit:u,min:0,max:3000,scope:'module'})}${input(tr('Y · poloha v šuplíku'),m.y,'moduleY',{unit:u,min:0,max:3000,scope:'module'})}</div>${unitSelect(tr('Jednotky modulu'),m.unit,'module')}${moduleStepControls(m)}<div class="selected-actions"><button class="btn btn-soft module-resize-button" data-action="resize-module">${icon('ruler')}${tr('Změnit velikost')}</button>${project.tools.some(t=>t.moduleId===m.id)?`<button class="btn btn-light" data-action="size-module-auto">${tr('Podle nástroje')}</button>`:''}${count>1?`<button class="btn btn-light" data-action="split-module">${tr('Rozdělit modul')}</button>`:''}<button class="btn btn-light" data-action="rotate-module">${icon('rotate')}${tr('Otočit modul o 90°')}</button><button class="btn btn-light" data-action="duplicate-module">${icon('copy')}${tr('Kopie modulu')}</button></div></div>`;}
 /** −/+ one grid step for the module width and depth, right in the inspector. */
 function moduleStepControls(m){
   const step=fmtLen(project.grid,{unit:moduleUnit(m)}),off=m.locked?` disabled title="${tr(LOCKED_RESIZE)}"`:'';
@@ -330,7 +333,7 @@ function resizeCandidate(base,id,dir,dx,dy,{step,relative=!snap}={}){
   if(R-L<min.width-1e-6||B-T<min.height-1e-6)return{error:tr('Modul tu nemá místo. Nejmenší velikost je {size}.',{size:fmtSize(min.width,min.height,{unit:moduleUnit(m)})}),min};
   const r=v=>Math.round(v*1e4)/1e4,attempt=(l,t,rr,b)=>{const tmp=clone(base),tm=tmp.modules.find(x=>x.id===id),width=r(rr-l),height=r(b-t);tm.x=r(l);tm.y=r(t);return{project:resizeModule(tmp,id,{width,height,mode:'manual'}),width,height};};
   try{return{...attempt(L,T,R,B),limit,min};}catch(error){
-    // E.g. the print bed: step the moving edges back towards the original size and keep the largest valid one.
+    // At another geometry limit, step moving edges back and keep the largest valid size.
     const grow=(R-L)>m.width+1e-6||(B-T)>m.height+1e-6;
     if(grow)for(let k=1;k<=200;k++){
       const l=dir.includes('w')?Math.min(L0,L+k*step):L,rr=dir.includes('e')?Math.max(R0,R-k*step):R,t=dir.includes('n')?Math.min(T0,T+k*step):T,b=dir.includes('s')?Math.max(B0,B-k*step):B;
@@ -399,6 +402,14 @@ function currentSet(m=moduleFor()){
   return(project.toolSets||[]).find(s=>s.id===m?.setId||s.toolIds.some(id=>ids.has(id)));
 }
 function moduleSetControls(m){return currentSet(m)||(m&&project.tools.filter(t=>t.moduleId===m.id).length>1)?`<button class="btn btn-soft block-button" data-action="arrange-current-set">${tr('Uložení a pořadí sady')}</button>`:'';}
+function moduleMembersPanel(m){
+  const members=m?project.tools.filter(t=>t.moduleId===m.id):[];if(members.length<2)return '';
+  return `<div class="module-members"><strong>${tr('Nástroje v modulu')}</strong><div role="group" aria-label="${tr('Nástroje v modulu')}">${members.map(t=>`<button type="button" class="btn btn-light ${selected===t.id?'active':''}" data-select="${esc(t.id)}" aria-pressed="${selected===t.id}">${esc(t.name)}</button>`).join('')}</div></div>`;
+}
+function boardToolFromTarget(target,m){
+  const id=target.closest('[data-tool]')?.dataset.tool,own=m?project.tools.filter(t=>t.moduleId===m.id):[];
+  return own.find(t=>t.id===id)||(own.length===1?own[0]:null);
+}
 function moduleKindNote(m){const shared=project.tools.some(t=>t.moduleId===m.id);return tr(shared?(m.locked?'Společný modul · zamčená poloha':'Společný modul · volná poloha'):(m.locked?'Výplňový modul · zamčená poloha':'Výplňový modul · volná poloha'));}
 function storageVariantOptions(value){return STORAGE_VARIANTS.map(([id,label])=>`<option value="${id}" ${id===value?'selected':''}>${tr(label)}</option>`).join('');}
 function openSetPlacement(){
@@ -415,13 +426,10 @@ function openSetPlacement(){
       if(project.tools.some(t=>modules.has(t.moduleId)&&!ids.has(t.id)))throw i18nError('Nejprve rozdělte modul, který obsahuje nástroje z více sad.');
       const before=clone(project),base={...clone(project),tools:project.tools.filter(t=>!ids.has(t.id)),modules:project.modules.filter(m=>!modules.has(m.id)),toolSets:(project.toolSets||[]).filter(s=>s.id!==set.id)};
       const opts={name:set.name,arrangement:variant==='uniform'?'ordered':variant,order,toolSet:{id:set.id,name:set.name,layout:variant==='uniform'?'uniform':'shared'}};
-      const rebuild=(patch={},split=false)=>{
-        const p={...clone(base),...patch},r=split?splitForBed(p,clone(tools),opts):addToolGroup(p,clone(tools),opts),byId=new Map(r.project.tools.map(t=>[t.id,t]));
-        r.project.tools=before.tools.map(t=>byId.get(t.id));return r;
-      };
-      const result=rebuild();validateProject(result.project);
+      const result=addToolGroup(base,clone(tools),opts),byId=new Map(result.project.tools.map(t=>[t.id,t]));
+      result.project.tools=before.tools.map(t=>byId.get(t.id));validateProject(result.project);
       commit(()=>{project=result.project;selected=tools[0].id;selectedModule=null;inspectorTab='tool';},tr('Uložení sady změněno.'));modal.close();
-      if(!result.placed||result.reason==='bed')offerFit(ids,{name:set.name,group:variant!=='uniform',split:variant!=='uniform',rebuild:(patch,split)=>rebuild(patch,split).project});
+      if(!result.placed)offerFit(ids,{name:set.name,group:variant!=='uniform'});
     }catch(error){toast(errorText(error));}
   };
 }
@@ -429,7 +437,7 @@ function selectedIds(){const known=new Set(project.tools.map(t=>t.id));bulkSelec
 function toggleToolSelection(id){if(bulkSelection.has(id))bulkSelection.delete(id);else bulkSelection.add(id);render();}
 function selectionToolbar(){
   const ids=selectedIds(),count=ids.length;if(!project.tools.length)return '';
-  return `<div class="bulk-controls"><div class="bulk-heading"><strong aria-live="polite">${tr('Vybráno: {n}',{n:count})}</strong><button class="section-link" data-action="select-all-tools">${tr('Vybrat vše')}</button>${count?`<button class="section-link" data-action="select-no-tools">${tr('Zrušit výběr')}</button>`:''}</div>${count?`<div class="bulk-actions" role="group" aria-label="${tr('Hromadné úpravy nástrojů')}"><button class="btn btn-light" data-action="bulk-rotate">${tr('Otočit o 90°')}</button><button class="btn btn-light" data-action="bulk-flip">${tr('Otočit o 180°')}</button><button class="btn btn-light" data-action="bulk-move">${tr('Přesunout vybrané')}</button><button class="btn btn-light" data-action="bulk-depth">${tr('Hloubka kapes')}</button><button class="btn btn-light" data-action="bulk-lock">${tr('Zamknout')}</button><button class="btn btn-light" data-action="bulk-unlock">${tr('Odemknout')}</button><button class="btn btn-danger" data-action="bulk-delete">${tr('Smazat vybrané')}</button><button class="btn btn-soft" data-action="bulk-create-set">${tr('Vytvořit sadu')}</button></div><p class="muted-note">${tr('Přesun a zámek platí pro celé moduly včetně ostatních nástrojů v nich. Každou úpravu vrátíte jedním krokem Zpět.')}</p>`:''}</div>`;
+  return `<div class="bulk-controls"><div class="bulk-heading"><strong aria-live="polite">${tr('Vybráno: {n}',{n:count})}</strong><button class="section-link" data-action="select-all-tools">${tr('Vybrat vše')}</button>${count?`<button class="section-link" data-action="select-no-tools">${tr('Zrušit výběr')}</button>`:''}</div>${count?`<div class="bulk-actions" role="group" aria-label="${tr('Hromadné úpravy nástrojů')}"><button class="btn btn-light" data-action="bulk-rotate">${tr('Otočit o 90°')}</button><button class="btn btn-light" data-action="bulk-flip">${tr('Otočit o 180°')}</button><button class="btn btn-light" data-action="bulk-angle">${tr('Úhel otočení…')}</button><button class="btn btn-light" data-action="bulk-move">${tr('Přesunout vybrané')}</button><button class="btn btn-light" data-action="bulk-align">${tr('Zarovnat / rozestupy')}</button><button class="btn btn-light" data-action="bulk-depth">${tr('Hloubka kapes')}</button><button class="btn btn-light" data-action="bulk-grips-auto">${tr('Automatické výřezy vybraných')}</button><button class="btn btn-light" data-action="bulk-grips-clear">${tr('Odstranit výřezy vybraných')}</button><button class="btn btn-light" data-action="bulk-lock">${tr('Zamknout')}</button><button class="btn btn-light" data-action="bulk-unlock">${tr('Odemknout')}</button><button class="btn btn-danger" data-action="bulk-delete">${tr('Smazat vybrané')}</button><button class="btn btn-soft" data-action="bulk-create-set">${tr('Vytvořit sadu')}</button></div><p class="muted-note">${tr('Při přesunu lze vybrat celé moduly nebo nástroje uvnitř nich. Zámek platí pro celý modul. Každou úpravu vrátíte jedním krokem Zpět.')}</p>`:''}</div>`;
 }
 function toolList(){
   return project.tools.map(t=>`<div class="tool-select-row ${bulkSelection.has(t.id)?'batch-selected':''}"><input type="checkbox" data-tool-check="${esc(t.id)}" ${bulkSelection.has(t.id)?'checked':''} aria-label="${esc(tr('Vybrat {name}',{name:t.name}))}"><button class="tool-row ${selected===t.id?'selected':''}" data-select="${esc(t.id)}" aria-pressed="${selected===t.id}"><span class="tool-thumb">${thumb(t)}</span><span><strong>${esc(t.name)}${unitBadge(t.unit)}</strong><small>${sizeShort(bounds(t).width,bounds(t).height,toolUnit(t))}${!t.moduleId?' · '+tr('neumístěno'):''}</small></span>${icon(project.modules.find(m=>m.id===t.moduleId)?.locked?'lock':'chevron')}</button></div>`).join('')||`<div class="empty-note">${tr('Zatím žádné nástroje.')}</div>`;
@@ -441,12 +449,52 @@ function applyBulk(operation,value){
   commit(()=>{project=next;if(!project.tools.some(t=>t.id===selected))selected=project.tools[0]?.id||null;if(!project.modules.some(m=>m.id===selectedModule))selectedModule=null;selectedIds();},tr('Upraveno nástrojů: {n}.',{n:ids.length}));
 }
 function openBulkMove(){
-  const modal=openModal({title:tr('Přesunout vybrané nástroje'),subtitle:tr('Přesunují se celé moduly; vzdálenosti se přičtou k jejich současným polohám.'),body:`<div class="fields-row">${input(tr('Posun doprava'),0,'bulkDx',{min:-3000,max:3000})}${input(tr('Posun dolů'),0,'bulkDy',{min:-3000,max:3000})}</div>`,footer:`<button class="btn btn-primary" data-apply-bulk-move>${tr('Přesunout vybrané')}</button>`});
-  modal.el.querySelector('[data-apply-bulk-move]').onclick=()=>{const dx=lengthFrom(modal.el.querySelector('[data-field=bulkDx]')),dy=lengthFrom(modal.el.querySelector('[data-field=bulkDy]'));if(dx===null||dy===null)return;try{applyBulk(bulk.bulkMove,{dx,dy});modal.close();}catch(error){toast(errorText(error));}};
+  const modal=openModal({title:tr('Přesunout vybrané nástroje'),body:`<label class="field"><span>${tr('Co přesunout')}</span><select data-bulk-move-mode><option value="modules">${tr('Celé moduly')}</option><option value="tools">${tr('Nástroje uvnitř modulů')}</option></select></label><div class="fields-row">${input(tr('Posun doprava'),0,'bulkDx',{min:-3000,max:3000})}${input(tr('Posun dolů'),0,'bulkDy',{min:-3000,max:3000})}</div><p class="muted-note">${tr('Vzdálenosti se přičtou k současným polohám. Při přesunu nástrojů zůstanou moduly i ostatní nástroje na místě.')}</p>`,footer:`<button class="btn btn-primary" data-apply-bulk-move>${tr('Přesunout vybrané')}</button>`});
+  modal.el.querySelector('[data-apply-bulk-move]').onclick=()=>{const dx=lengthFrom(modal.el.querySelector('[data-field=bulkDx]')),dy=lengthFrom(modal.el.querySelector('[data-field=bulkDy]'));if(dx===null||dy===null)return;try{applyBulk(modal.el.querySelector('[data-bulk-move-mode]').value==='tools'?bulk.bulkMoveTools:bulk.bulkMove,{dx,dy});modal.close();}catch(error){toast(errorText(error));}};
+}
+function openBulkAlign(){
+  const modal=openModal({title:tr('Zarovnat / rozestupy'),body:`<div class="fields-row"><label class="field"><span>${tr('Směr')}</span><select data-align-axis><option value="x">${tr('Vodorovně · X')}</option><option value="y">${tr('Svisle · Y')}</option></select></label><label class="field"><span>${tr('Zarovnat podle')}</span><select data-align-edge><option value="min">${tr('Levý / horní okraj')}</option><option value="center">${tr('Střed')}</option><option value="max">${tr('Pravý / dolní okraj')}</option></select></label></div><p class="muted-note">${tr('Vyberte nejméně dva nástroje v jednom modulu. Stejné mezery vyžadují alespoň tři nástroje; krajní nástroje zůstanou na místě.')}</p>`,footer:`<button class="btn btn-light" data-apply-bulk-distribute ${selectedIds().length<3?'disabled':''}>${tr('Stejné mezery')}</button><button class="btn btn-primary" data-apply-bulk-align>${tr('Zarovnat nástroje')}</button>`});
+  const axis=()=>modal.el.querySelector('[data-align-axis]').value;
+  modal.el.querySelector('[data-apply-bulk-align]').onclick=()=>{try{applyBulk(bulk.bulkAlignTools,{axis:axis(),edge:modal.el.querySelector('[data-align-edge]').value});modal.close();}catch(error){toast(errorText(error));}};
+  modal.el.querySelector('[data-apply-bulk-distribute]').onclick=()=>{try{applyBulk(bulk.bulkDistributeTools,{axis:axis()});modal.close();}catch(error){toast(errorText(error));}};
 }
 function openBulkDepth(){
   const modal=openModal({title:tr('Hloubka vybraných kapes'),body:input(tr('Hloubka kapsy'),tool()?.depth||12,'bulkDepth',{min:.5,max:project.insertHeight-project.base}),footer:`<button class="btn btn-primary" data-apply-bulk-depth>${tr('Použít hloubku')}</button>`});
   modal.el.querySelector('[data-apply-bulk-depth]').onclick=()=>{const value=lengthFrom(modal.el.querySelector('[data-field=bulkDepth]'));if(value===null)return;try{applyBulk(bulk.bulkSetDepth,value);modal.close();}catch(error){toast(errorText(error));}};
+}
+function readAngle(value,{relative=false}={}){
+  const text=String(value).trim().replace(',','.'),degrees=Number(text);
+  if(!text||!Number.isFinite(degrees)||degrees<(relative?-359.99:0)||degrees>359.99)throw i18nError('Zadejte úhel od {min} do {max} °.',{min:relative?-359.99:0,max:359.99});
+  return Math.round(degrees*100)/100;
+}
+function openBulkAngle(){
+  const modal=openModal({title:tr('Úhel otočení'),body:`<label class="field"><span>${tr('Způsob otočení')}</span><select data-rotation-mode><option value="relative">${tr('Otočit o')}</option><option value="absolute">${tr('Nastavit na')}</option></select></label>${input(tr('Úhel otočení'),90,'bulkAngle',{type:'angle',min:-359.99,max:359.99,scope:'bulk'})}<p class="muted-note">${tr('Otáčejí se jen vybrané nástroje kolem vlastních středů. Společný modul a ostatní nástroje zůstávají na místě.')}</p>`,footer:`<button class="btn btn-primary" data-apply-bulk-angle>${tr('Použít otočení')}</button>`});
+  const mode=modal.el.querySelector('[data-rotation-mode]'),field=modal.el.querySelector('[data-field=bulkAngle]');
+  mode.onchange=()=>{field.min=mode.value==='absolute'?'0':'-359.99';};
+  modal.el.querySelector('[data-apply-bulk-angle]').onclick=()=>{
+    try{const relative=mode.value!=='absolute',degrees=readAngle(field.value,{relative});applyBulk(relative?bulk.bulkRotate:bulk.bulkSetRotation,degrees);modal.close();}
+    catch(error){toast(errorText(error));}
+  };
+}
+function rotateCurrentTool(degrees){
+  const t=tool();if(!t)return;
+  const next=bulk.bulkRotate(project,[t.id],degrees);if(same(next)===same(project))return;
+  commit(()=>project=next,tr('Nástroj otočen.'));
+}
+function toolPositionPanel(t,m){
+  if(!m)return '';
+  return `<div class="tool-position"><strong>${tr('Poloha uvnitř modulu')}</strong><div class="fields-row">${input(tr('X · zleva'),t.x-m.x,'toolX',{unit:toolUnit(t),min:-3000,max:3000,scope:'tool'})}${input(tr('Y · shora'),t.y-m.y,'toolY',{unit:toolUnit(t),min:-3000,max:3000,scope:'tool'})}</div></div>`;
+}
+function applyModuleEdit(operation,value,message){
+  const m=moduleFor();if(!m)return;
+  const next=operation(project,m.id,value);if(same(next)===same(project))return;
+  commit(()=>project=next,message);
+}
+function duplicateCurrentModule(){
+  const m=moduleFor();if(!m)return;const previous=new Set(project.modules.map(m=>m.id)),next=moduleEdit.duplicateModule(project,m.id);
+  if(same(next)===same(project))return;
+  const copied=next.modules.find(m=>!previous.has(m.id));
+  commit(()=>{project=next;selected=null;selectedModule=copied?.id||m.id;inspectorTab='tool';},tr('Modul zkopírován.'));
 }
 function sizeLabelPanel(t){return `<div class="size-label-editor">${input(tr('Popisek velikosti'),t.sizeLabel??sizeText(t),'sizeLabel',{type:'text',scope:'tool'})}<p class="muted-note">${tr('Například 13 mm nebo 1/2 in. U nástroje z fotografie zadejte skutečnou velikost. Tisk popisků zapnete pro celý šuplík.')}</p><button class="btn btn-light" data-action="toggle-size-labels">${tr(project.sizeLabels?'Vypnout popisky v modelu':'Zapnout popisky v modelu')}</button></div>`;}
 function labelStatus(modules=project.modules){
@@ -455,8 +503,8 @@ function labelStatus(modules=project.modules){
   const plan=planSizeLabels(project,modules,ownTools),skipped=plan.skipped;if(!skipped.length)return `<p class="muted-note">${tr('Popisky v modelu: {n}.',{n:plan.labels.length})}</p>`;
   return `<div class="issue-box label-warning" role="status"><p>${tr('Popisky v modelu: {n}, vynecháno: {skipped}.',{n:plan.labels.length,skipped:skipped.length})}</p>${[...new Set(skipped.map(s=>s.reason))].map(reason=>`<p>${esc(tr(SIZE_LABEL_REASONS[reason]||reason))}</p>`).join('')}</div>`;
 }
-function selectedPanel(){const t=tool(),m=moduleFor();if(!t&&!m)return `<div class="panel-header"><h2 class="panel-title">${tr('Vlastnosti nástroje')}</h2></div><div class="empty-note">${tr('Vyberte nástroj v náhledu nebo v seznamu.')}</div>`;if(!t)return `<div class="panel-header"><h2 class="panel-title">${tr(m&&project.tools.some(t=>t.moduleId===m.id)?'Společný modul':'Prázdný modul')}</h2><button class="icon-btn" data-action="drawer-tab" aria-label="${tr('Rozměry šuplíku')}">${icon('ruler')}</button></div><div class="panel-body">${moduleSizing(m)}${moduleSetControls(m)}<p class="muted-note">${moduleKindNote(m)}</p><div class="selected-actions"><button class="btn btn-light" data-action="lock">${icon(m.locked?'unlock':'lock')}${m.locked?tr('Odemknout'):tr('Zamknout')}</button><button class="btn btn-danger" data-action="delete">${icon('trash')}${tr('Smazat')}</button></div></div>`;
-return `<div class="panel-header"><h2 class="panel-title">${icon('wrench')} ${tr('Vybraný nástroj')}${unitBadge(t.unit)}</h2><button class="icon-btn" data-action="drawer-tab" aria-label="${tr('Rozměry šuplíku')}">${icon('ruler')}</button></div><div class="panel-body">${input(tr('Název'),t.name,'name',{type:'text',scope:'tool'})}<div class="fields-row">${input(tr('Šířka kontury'),bounds(t).width,'toolWidth',{unit:toolUnit(t),scope:'tool',min:2,max:2000})}${input(tr('Hloubka kapsy'),t.depth,'depth',{unit:toolUnit(t),scope:'tool',min:.5,max:project.insertHeight-project.base})}</div><div class="fields-row tool-scale-row"><label class="field"><span>${tr('Měřítko')}</span><div class="input-wrap"><input type="text" inputmode="decimal" autocomplete="off" spellcheck="false" value="100" data-field="toolScale" data-scope="tool" aria-label="${tr('Měřítko')} (%)"><em>%</em></div></label>${input(tr('Délka'),Math.max(bounds(t).width,bounds(t).height),'toolLength',{unit:toolUnit(t),scope:'tool',min:2,max:3000})}</div><p class="muted-note tool-scale-hint">${tr('Měřítko a délka (nejdelší strana) zvětší celý obrys rovnoměrně kolem středu. Výřezy pro prsty si zachovají poloměr.')}</p>${unitSelect(tr('Jednotky nástroje'),t.unit,'tool')}${selectedToolSetPanel(t)}${moduleSetControls(m)}${sizeLabelPanel(t)}${fingerGripPanel(t)}${m?moduleSizing(m):unplacedToolNote(t)}<div class="selected-actions"><button class="btn btn-light" data-action="rotate">${icon('rotate')}${tr('Otočit 90°')}</button><button class="btn btn-light" data-action="lock">${icon(m?.locked?'unlock':'lock')}${m?.locked?tr('Odemknout'):tr('Zamknout')}</button><button class="btn btn-light" data-action="duplicate">${icon('copy')}${tr('Kopie')}</button><button class="btn btn-danger" data-action="delete" aria-label="${tr('Smazat nástroj')}">${icon('trash')}</button></div><p class="muted-note">${m?.locked?tr('Zamčený modul automatické rozvržení nepřesune.'):tr('Na mobilu klepněte na Přesunout, potom přetáhněte modul. Zamknutím zachováte jeho polohu.')}</p></div>`;}
+function selectedPanel(){const t=tool(),m=moduleFor();if(!t&&!m)return `<div class="panel-header"><h2 class="panel-title">${tr('Vlastnosti nástroje')}</h2></div><div class="empty-note">${tr('Vyberte nástroj v náhledu nebo v seznamu.')}</div>`;if(!t)return `<div class="panel-header"><h2 class="panel-title">${tr(m&&project.tools.some(t=>t.moduleId===m.id)?'Společný modul':'Prázdný modul')}</h2><button class="icon-btn" data-action="drawer-tab" aria-label="${tr('Rozměry šuplíku')}">${icon('ruler')}</button></div><div class="panel-body">${moduleSizing(m)}${moduleSetControls(m)}${moduleMembersPanel(m)}<p class="muted-note">${moduleKindNote(m)}</p><div class="selected-actions"><button class="btn btn-light" data-action="lock">${icon(m.locked?'unlock':'lock')}${m.locked?tr('Odemknout'):tr('Zamknout')}</button><button class="btn btn-danger" data-action="delete">${icon('trash')}${tr('Smazat')}</button></div></div>`;
+return `<div class="panel-header"><h2 class="panel-title">${icon('wrench')} ${tr('Vybraný nástroj')}${unitBadge(t.unit)}</h2><button class="icon-btn" data-action="drawer-tab" aria-label="${tr('Rozměry šuplíku')}">${icon('ruler')}</button></div><div class="panel-body">${input(tr('Název'),t.name,'name',{type:'text',scope:'tool'})}${input(tr('Otočení'),((t.rotation%360)+360)%360,'rotation',{type:'angle',min:0,max:359.99,scope:'tool'})}${toolPositionPanel(t,m)}<div class="fields-row">${input(tr('Šířka kontury'),bounds(t).width,'toolWidth',{unit:toolUnit(t),scope:'tool',min:2,max:2000})}${input(tr('Hloubka kapsy'),t.depth,'depth',{unit:toolUnit(t),scope:'tool',min:.5,max:project.insertHeight-project.base})}</div><div class="fields-row tool-scale-row"><label class="field"><span>${tr('Měřítko')}</span><div class="input-wrap"><input type="text" inputmode="decimal" autocomplete="off" spellcheck="false" value="100" data-field="toolScale" data-scope="tool" aria-label="${tr('Měřítko')} (%)"><em>%</em></div></label>${input(tr('Délka'),Math.max(bounds(t).width,bounds(t).height),'toolLength',{unit:toolUnit(t),scope:'tool',min:2,max:3000})}</div><p class="muted-note tool-scale-hint">${tr('Měřítko a délka (nejdelší strana) zvětší celý obrys rovnoměrně kolem středu. Výřezy pro prsty si zachovají poloměr.')}</p>${unitSelect(tr('Jednotky nástroje'),t.unit,'tool')}${selectedToolSetPanel(t)}${moduleSetControls(m)}${moduleMembersPanel(m)}${sizeLabelPanel(t)}${fingerGripPanel(t)}${m?moduleSizing(m):unplacedToolNote(t)}<div class="selected-actions"><button class="btn btn-light" data-action="rotate">${icon('rotate')}${tr('Otočit 90°')}</button><button class="btn btn-light" data-action="lock">${icon(m?.locked?'unlock':'lock')}${m?.locked?tr('Odemknout'):tr('Zamknout')}</button><button class="btn btn-light" data-action="duplicate">${icon('copy')}${tr('Kopie')}</button><button class="btn btn-danger" data-action="delete" aria-label="${tr('Smazat nástroj')}">${icon('trash')}</button></div><p class="muted-note">${m?.locked?tr('Zamčený modul automatické rozvržení nepřesune.'):tr('Na mobilu klepněte na Přesunout, potom přetáhněte modul. Zamknutím zachováte jeho polohu.')}</p></div>`;}
 function prefsControls(){
   const own=project.unit?tr('Tento šuplík používá vlastní jednotky: {unit}',{unit:project.unit}):tr('Výchozí jednotky aplikace');
   return `<div class="prefs"><div class="pref-switch" role="group" aria-label="${tr('Jazyk')}">${LANGS.map(l=>`<button data-action="set-lang" data-value="${l}" class="${getLang()===l?'active':''}" aria-pressed="${getLang()===l}" lang="${l}" title="${LANG_NAMES[l]}">${l.toUpperCase()}</button>`).join('')}</div><div class="pref-switch ${project.unit?'overridden':''}" role="group" aria-label="${tr('Výchozí jednotky aplikace')}" title="${own}">${UNITS.map(u=>`<button data-action="set-unit" data-value="${u}" class="${getAppUnit()===u?'active':''}" aria-pressed="${getAppUnit()===u}">${u}</button>`).join('')}</div></div>`;
@@ -477,28 +525,24 @@ function removeDrawer(id){
 }
 // ---- Why a tool has no module: shown in the issue list and in the selected-tool panel ----
 /**
- * 'bed'     – even the smallest grid module (pocketOutline + autoArrange's wall padding, both tried rotations) exceeds the print bed while limitToBed is on;
  * 'drawer'  – that module is larger than the drawer itself;
  * 'space'   – it would fit, but there is no free room left; 'invalid' – the pocket cannot be computed.
  */
 function unplacedReason(p,t){
   const num=(v,d)=>Number.isFinite(Number(v))&&v!==null&&v!==''?Number(v):d;
-  const grid=Math.max(1,num(p.grid,42)),pad=Math.max(num(p.wall,2.4),num(p.gap,3)/2)+.25,bw=num(p.bedWidth,220),bh=num(p.bedHeight,220);
+  const grid=Math.max(1,num(p.grid,42)),pad=Math.max(num(p.wall,2.4),num(p.gap,3)/2)+.25;
   const sizes=[num(t.rotation,0),num(t.rotation,0)+90].flatMap(rotation=>{try{
     const pts=pocketOutline({...t,x:0,y:0,rotation},num(p.clearance,.8));if(pts.length<3)return[];
     const xs=pts.map(q=>q.x),ys=pts.map(q=>q.y);
     return[{w:Math.ceil((Math.max(...xs)-Math.min(...xs)+2*pad)/grid)*grid,h:Math.ceil((Math.max(...ys)-Math.min(...ys)+2*pad)/grid)*grid}];
   }catch{return[];}});
   if(!sizes.length)return 'invalid';
-  const onBed=s=>(s.w-.5<=bw&&s.h-.5<=bh)||(s.h-.5<=bw&&s.w-.5<=bh);
-  if(p.limitToBed&&!sizes.some(onBed))return 'bed';
   if(!sizes.some(s=>s.w<=num(p.width,0)&&s.h<=num(p.height,0)))return 'drawer';
   return 'space';
 }
-function unplacedSummary(p,tools){const out={bed:[],drawer:[],space:[],invalid:[]};for(const t of tools)out[unplacedReason(p,t)].push(t.id);return out;}
+function unplacedSummary(p,tools){const out={drawer:[],space:[],invalid:[]};for(const t of tools)out[unplacedReason(p,t)].push(t.id);return out;}
 function unplacedLines(p,why){
   const lines=[];
-  if(why.bed.length)lines.push(plural(why.bed.length,['{n} nástroj je delší než tisková plocha {bed}.','{n} nástroje jsou delší než tisková plocha {bed}.','{n} nástrojů je delších než tisková plocha {bed}.'],{bed:fmtSize(p.bedWidth||220,p.bedHeight||220)}));
   if(why.drawer.length)lines.push(plural(why.drawer.length,['{n} nástroj je větší než šuplík {size}.','{n} nástroje jsou větší než šuplík {size}.','{n} nástrojů je větších než šuplík {size}.'],{size:fmtSize(p.width,p.height)}));
   if(why.space.length)lines.push(plural(why.space.length,['{n} nástroj se nevešel do šuplíku.','{n} nástroje se nevešly do šuplíku.','{n} nástrojů se nevešlo do šuplíku.']));
   return lines;
@@ -506,26 +550,20 @@ function unplacedLines(p,why){
 /** Explanation box for the selected tool when it has no module. */
 function unplacedToolNote(t){
   const reason=unplacedReason(project,t),link=(action,label)=>`<button class="section-link" data-action="${action}">${label}</button>`;
-  if(reason==='bed')return `<div class="issue-box unplaced-why"><p>${tr('Nástroj čeká na umístění: je delší než tisková plocha {bed}, takže pro něj nejde vytvořit modul. Zvětšete tiskovou plochu nebo vypněte „Rozvrhovat podle tiskové plochy“.',{bed:fmtSize(project.bedWidth||220,project.bedHeight||220)})}</p>${link('print-bed',tr('Upravit tiskovou plochu'))}</div>`;
   if(reason==='drawer')return `<div class="issue-box unplaced-why"><p>${tr('Nástroj čeká na umístění: jeho modul je větší než šuplík {size}.',{size:fmtSize(project.width,project.height)})}</p>${link('expand',tr('Zvětšit šuplík'))}</div>`;
   if(reason==='space')return `<div class="issue-box unplaced-why"><p>${tr('Nástroj čeká na umístění: v šuplíku pro něj už není volné místo.')}</p>${link('auto',tr('Rozložit'))} ${link('expand',tr('Zvětšit šuplík'))}</div>`;
   return `<div class="issue-box">${tr('Nástroj čeká na umístění.')}</div>`;
-}
-/** Opens the export dialog with "Tiskárna a další možnosti" expanded and the bed width focused. */
-function openPrintBedSettings(){
-  openExport();const details=document.querySelector('#modal-root details.advanced');if(!details)return;details.open=true;
-  const field=details.querySelector('[data-field=bedWidth]');try{field?.scrollIntoView?.({block:'center'});field?.focus();}catch{}
 }
 function render(){
   viewControls?.dispose();viewControls=null;
   setProjectUnit(project.unit);
   const issues=errors(),unplaced=project.tools.filter(t=>!project.modules.some(m=>m.id===t.moduleId));
-  // "Not placed yet" issues collapse into one line per cause (print bed / drawer size / no free room) with a direct way out.
+  // "Not placed yet" issues collapse into one line per cause (drawer size / no free room) with a direct way out.
   const unplacedIds=new Set(unplaced.map(t=>t.id)),waitingIds=new Set(issues.filter(i=>i.type==='outside'&&i.ids.length===1&&unplacedIds.has(i.ids[0])).map(i=>i.ids[0]));
-  const why=unplacedSummary(project,unplaced.filter(t=>waitingIds.has(t.id))),explained=new Set([...why.bed,...why.drawer,...why.space]);
+  const why=unplacedSummary(project,unplaced.filter(t=>waitingIds.has(t.id))),explained=new Set([...why.drawer,...why.space]);
   const waiting=issues.filter(i=>i.type==='outside'&&i.ids.length===1&&explained.has(i.ids[0]));
   const issueLines=[...unplacedLines(project,why),...issues.filter(i=>!waiting.includes(i)).map(i=>errorText(i))];
-  const issueActions=`${why.bed.length?`<button class="section-link" data-action="print-bed">${tr('Upravit tiskovou plochu')}</button> `:''}<button class="section-link" data-action="auto">${waiting.length?tr('Rozložit'):tr('Přepočítat rozvržení')}</button>${why.space.length||why.drawer.length?` <button class="section-link" data-action="expand">${tr('Zvětšit šuplík')}</button>`:''}`;
+  const issueActions=`<button class="section-link" data-action="auto">${waiting.length?tr('Rozložit'):tr('Přepočítat rozvržení')}</button>${why.space.length||why.drawer.length?` <button class="section-link" data-action="expand">${tr('Zvětšit šuplík')}</button>`:''}`;
   const occupied=project.modules.reduce((s,m)=>s+m.width*m.height,0),usage=Math.min(100,Math.round(occupied/(project.width*project.height)*100)),lockedCount=project.modules.filter(m=>m.locked).length;
   const drawerSize=fmtSize(project.width,project.height);
   $('#app').innerHTML=`<div class="app-shell"><aside class="sidebar"><a class="brand" href="#" aria-label="Šuplík Studio" data-action="home"><span class="brand-mark"><i></i><i></i><i></i><i></i></span><span class="brand-name">šuplík<small>STUDIO</small></span></a><nav class="sidebar-nav" aria-label="${tr('Hlavní navigace')}"><button class="nav-item active" data-action="home">${icon('drawer')}<span>${tr('Můj šuplík')}</span></button><button class="nav-item" data-action="library">${icon('wrench')}<span>${tr('Knihovna nástrojů')}</span></button></nav><div class="sidebar-separator"></div>${drawerList()}<div class="sidebar-bottom"><button class="nav-item" data-action="help">${icon('help')}<span>${tr('Jak na to')}</span></button><div class="sidebar-separator" style="margin:18px 0"></div><div class="local-tag">${icon('shield')} ${tr('Všechno zůstává u vás')}</div><p>${tr('Fotky zpracovává váš prohlížeč.')}<br>${tr('Bez cloudu. Bez předplatného.')}</p></div></aside><main class="main"><header class="topbar"><div class="breadcrumb">${tr('Dílna')} <span>/</span> <b>${tr('Organizér nářadí')}</b></div><div class="top-actions">${prefsControls()}<span class="save-state">${icon(storageFailed?'info':'check')} <span class="save-text">${storageFailed?tr('Stáhněte zálohu'):tr('Uloženo v zařízení')}</span></span><button class="btn btn-light" data-action="save-project" aria-label="${tr('Uložit projekt')}">${icon('download')} <span class="btn-label">${tr('Uložit projekt')}</span></button><span class="avatar" title="${tr('Lokální dílna')}">JD</span></div></header><div class="page"><div class="page-heading"><div><p class="eyebrow">${tr('MÍSTO PRO KAŽDÝ NÁSTROJ')}</p><div class="name-edit"><h1>${esc(project.name)}</h1><button class="icon-btn" data-action="rename" aria-label="${tr('Přejmenovat šuplík')}">${icon('edit')}</button></div><p class="subtitle">${tr('Od fotky k pořádku. Přesně podle vaší dílny.')}</p><button class="drawer-dimensions" data-action="drawer-tab">${icon('ruler')}<span>${tr('Rozměry šuplíku')}</span><small>${drawerSize}</small></button></div><div class="heading-actions"><button class="btn btn-light" data-action="add-shape">${icon('plus')} ${tr('Prázdný modul')}</button><button class="btn btn-primary" data-action="capture">${icon('camera')} <span>${tr('Přidat nástroj')}</span></button></div></div><div class="steps" aria-label="${tr('Postup')}"><button class="step done" data-action="capture"><span class="step-num">01</span>${tr('Vyfotit nástroj')}</button><span class="step-chevron">›</span><button class="step done" data-action="capture"><span class="step-num">02</span>${tr('Rozpoznat obrys')}</button><span class="step-chevron">›</span><span class="step active"><span class="step-num">03</span>${tr('Rozvrhnout')}</span><span class="step-chevron">›</span><button class="step" data-action="export"><span class="step-num">04</span>${tr('Vyrobit')}</button></div><div class="workbench"><div class="workspace-col"><section class="workspace" aria-label="${tr('Editor sestavy')}"><div class="workspace-header"><div class="workspace-header-title">${icon('drawer')} ${tr('Náhled šuplíku')} <small>${drawerSize}</small></div><div class="segmented" aria-label="${tr('Režim náhledu')}"><button data-action="2d" class="${view==='2d'?'active':''}" aria-pressed="${view==='2d'}">${icon('grid')}2D</button><button data-action="3d" class="${view==='3d'?'active':''}" aria-pressed="${view==='3d'}">${icon('cube')}3D</button></div></div><div class="board-toolbar"><div class="tool-group"><button class="icon-btn" data-action="undo" aria-label="${tr('Zpět (Ctrl+Z)')}" ${undoStack.length?'':'disabled'}>${icon('undo')}</button><button class="icon-btn" data-action="redo" aria-label="${tr('Znovu (Ctrl+Shift+Z)')}" ${redoStack.length?'':'disabled'}>${icon('redo')}</button><span class="toolbar-sep"></span><button class="icon-btn ${showGrid?'active':''}" data-action="grid" aria-label="${tr('Zobrazit rastr')}" aria-pressed="${showGrid}">${icon('grid')}</button><button class="tiny-button" data-action="labels" aria-pressed="${showLabels}">${icon('eye')} ${tr('Popisky')}</button></div><div class="tool-group"><button class="tiny-button ${moveMode?'active':''}" data-action="move-mode" aria-pressed="${moveMode}">${icon('move')}${moveMode?tr('Hotovo'):tr('Přesunout')}</button><button class="tiny-button" data-action="auto">${icon('spark')} ${tr('Auto rozložení')}</button><button class="tiny-button smart-layout-button" data-action="smart-layout">${icon('spark')} ${tr('Chytré rozvržení')}</button></div></div><div class="board-area" id="board-area"><svg class="board-svg ${moveMode?'moving':''} ${view==='3d'?'view-3d':''}" id="board-svg" role="img" aria-label="${tr('Rozložení modulů a nástrojů v šuplíku')}"></svg>${!project.modules.length&&view==='2d'?`<div class="board-empty">${icon('drawer')}<h3>${tr('Začněte jedním nástrojem')}</h3><p>${tr('Vyfoťte ho na A4 papíru nebo vložte z uložené knihovny.')}</p><button class="btn btn-primary" data-action="capture">${icon('camera')} ${tr('Přidat nástroj')}</button></div>`:''}${view==='3d'?'<div class="view-3d-hint">'+esc(tr('Levé tlačítko: otáčet · Pravé: posouvat · Kolečko: přiblížit'))+'</div>':''}</div><div class="board-footer"><div class="legend"><span><i></i>${tr('Modul')}</span><span><i></i>${tr('Vybraný nástroj')}</span></div><div class="key-hint">${view==='2d'?tr('Pravé tlačítko: posouvat · Kolečko: přiblížit')+' · '+tr('Tažením přesunete modul')+' <kbd>R</kbd> '+tr('otočit'):tr('Pohled kamerou')}</div><div class="tool-group"><button class="icon-btn" data-action="zoom-out" aria-label="${tr('Oddálit')}">${icon('zoomOut')}</button><span data-zoom-value>${Math.round((view==='3d'?camera3D.zoom:zoom)*100)} %</span><button class="icon-btn" data-action="zoom-in" aria-label="${tr('Přiblížit')}">${icon('zoomIn')}</button><button class="icon-btn" data-action="fit" aria-label="${tr('Zobrazit vše')}">${icon('fit')}</button></div></div></section><div class="metrics"><div class="metric"><div class="metric-icon">${icon('wrench')}</div><div><strong>${project.tools.length} <small>${plural(project.tools.length,['nástroj','nástroje','nástrojů'])}</small></strong><p>${unplaced.length?tr('{n} čeká na umístění',{n:unplaced.length}):tr('Každý má svoje místo')}</p></div></div><div class="metric"><div class="metric-icon">${icon('grid')}</div><div><strong>${project.modules.length} <small>${plural(project.modules.length,['modul','moduly','modulů'])}</small></strong><p>${tr('{n} zamčených · rozšiřitelné',{n:lockedCount})}</p></div></div><div class="metric"><div class="metric-icon">${icon('drawer')}</div><div><strong>${usage} <small>${tr('% plochy')}</small></strong><p>${tr('{n} % na další nástroje',{n:Math.max(0,100-usage)})}</p></div></div></div>${issues.length?`<div class="issue-box" role="status">${issueLines.slice(0,3).map(text=>`<p>${esc(text)}</p>`).join('')}${issueLines.length>3?`<p>${tr('A dalších {n} upozornění.',{n:issueLines.length-3})}</p>`:''}${issueActions}</div>`:''}${tipVisible?`<div class="tip">${icon('lightbulb')}<div><strong>${tr('Vaše dílna poroste. Sestava taky.')}</strong> ${tr('Zamkněte hotové moduly a přidejte další nástroje. Auto rozložení zachová jejich polohu.')}</div><button class="icon-btn" data-action="hide-tip" aria-label="${tr('Skrýt tip')}">${icon('close')}</button></div>`:''}</div><aside class="inspector" aria-label="${tr('Nastavení a nástroje')}"><section class="panel" id="drawer-settings">${inspectorTab==='tool'?selectedPanel():drawerPanel()}</section><section class="panel"><div class="panel-header"><h2 class="panel-title">${tr('Nástroje v sestavě')}</h2><span>${project.tools.length.toString().padStart(2,'0')}</span></div><button class="btn btn-light tool-sets-open" data-action="tool-sets">${tr('Sady nástrojů')}</button>${selectionToolbar()}<div class="tool-list">${toolList()}</div><button class="add-tool-row" data-action="capture">${icon('plus')} ${tr('Přidat další nástroj')}</button></section><div class="export-card"><div class="ready">${icon(issues.length?'info':'check')} ${issues.length?tr('Zkontrolujte sestavu'):tr('Sestava připravena')}</div><p>${issues.length?tr('Před výrobou opravte označené rozměry nebo překryvy.'):tr('STL pro 3D tisk, SVG a DXF pro výřez. Vše v reálných milimetrech.')}</p><button class="btn btn-dark block-button" data-action="export">${icon('download')} ${tr('Připravit export')} ${icon('arrow')}</button></div></aside></div><footer class="footer-line"><span>${tr('Navrženo ve skutečných rozměrech. Vyrobeno pro vaši dílnu.')}</span><button data-action="help">${tr('Návod a inspirace')}</button><span class="app-version">STUDIO / 1.2</span></footer></div></main></div><nav class="mobile-nav" aria-label="${tr('Mobilní navigace')}"><button class="active" data-action="home">${icon('drawer')}${tr('Šuplík')}</button><button data-action="library">${icon('wrench')}${tr('Knihovna')}</button><button class="camera-nav" data-action="capture" aria-label="${tr('Vyfotit nástroj')}">${icon('camera')}</button><button data-action="projects">${icon('folder')}${tr('Šuplíky')}</button><button data-action="export">${icon('download')}${tr('Export')}</button></nav>`;
@@ -548,9 +586,9 @@ function renderBoard(){
     const ts=project.tools.filter(t=>t.moduleId===m.id),sel=ts.some(t=>t.id===selected||bulkSelection.has(t.id))||selectedModule===m.id,isBad=bad.has(m.id)||ts.some(t=>bad.has(t.id));
     html+=`<g class="module" data-module="${esc(m.id)}" tabindex="0" role="button" aria-label="${esc(m.name)}${m.locked?' — '+tr('zamčený'):''}"><rect x="${m.x+.9}" y="${m.y+.9}" width="${m.width-1.8}" height="${m.height-1.8}" rx="3" fill="${sel?'#fcf0d7':palette[i%palette.length]+'20'}" stroke="${isBad?'#cb7d60':sel?'#dab06b':'#becdac'}" stroke-width="${sel?1.4:.8}" filter="url(#softshadow)"/>`;
     if(!ts.length)html+=`<rect x="${m.x+5}" y="${m.y+5}" width="${m.width-10}" height="${m.height-10}" fill="url(#empty-hatch)" rx="2"/><text x="${m.x+m.width/2}" y="${m.y+m.height/2}" fill="#a2af92" text-anchor="middle" font-size="8">${tr('PRÁZDNÝ MODUL')}</text>`;
-    for(const t of ts){const b=bounds(t);html+=`<path class="tool-outline" d="${paths(safePocket(t))}" fill="${sel?'#e4b96c40':'#a8b99855'}" stroke="${isBad?'#bd775e':sel?'#be9555':'#90a67c'}" stroke-width=".8"/><path d="${paths(transformedPoints(t))}" fill="${sel?'#c99c4d2b':'#b7c6a377'}" stroke="${sel?'#bd975c':'#99ac86'}" stroke-width=".55"/>`;
+    for(const t of ts){const b=bounds(t),toolSelected=t.id===selected;html+=`<path class="tool-outline ${toolSelected?'is-selected':''}" data-tool="${esc(t.id)}" tabindex="0" role="button" aria-label="${esc(t.name)}" aria-pressed="${toolSelected}" d="${paths(safePocket(t))}" fill="${toolSelected?'#e4b96c40':'#a8b99855'}" stroke="${isBad?'#bd775e':toolSelected?'#be9555':'#90a67c'}" stroke-width=".8"/><path class="tool-body" data-tool="${esc(t.id)}" d="${paths(transformedPoints(t))}" fill="${toolSelected?'#c99c4d2b':'#b7c6a377'}" stroke="${toolSelected?'#bd975c':'#99ac86'}" stroke-width=".55"/>`;
       // Small etched centre detail reinforces the contour without changing the manufacturing outline.
-      if(b.height>80&&b.width<65)html+=`<path d="M${b.x+b.width/2} ${b.y+b.height*.58}v${b.height*.24}" stroke="${sel?'#d3ad70':'#a9b896'}" stroke-width="1.1" stroke-linecap="round" opacity=".55"/>`;
+      if(b.height>80&&b.width<65)html+=`<path d="M${b.x+b.width/2} ${b.y+b.height*.58}v${b.height*.24}" stroke="${sel?'#d3ad70':'#a9b896'}" stroke-width="1.1" stroke-linecap="round" opacity=".55" pointer-events="none"/>`;
     }
     if(showLabels){const own=ts.find(t=>t.unit)?.unit||m.unit,label=(ts[0]?.name||m.name)+(own?` · ${own}`:''),max=Math.max(9,Math.floor(m.width/4.5));html+=`<rect x="${m.x+6}" y="${m.y+m.height-15}" width="${Math.min(m.width-12,label.length*3.7+10)}" height="10" rx="2" fill="${sel?'#fff6e6':'#f3f6ee'}" opacity=".88"/><text x="${m.x+10}" y="${m.y+m.height-7.5}" fill="${sel?'#ab8547':'#8c9b7a'}" font-size="6.3">${esc(label.length>max?label.slice(0,max-1)+'…':label)}</text>`;}
     if(m.locked)html+=`<g transform="translate(${m.x+m.width-13} ${m.y+5}) scale(.33)" color="#8b9b78">${icon('lock')}</g>`;
@@ -610,7 +648,7 @@ function addTools(tools,opts={}){
   let unplaced=0;
   commit(()=>{for(const item of prepared){project.tools.push(item);if(!library.some(l=>l.name===item.name&&JSON.stringify(l.points)===JSON.stringify(item.points)&&JSON.stringify(l.fingerGrips)===JSON.stringify(item.fingerGrips)))library.push({...clone(item),x:0,y:0,moduleId:null});}writeLocal(libraryKey,library);selected=project.tools.at(-1)?.id;inspectorTab='tool';const added=new Set(prepared.map(x=>x.id));unplaced=arrange(false).unplaced.filter(id=>added.has(id)).length;if(opts.set&&prepared.length>1)registerToolSet(prepared.map(x=>x.id),opts.set.name,'uniform');});
   // One toast for the whole addition (e.g. a catalogue tool set), including tools that did not fit.
-  toast(plural(tools.length,['Přidán {n} nástroj. Kontura je také v knihovně.','Přidány {n} nástroje. Kontury jsou také v knihovně.','Přidáno {n} nástrojů. Kontury jsou také v knihovně.'])+(unplaced?' '+plural(unplaced,['{n} nástroj se nevešel. Zkontrolujte rozměry šuplíku a tiskové plochy nebo odemkněte moduly.','{n} nástroje se nevešly. Zkontrolujte rozměry šuplíku a tiskové plochy nebo odemkněte moduly.','{n} nástrojů se nevešlo. Zkontrolujte rozměry šuplíku a tiskové plochy nebo odemkněte moduly.']):''));
+  toast(plural(tools.length,['Přidán {n} nástroj. Kontura je také v knihovně.','Přidány {n} nástroje. Kontury jsou také v knihovně.','Přidáno {n} nástrojů. Kontury jsou také v knihovně.'])+(unplaced?' '+plural(unplaced,['{n} nástroj se nevešel. Zkontrolujte rozměry šuplíku nebo odemkněte moduly.','{n} nástroje se nevešly. Zkontrolujte rozměry šuplíku nebo odemkněte moduly.','{n} nástrojů se nevešlo. Zkontrolujte rozměry šuplíku nebo odemkněte moduly.']):''));
   if(unplaced&&opts.offerFit)offerFit(new Set(prepared.map(x=>x.id)),{name:opts.name});
 }
 // A catalogue set also becomes an editable project.toolSets entry ("Sady nástrojů"); call inside a commit. Skipped when the tools already form a set.
@@ -621,14 +659,11 @@ function registerToolSet(ids,name,layout){
 // A catalogue set as ONE module (packed by set-module.js). One commit = one undo step.
 function addToolSet(prepared,{name,unit:u,arrangement,order}={},layout='shared'){
   const groupOpts={...(arrangement?{arrangement}:{}),...(order?{order}:{}),name:name||tr('Sada nástrojů'),...(UNITS.includes(u)?{unit:u}:{}),...(prepared.length>1?{toolSet:{name:name||tr('Sada nástrojů'),layout}}:{})};
-  const result=addToolGroup(project,prepared,groupOpts),before=clone(project);
+  const result=addToolGroup(project,prepared,groupOpts);
   orderAddedTools(result.project,prepared);
-  // Rebuild the whole addition from the state before it, with changed settings (print bed) or split into bed-sized modules.
-  const rebuild=(patch,split)=>{const p={...clone(before),...patch},r=split?splitForBed(p,prepared,{...groupOpts,toolSet:groupOpts.toolSet&&{name:groupOpts.toolSet.name}}):addToolGroup(p,prepared,groupOpts);orderAddedTools(r.project,prepared);return r.project;};
   commit(()=>{project=result.project;cacheAddedTools(prepared);selected=null;selectedModule=result.moduleId;inspectorTab='tool';});
-  // reason 'bed': the module is in the drawer but larger than the print bed — explain it instead of a silent issue later.
-  if(result.placed&&result.reason!=='bed')toast(layout==='shared'?tr('Sada přidána jako jeden modul.'):plural(prepared.length,['Přidán {n} nástroj. Kontura je také v knihovně.','Přidány {n} nástroje. Kontury jsou také v knihovně.','Přidáno {n} nástrojů. Kontury jsou také v knihovně.']));
-  else offerFit(new Set(prepared.map(x=>x.id)),{name,group:layout==='shared',split:layout==='shared'&&prepared.length>1,rebuild,reason:result.reason});
+  if(result.placed)toast(layout==='shared'?tr('Sada přidána jako jeden modul.'):plural(prepared.length,['Přidán {n} nástroj. Kontura je také v knihovně.','Přidány {n} nástroje. Kontury jsou také v knihovně.','Přidáno {n} nástrojů. Kontury jsou také v knihovně.']));
+  else offerFit(new Set(prepared.map(x=>x.id)),{name,group:layout==='shared'});
 }
 function orderAddedTools(p,tools){
   const own=new Set(tools.map(t=>t.id)),byId=new Map(p.tools.map(t=>[t.id,t]));
@@ -647,7 +682,7 @@ function addToolCollections(prepared,{collections,offerFit:showFit,name}={}){
     for(let i=start;i<start+count;i++){if(covered.has(i))throw Error('Overlapping catalogue collections.');covered.add(i);}
     groups.push(group);
   }
-  // The whole selection from a base project (also used to rebuild it with another print bed, see offerFit).
+  // Build the whole selection atomically.
   const build=base=>{
     let next=base;
     next.tools.push(...clone(prepared.filter((_,i)=>!covered.has(i))));
@@ -657,141 +692,50 @@ function addToolCollections(prepared,{collections,offerFit:showFit,name}={}){
     }
     orderAddedTools(next,prepared);return next;
   };
-  const before=clone(project),next=build(clone(project));
+  const next=build(clone(project));
   const added=new Set(prepared.map(t=>t.id)),placed=placedTools(next),missing=prepared.filter(t=>!placed.has(t.id)).length;
   commit(()=>{project=next;cacheAddedTools(prepared);selected=prepared.at(-1)?.id||null;selectedModule=null;inspectorTab='tool';});
   toast(plural(prepared.length,['Přidán {n} nástroj. Kontura je také v knihovně.','Přidány {n} nástroje. Kontury jsou také v knihovně.','Přidáno {n} nástrojů. Kontury jsou také v knihovně.']));
-  if(missing&&showFit)offerFit(added,{name,rebuild:patch=>build({...clone(before),...patch})});
+  if(missing&&showFit)offerFit(added,{name});
 }
 // Smallest drawer (in grid steps, at most 3000 mm) in which the tools `ids` get placed; modules already placed stay where they are.
-// Turns the print-bed limit off only when the new modules cannot be printed on the bed at all. null = impossible.
+// The drawer and occupied module footprints are the only placement limits. null = impossible.
 function fitPlan(base,ids){
   const inside=(p,m)=>m.x>=-.001&&m.y>=-.001&&m.x+m.width<=p.width+.001&&m.y+m.height<=p.height+.001;
   const allIn=p=>{const ok=new Set(p.modules.filter(m=>inside(p,m)).map(m=>m.id));return p.tools.every(t=>!ids.has(t.id)||ok.has(t.moduleId));};
   const own=new Set(base.tools.filter(t=>ids.has(t.id)).map(t=>t.moduleId));
-  const arrangeIn=(width,height,limitToBed,src=base)=>{
-    const trial={...clone(src),width,height,limitToBed},locks=new Map(trial.modules.map(m=>[m.id,m.locked]));
+  const arrangeIn=(width,height,src=base)=>{
+    const trial={...clone(src),width,height},locks=new Map(trial.modules.map(m=>[m.id,m.locked]));
     for(const m of trial.modules)if(!own.has(m.id)&&inside(src,m))m.locked=true;
     const r=autoArrange(trial),out={...trial,tools:r.tools,modules:r.modules.map(m=>locks.has(m.id)?{...m,locked:locks.get(m.id)}:m)};
     return allIn(out)?out:null;
   };
   const alone={...base,tools:base.tools.filter(t=>ids.has(t.id)),modules:base.modules.filter(m=>own.has(m.id))};
-  const W=base.width,H=base.height,g=Math.max(1,base.grid||42),bw=base.bedWidth||220,bh=base.bedHeight||220;
-  // Print-bed check without arranging: a group module by its size, a single tool by its smallest grid module (as autoArrange sizes it).
-  const onBed=(w,h)=>(w-.5<=bw&&h-.5<=bh)||(h-.5<=bw&&w-.5<=bh),pad=Math.max(base.wall??2.4,(base.gap??3)/2)+.25;
-  const toolOnBed=t=>[0,90].some(r=>{try{const pts=pocketOutline({...t,x:0,y:0,rotation:(t.rotation||0)+r},base.clearance);const xs=pts.map(p=>p.x),ys=pts.map(p=>p.y);return onBed(Math.ceil((Math.max(...xs)-Math.min(...xs)+2*pad)/g)*g,Math.ceil((Math.max(...ys)-Math.min(...ys)+2*pad)/g)*g);}catch{return false;}});
-  const groups=alone.modules.filter(m=>m.grouped||m.setLayout==='uniform'||m.sizeMode==='manual');
-  const bedBlocked=!!base.limitToBed&&(groups.some(m=>!onBed(m.width,m.height))||alone.tools.some(t=>!groups.some(m=>m.id===t.moduleId)&&!toolOnBed(t))),bed=!!base.limitToBed&&!bedBlocked;
-  const same=arrangeIn(W,H,bed);if(same)return{project:same,bedBlocked};
+  const W=base.width,H=base.height,g=Math.max(1,base.grid||42);
+  const same=arrangeIn(W,H);if(same)return{project:same};
   // One group module: put it next to the drawer on its shorter side (always free).
   const single=alone.modules.length===1&&alone.modules[0].grouped;
   // Several modules: binary search on a common growth factor (few autoArrange runs), then trim each side back in grid steps.
   if(!single){
     const dims=k=>[Math.min(3000,Math.ceil(W*k/g-1e-9)*g),Math.min(3000,Math.ceil(H*k/g-1e-9)*g)];
     let lo=1,hi=3000/Math.min(W,H),best=null;
-    const top=arrangeIn(...dims(hi),bed);if(!top)return null;best={out:top,d:dims(hi)};
-    for(let n=0;n<8;n++){const mid=(lo+hi)/2,d=dims(mid),out=arrangeIn(...d,bed);if(out){hi=mid;best={out,d};}else lo=mid;}
-    for(const axis of [0,1])for(let step=0;step<6&&best.d[axis]-g>=(axis?H:W);step++){const d=[...best.d];d[axis]-=g;const out=arrangeIn(...d,bed);if(!out)break;best={out,d};}
-    return{project:best.out,bedBlocked};
+    const top=arrangeIn(...dims(hi));if(!top)return null;best={out:top,d:dims(hi)};
+    for(let n=0;n<8;n++){const mid=(lo+hi)/2,d=dims(mid),out=arrangeIn(...d);if(out){hi=mid;best={out,d};}else lo=mid;}
+    for(const axis of [0,1])for(let step=0;step<6&&best.d[axis]-g>=(axis?H:W);step++){const d=[...best.d];d[axis]-=g;const out=arrangeIn(...d);if(!out)break;best={out,d};}
+    return{project:best.out};
   }
   if(single){
     const m=alone.modules[0],right={w:W+m.width,h:Math.max(H,m.height),x:W,y:0},below={w:Math.max(W,m.width),h:H+m.height,x:0,y:H},c=right.w*right.h<=below.w*below.h?right:below;
     if(c.w>3000||c.h>3000)return null;
-    const out={...clone(base),width:c.w,height:c.h,limitToBed:bed},dx=c.x-m.x,dy=c.y-m.y;
+    const out={...clone(base),width:c.w,height:c.h},dx=c.x-m.x,dy=c.y-m.y;
     for(const mod of out.modules)if(mod.id===m.id){mod.x=c.x;mod.y=c.y;}
     for(const t of out.tools)if(t.moduleId===m.id){t.x+=dx;t.y+=dy;}
-    return{project:out,bedBlocked};
+    return{project:out};
   }
   return null;
 }
-// Print-bed problem of the tools `ids`: their modules (or, for tools without one, the smallest grid module autoArrange
-// would give them) larger than the print bed. null = the bed is not the reason.
-function bedProblem(p,ids){
-  if(!p.limitToBed)return null;
-  const bw=p.bedWidth||220,bh=p.bedHeight||220,g=Math.max(1,p.grid||42),pad=Math.max(p.wall??2.4,(p.gap??3)/2)+.25;
-  const onBed=(w,h)=>(w-.5<=bw&&h-.5<=bh)||(h-.5<=bw&&w-.5<=bh);
-  const toolModule=t=>{
-    let best=null;
-    for(const r of [0,90]){
-      try{
-        const pts=pocketOutline({...t,x:0,y:0,rotation:(t.rotation||0)+r},p.clearance),xs=pts.map(q=>q.x),ys=pts.map(q=>q.y);
-        const w=Math.ceil((Math.max(...xs)-Math.min(...xs)+2*pad)/g-1e-9)*g,h=Math.ceil((Math.max(...ys)-Math.min(...ys)+2*pad)/g-1e-9)*g;
-        if(!best||(onBed(w,h)&&!onBed(best.w,best.h))||(onBed(w,h)===onBed(best.w,best.h)&&w*h<best.w*best.h))best={w,h};
-      }catch{}
-    }
-    return best;
-  };
-  const own=p.tools.filter(t=>ids.has(t.id)),tooLong=[];
-  // Grouped modules (one set, or a split set with diagonal turns) are judged by the module itself, other tools by their own smallest module.
-  for(const t of own){if(p.modules.some(m=>m.id===t.moduleId&&m.grouped))continue;const m=toolModule(t);if(m&&!onBed(m.w,m.h))tooLong.push({tool:t,w:m.w,h:m.h});}
-  const modules=p.modules.filter(m=>own.some(t=>t.moduleId===m.id)&&!onBed(m.width,m.height));
-  if(!tooLong.length&&!modules.length)return null;
-  // Smallest bed (same orientation as the current one) on which every oversized piece fits.
-  const sides=[...tooLong.map(x=>[x.w,x.h]),...modules.map(m=>[m.width,m.height])].map(([w,h])=>[Math.max(w,h),Math.min(w,h)]);
-  const a=Math.max(...sides.map(s=>s[0])),b=Math.max(...sides.map(s=>s[1]));
-  const need=bw>=bh?{w:Math.max(bw,a),h:Math.max(bh,b)}:{w:Math.max(bw,b),h:Math.max(bh,a)};
-  return{bw,bh,tooLong,modules,need,total:own.length};
-}
-const unplacedCount=(p,ids)=>{const ok=placedTools(p);return p.tools.filter(t=>ids.has(t.id)&&!ok.has(t.id)).length;};
-const moduleOnBed=(p,m)=>!p.limitToBed||!m||(m.width-.5<=(p.bedWidth||220)&&m.height-.5<=(p.bedHeight||220))||(m.height-.5<=(p.bedWidth||220)&&m.width-.5<=(p.bedHeight||220));
-// Tools of `ids` that still need a decision: without a place in the drawer, or in a module larger than the print bed.
-const pendingTools=(p,ids)=>{const ok=placedTools(p);return p.tools.filter(t=>ids.has(t.id)&&(!ok.has(t.id)||!moduleOnBed(p,p.modules.find(m=>m.id===t.moduleId))));};
-// Tools that did not fit: an explicit choice instead of a silent list of "no module" issues. The print bed is explained first.
-// opts.rebuild(patch,split) → project: the whole addition redone with changed settings (default: re-arrange the current project).
-function offerFit(ids,opts={}){
-  const bed=bedProblem(project,ids);
-  if(bed)offerBedFit(ids,opts,bed);else offerDrawerFit(ids,opts);
-}
-function offerBedFit(ids,opts,info){
-  const {name,group,split:canSplit,rebuild}=opts,prev=opts.patch||{};
-  const base=clone(project),stamp=JSON.stringify(base),title=String(name||tr('Nástroje z katalogu')).slice(0,100);
-  const missing=unplacedCount(base,ids),bedSize=fmtSize(info.bw,info.bh),needSize=fmtSize(info.need.w,info.need.h),maxBed=2000;
-  const redo=(patch,split)=>{const all={...prev,...patch};if(rebuild)return rebuild(all,split||!!opts.splitDone);const p={...clone(base),...all},r=autoArrange(p);return{...p,tools:r.tools,modules:r.modules};};
-  // The split is computed up front: it tells exactly which tools cannot be printed on the bed even alone (diagonal turns included).
-  const trySplit=!!canSplit&&!opts.splitDone&&!!rebuild;
-  let preview=null;if(trySplit){try{preview=validateProject(redo({},true));}catch{preview=null;}}
-  const inBig=new Set(info.modules.map(m=>m.id));
-  const stuck=preview?preview.tools.filter(t=>ids.has(t.id)&&!moduleOnBed(preview,preview.modules.find(m=>m.id===t.moduleId)))
-    :opts.splitDone?base.tools.filter(t=>ids.has(t.id)&&inBig.has(t.moduleId)):info.tooLong.map(x=>x.tool);
-  const length=t=>{try{const b=bounds(t);return Math.max(b.width,b.height);}catch{return 0;}};
-  const list=stuck.slice(0,6).map(t=>`„${t.name}“ (${fmtLen(length(t))})`).join(', ')+(stuck.length>6?', …':'');
-  const longNote=stuck.length?`<p class="fit-note" data-fit-too-long>${icon('info')} ${esc(plural(stuck.length,['{n} nástroj se na tiskovou plochu {bed} nevejde ani samostatně: {list}.','{n} nástroje se na tiskovou plochu {bed} nevejdou ani samostatně: {list}.','{n} nástrojů se na tiskovou plochu {bed} nevejde ani samostatně: {list}.'],{bed:bedSize,list}))}</p>`:'';
-  const total=base.tools.filter(t=>ids.has(t.id)).length,fitting=total-stuck.length;
-  const splitOk=trySplit&&!!preview&&fitting>0,bedOk=info.need.w<=maxBed&&info.need.h<=maxBed,primary=splitOk?'split':bedOk?'bed':'nobed';
-  const groupModule=group&&!opts.splitDone?info.modules[0]:null,groupInside=!!groupModule&&groupModule.x>=-.001&&groupModule.y>=-.001&&groupModule.x+groupModule.width<=base.width+.001&&groupModule.y+groupModule.height<=base.height+.001;
-  const intro=groupModule?tr(groupInside?'Modul sady „{name}“ má {size}, ale tisková plocha je jen {bed}. Takový modul nejde vytisknout.':'Modul sady „{name}“ má {size}, ale tisková plocha je jen {bed}. Takový modul nejde vytisknout, proto zůstal mimo šuplík.',{name:title,size:fmtSize(groupModule.width,groupModule.height),bed:bedSize})
-    :missing?plural(missing,['{n} nástroj se nevejde na tiskovou plochu {bed}, proto nemá umístěný modul.','{n} nástroje se nevejdou na tiskovou plochu {bed}, proto nemají umístěný modul.','{n} nástrojů se nevejde na tiskovou plochu {bed}, proto nemají umístěný modul.'],{bed:bedSize})
-    :plural(Math.max(1,info.modules.length),['{n} modul je větší než tisková plocha {bed}, takže nejde vytisknout.','{n} moduly jsou větší než tisková plocha {bed}, takže nejdou vytisknout.','{n} modulů je větších než tisková plocha {bed}, takže nejdou vytisknout.'],{bed:bedSize});
-  const option=(key,label,desc,disabled)=>`<button type="button" class="fit-option ${primary===key?'primary':''}" data-fit="${key}" ${disabled?'disabled':''}><strong>${esc(label)}</strong><small>${esc(desc)}</small></button>`;
-  const splitDesc=!splitOk?tr('Nejde: žádný nástroj se na tiskovou plochu nevejde ani samostatně.'):stuck.length?plural(stuck.length,['Nástroje se rozdělí do modulů, které se vejdou na tiskovou plochu {bed}. {n} delší nástroj pak umístíte jinou volbou.','Nástroje se rozdělí do modulů, které se vejdou na tiskovou plochu {bed}. {n} delší nástroje pak umístíte jinou volbou.','Nástroje se rozdělí do modulů, které se vejdou na tiskovou plochu {bed}. {n} delších nástrojů pak umístíte jinou volbou.'],{bed:bedSize}):tr('Sada se rozdělí na několik modulů; každý se vejde na tiskovou plochu {bed}.',{bed:bedSize});
-  const bedOption=`<div class="fit-option fit-bed ${primary==='bed'?'primary':''}" data-fit-bed><strong>${esc(tr('Zvětšit tiskovou plochu'))}</strong><small>${esc(bedOk?tr('Zadejte rozměr tiskové plochy své tiskárny. Potřeba je alespoň {size}.',{size:needSize}):tr('Potřeba by byla tisková plocha {size}, víc než největší povolených {max}.',{size:needSize,max:fmtLen(maxBed)}))}</small>`
-    +(bedOk?`<div class="fields-row">${input(tr('Šířka tiskové plochy'),info.need.w,'fitBedWidth',{min:50,max:maxBed,scope:'fit'})}${input(tr('Hloubka tiskové plochy'),info.need.h,'fitBedHeight',{min:50,max:maxBed,scope:'fit'})}</div><button type="button" class="btn btn-light" data-fit="bed">${esc(tr('Použít tiskovou plochu'))}</button>`:'')+`</div>`;
-  const keep=missing?option('keep',tr('Ponechat mimo šuplík'),tr('Nástroje zůstanou v projektu bez místa; umístíte je později.'),false):option('keep',tr('Ponechat, jak je'),tr('Moduly zůstanou větší než tisková plocha; upravíte je před tiskem.'),false);
-  const m=openModal({title:group&&!opts.splitDone?tr('Sada se nevejde na tiskovou plochu'):tr('Nástroje se nevejdou na tiskovou plochu'),subtitle:tr('Projekt rozvrhuje moduly podle tiskové plochy {bed}. Vyberte, jak nástroje umístit.',{bed:bedSize}),body:`<p class="help-intro">${esc(intro)}</p>${longNote}<div class="fit-options">`
-    +(trySplit?option('split',tr('Rozdělit sadu na moduly podle tiskové plochy'),splitDesc,!splitOk):'')
-    +bedOption
-    +option('nobed',tr('Vypnout omezení tiskovou plochou'),tr('Moduly mohou být větší než {bed}. Vytisknete je na větší tiskárně nebo je před tiskem rozdělíte.',{bed:bedSize}),false)
-    +keep+`</div>`,footer:''});
-  (primary==='bed'?m.el.querySelector('[data-field="fitBedWidth"]'):m.el.querySelector(`[data-fit="${primary}"]`))?.focus();
-  // The fix replaces the added state without a new undo step: one "Zpět" reverts the addition and the fix together.
-  const apply=(patch,split,message,ready)=>{
-    let next;try{next=ready||validateProject(redo(patch,split));}catch(error){toast(errorText(error));return;}
-    project=next;if(selectedModule&&!project.modules.some(x=>x.id===selectedModule))selectedModule=null;persist();render();m.close();toast(message(project));
-    if(pendingTools(project,ids).length)offerFit(ids,{...opts,patch:{...prev,...patch},splitDone:!!(split||opts.splitDone)});
-  };
-  m.el.addEventListener('click',e=>{
-    const choice=e.target.closest('[data-fit]')?.dataset.fit;if(!choice)return;
-    if(choice==='keep'){m.close();toast(missing?tr('Nástroje zůstaly mimo šuplík. Umístíte je po zvětšení tiskové plochy nebo rozvržením.'):tr('Moduly zůstaly větší než tisková plocha {bed}.',{bed:bedSize}));return;}
-    if(JSON.stringify(project)!==stamp){m.close();toast(tr('Sestava se mezitím změnila. Zkuste to prosím znovu.'));return;}
-    if(choice==='split'&&splitOk)apply({},true,p=>{const n=new Set(p.tools.filter(t=>ids.has(t.id)).map(t=>t.moduleId)).size,left=pendingTools(p,ids).length;if(left)return plural(left,['Sada je rozdělená podle tiskové plochy; {n} nástroj zbývá umístit.','Sada je rozdělená podle tiskové plochy; {n} nástroje zbývá umístit.','Sada je rozdělená podle tiskové plochy; {n} nástrojů zbývá umístit.']);return plural(n,['Sada je v {n} modulu, který se vejde na tiskovou plochu {bed}.','Sada je rozdělená do {n} modulů; každý se vejde na tiskovou plochu {bed}.','Sada je rozdělená do {n} modulů; každý se vejde na tiskovou plochu {bed}.'],{bed:bedSize});},preview);
-    if(choice==='bed'&&bedOk){
-      const w=lengthFrom(m.el.querySelector('[data-field="fitBedWidth"]'));if(w===null)return;
-      const h=lengthFrom(m.el.querySelector('[data-field="fitBedHeight"]'));if(h===null)return;
-      apply({bedWidth:w,bedHeight:h},false,()=>tr('Tisková plocha nastavena na {size}.',{size:fmtSize(w,h)}));
-    }
-    if(choice==='nobed')apply({limitToBed:false},false,()=>tr('Omezení tiskovou plochou je vypnuté. Moduly větší než {bed} před tiskem zkontrolujte.',{bed:bedSize}));
-  });
-}
+// Editor decisions depend only on available drawer space.
+function offerFit(ids,opts={}){offerDrawerFit(ids,opts);}
 // The drawer itself is too small: enlarge it, use a new drawer or keep the tools outside.
 function offerDrawerFit(ids,{name,group}={}){
   const base=clone(project),stamp=JSON.stringify(base),title=String(name||tr('Nástroje z katalogu')).slice(0,100);
@@ -803,9 +747,8 @@ function offerDrawerFit(ids,{name,group}={}){
   const groupModule=group?base.modules.find(m=>base.tools.some(t=>ids.has(t.id)&&t.moduleId===m.id)):null;
   const size=p=>fmtSize(p.width,p.height);
   const intro=groupModule?tr('Modul sady „{name}“ ({size}) se do šuplíku {drawer} nevešel.',{name:title,size:size(groupModule),drawer:size(base)}):plural(missing,['{n} nástroj se do šuplíku {drawer} nevešel.','{n} nástroje se do šuplíku {drawer} nevešly.','{n} nástrojů se do šuplíku {drawer} nevešlo.'],{drawer:size(base)});
-  const bedNote=(grow||fresh2)?.bedBlocked?`<p class="fit-note">${icon('info')} ${esc(tr('Modul je větší než tisková plocha {bed}. Volba níže povolí větší moduly (nastavení „Rozvrhovat podle tiskové plochy“ u exportu).',{bed:fmtSize(base.bedWidth,base.bedHeight)}))}</p>`:'';
   const option=(key,label,desc,primary,disabled)=>`<button type="button" class="fit-option ${primary?'primary':''}" data-fit="${key}" ${disabled?'disabled':''}><strong>${esc(label)}</strong><small>${esc(desc)}</small></button>`;
-  const m=openModal({title:tr('Sada se do šuplíku nevešla'),subtitle:tr('Vyberte, co s nástroji, které nemají místo.'),body:`<p class="help-intro">${esc(intro)}</p>${bedNote}<div class="fit-options">`
+  const m=openModal({title:tr('Sada se do šuplíku nevešla'),subtitle:tr('Vyberte, co s nástroji, které nemají místo.'),body:`<p class="help-intro">${esc(intro)}</p><div class="fit-options">`
     +option('grow',tr('Zvětšit šuplík'),grow?tr('Nový rozměr šuplíku: {size}. Jeden krok zpět vrátí celé přidání.',{size:size(grow.project)}):tr('Šuplík by musel být větší než {max}.',{max:fmtLen(3000)}),true,!grow)
     +option('new',tr('Přidat do nového šuplíku'),fresh2?tr('Nový šuplík „{name}“ ({size}); tento šuplík zůstane beze změny.',{name:title,size:size(fresh2.project)}):tr('Šuplík by musel být větší než {max}.',{max:fmtLen(3000)}),false,!fresh2)
     +option('keep',tr('Ponechat mimo šuplík'),tr('Nástroje zůstanou v projektu bez místa; umístíte je později.'),false,false)+`</div>`,footer:''});
@@ -850,6 +793,24 @@ function help(){
 
 const bottomNames=()=>({plain:tr('Hladké dno'),grid:tr('Gridfinity · patky 42 mm'),magnet:tr('Magnety'),adhesive:tr('Lepidlo / oboustranná páska')});
 const volumeText=cm3=>unit()==='in'?`${fmt(cm3/16.387064,2)} in³`:`${fmt(cm3)} cm³`;
+// Splitting for a printer is an explicit export action. Ordinary editing never consults the bed.
+function splitModuleForExport(moduleId){
+  const module=project.modules.find(m=>m.id===moduleId),own=project.tools.filter(t=>t.moduleId===moduleId);
+  if(!module||own.length<2)return;
+  if(module.locked||own.some(t=>t.locked))throw i18nError('Nejprve odemkněte všechny moduly sady.');
+  const ids=new Set(own.map(t=>t.id)),set=currentSet(module),others=new Map(project.modules.filter(m=>m.id!==moduleId).map(m=>[m.id,m]));
+  const base={...clone(project),tools:project.tools.filter(t=>!ids.has(t.id)),modules:[...others.values()].map(m=>({...m,locked:true}))};
+  const result=splitForBed(base,clone(own),{name:module.name,unit:module.unit,arrangement:set?.arrangement||'ordered',order:set?.order||'asc'});
+  if(result.oversize.length)throw i18nError('Některé nástroje se na zadanou podložku nevejdou ani samostatně. Zvětšete rozměry podložky.');
+  if(!result.placed)throw i18nError('Rozdělené moduly se do šuplíku nevejdou. Zvolte větší podložku nebo upravte šuplík.');
+  const modules=result.project.modules.filter(m=>result.moduleIds.includes(m.id));
+  validatePrintBed({...result.project,limitToBed:true},modules);
+  const changed=new Set(result.moduleIds),issue=validateLayout(result.project).find(i=>i.ids.some(id=>ids.has(id)||changed.has(id)));if(issue)throw Error(errorText(issue));
+  result.project.modules=result.project.modules.map(m=>others.has(m.id)?clone(others.get(m.id)):m);
+  const byId=new Map(result.project.tools.map(t=>[t.id,t]));result.project.tools=project.tools.map(t=>ids.has(t.id)?byId.get(t.id):clone(t));
+  checkLayoutTransition(project,result.project);
+  commit(()=>{project=result.project;if(selectedModule===moduleId)selectedModule=result.moduleId;},tr('Modul rozdělen pro tisk. Změnu lze vrátit tlačítkem Zpět.'));
+}
 let exportFormat='stl',exportScope='all';
 function openExport(){
   const m=moduleFor(),selectedId=m?.id||null;
@@ -858,10 +819,11 @@ function openExport(){
   const opts={moduleId:exportScope==='selected'?selectedId:null};
   const issues=exportScope==='selected'?validateLayout({...project,modules:entries,tools:project.tools.filter(t=>t.moduleId===selectedId)}):errors();
   const formats={stl:['STL',tr('3D tisk')],svg:['SVG',tr('Pěna · laser')],dxf:['DXF','CAD · CNC'],json:['JSON',tr('Záloha projektu')]};
-  let stats=null,printError='';
-  if(exportFormat==='stl'&&!issues.length&&entries.length){try{stats=printStats(project,opts);}catch(e){printError=errorText(e);}}
+  let stats=null,printError='',bedError='';
+  if(exportFormat==='stl'&&!issues.length&&entries.length){try{stats=printStats(project,{...opts,checkBed:false});}catch(e){printError=errorText(e);}}
+  if(exportFormat==='stl'&&entries.length){try{validatePrintBed(project,entries);}catch(e){bedError=errorText(e);}}
   const bottoms=bottomNames(),mmNote=unit()!=='mm'?`<p class="muted-note">${tr('Exportované soubory jsou vždy v milimetrech, i když editor zobrazuje {unit}.',{unit:unit()})}</p>`:'';
-  const modal=openModal({title:tr('Připraveno k výrobě'),subtitle:tr('Vyberte provedení. Každý modul se stáhne zvlášť v jednom ZIPu.'),body:`<div class="format-grid">${Object.entries(formats).map(([key,[title,desc]])=>`<button class="format ${exportFormat===key?'active':''}" data-format="${key}"><strong>${title}</strong><span>${desc}</span></button>`).join('')}</div>${exportFormat!=='json'?`<label class="field"><span>${tr('Co exportovat')}</span><select id="export-scope"><option value="all" ${exportScope==='all'?'selected':''}>${tr('Celou sestavu')}</option><option value="selected" ${exportScope==='selected'?'selected':''} ${selectedId?'':'disabled'}>${tr('Vybraný modul')}${m?' · '+esc(m.name):''}</option></select></label>`:''}${exportFormat==='stl'?`<label class="print-toggle"><input id="print-light" type="checkbox" ${project.printMode==='light'?'checked':''}><span><strong>${tr('Úsporný tisk')}</strong><small>${tr('Tenké dno a stěny kolem nástroje. Okolí zůstane otevřené.')}</small></span>${icon('spark')}</label><label class="field"><span>${tr('Dno a uchycení')}</span><select id="print-bottom">${Object.entries(bottoms).map(([key,label])=>`<option value="${key}" ${project.bottomMode===key?'selected':''}>${label}</option>`).join('')}</select></label><p class="muted-note">${project.bottomMode==='grid'?tr('Patky pro podložku Gridfinity. Rastr a rozměry modulů musí být v násobcích 42 mm.'):project.bottomMode==='magnet'?tr('Čtyři kapsy zespodu pro magnety 6 × 2 mm. Strop nad magnetem se automaticky zesílí.'):project.bottomMode==='adhesive'?tr('Rovné spodní plochy pro lepidlo či tenkou oboustrannou pásku. Tloušťku pásky přičtěte k výšce sestavy.'):tr('Rovné dno pro volné položení do šuplíku.')}</p>${stats?`<div class="print-summary"><strong>${tr('{volume} modelu',{volume:volumeText(stats.volumeCm3)})}${stats.savingPercent>0?`<em>${tr('−{n} % proti plnému bloku',{n:fmt(stats.savingPercent,0)})}</em>`:''}</strong><span>${tr('Výška nejvyššího dílu {height} · dno {base}',{height:fmtLen(stats.heightMm),base:fmtLen(stats.effectiveBaseMm)})}</span><small>${tr('Objem geometrie. Skutečnou spotřebu a čas určí slicer podle výplně a nastavení.')}</small>${(stats.notes||[]).map(note=>`<small>${esc(errorText(note))}</small>`).join('')}</div>`:''}<details class="advanced"><summary>${tr('Tiskárna a další možnosti')}</summary><div class="fields-row">${input(tr('Tisková plocha · šířka'),project.bedWidth,'bedWidth',{min:50,max:2000})}${input(tr('Tisková plocha · hloubka'),project.bedHeight,'bedHeight',{min:50,max:2000})}</div><label class="check-row"><input id="limit-bed" type="checkbox" ${project.limitToBed?'checked':''}>${tr('Rozvrhovat podle tiskové plochy')}</label>${project.bottomMode==='magnet'?`<div class="fields-row">${input(tr('Průměr kapsy'),project.magnetDiameter,'magnetDiameter',{min:3,max:20})}${input(tr('Hloubka kapsy'),project.magnetDepth,'magnetDepth',{min:1,max:8})}</div>`:''}<p class="muted-note">${tr('Rozměry tiskárny se ukládají s projektem. Zamčené moduly se při přepočítání nepřesunou.')}</p></details><label class="check-row"><input id="export-size-labels" type="checkbox" ${project.sizeLabels?'checked':''}>${tr('Popisky velikostí v modelu')}</label>${labelStatus(entries)}<div id="bed-warnings"></div>`:''}${(issues.length||printError)&&exportFormat!=='json'?`<div class="issue-box">${issues.slice(0,3).map(i=>`<p>${esc(errorText(i))}</p>`).join('')}${printError?`<p>${esc(printError)}</p>`:''}<button class="section-link" data-repack>${tr('Přepočítat rozvržení')}</button></div>`:''}${exportFormat==='svg'||exportFormat==='dxf'?`<p class="muted-note">${tr('Černá / MODULES = obrys modulu, červená / POCKETS = kapsa včetně vůle. Všechny rozměry jsou v mm.')}</p>`:''}${exportFormat!=='json'?mmNote:''}${exportFormat==='json'?`<p class="muted-note">${tr('Uloží kontury, rozměry, provedení a polohy modulů. Na jiném zařízení otevřete JSON přes Moje šuplíky.')}</p>`:`<details class="advanced fit-check"><summary>${tr('Nejdřív ověřit velikost')}</summary><p>${tr('Přiložte nástroj na papír nebo zkuste tenký rámeček. Nemusíte hned tisknout celý inzert.')}</p><div class="test-actions"><button class="btn btn-light" data-fit-pdf ${issues.length||!entries.length?'disabled':''}>${icon('print')}${tr('PDF v měřítku 1:1')}</button><button class="btn btn-light" data-fit-stl ${issues.length||!entries.length?'disabled':''}>${icon('cube')}${tr('Tenká zkouška STL')}</button></div><p class="muted-note">${tr('PDF tiskněte na 100 % a přeměřte kontrolní úsečku 100 mm. Fotografie nemusí zachytit nejširší část vysokého nástroje.')}</p></details>`}`,footer:`<span class="footnote">${exportFormat==='stl'?tr('STL v mm · samostatné uzavřené díly'):tr('Soubory vznikají ve vašem zařízení')}</span><button class="btn btn-primary" data-do-export ${exportFormat!=='json'&&(issues.length||!entries.length||printError)?'disabled':''}>${icon('download')}${tr('Stáhnout {format}',{format:exportFormat==='stl'&&exportScope==='all'?'ZIP':exportFormat.toUpperCase()})}</button>`});
+  const modal=openModal({title:tr('Připraveno k výrobě'),subtitle:tr('Vyberte provedení. Každý modul se stáhne zvlášť v jednom ZIPu.'),body:`<div class="format-grid">${Object.entries(formats).map(([key,[title,desc]])=>`<button class="format ${exportFormat===key?'active':''}" data-format="${key}"><strong>${title}</strong><span>${desc}</span></button>`).join('')}</div>${exportFormat!=='json'?`<label class="field"><span>${tr('Co exportovat')}</span><select id="export-scope"><option value="all" ${exportScope==='all'?'selected':''}>${tr('Celou sestavu')}</option><option value="selected" ${exportScope==='selected'?'selected':''} ${selectedId?'':'disabled'}>${tr('Vybraný modul')}${m?' · '+esc(m.name):''}</option></select></label>`:''}${exportFormat==='stl'?`<label class="print-toggle"><input id="print-light" type="checkbox" ${project.printMode==='light'?'checked':''}><span><strong>${tr('Úsporný tisk')}</strong><small>${tr('Tenké dno a stěny kolem nástroje. Okolí zůstane otevřené.')}</small></span>${icon('spark')}</label><label class="field"><span>${tr('Dno a uchycení')}</span><select id="print-bottom">${Object.entries(bottoms).map(([key,label])=>`<option value="${key}" ${project.bottomMode===key?'selected':''}>${label}</option>`).join('')}</select></label><p class="muted-note">${project.bottomMode==='grid'?tr('Patky pro podložku Gridfinity. Rastr a rozměry modulů musí být v násobcích 42 mm.'):project.bottomMode==='magnet'?tr('Čtyři kapsy zespodu pro magnety 6 × 2 mm. Strop nad magnetem se automaticky zesílí.'):project.bottomMode==='adhesive'?tr('Rovné spodní plochy pro lepidlo či tenkou oboustrannou pásku. Tloušťku pásky přičtěte k výšce sestavy.'):tr('Rovné dno pro volné položení do šuplíku.')}</p>${stats?`<div class="print-summary"><strong>${tr('{volume} modelu',{volume:volumeText(stats.volumeCm3)})}${stats.savingPercent>0?`<em>${tr('−{n} % proti plnému bloku',{n:fmt(stats.savingPercent,0)})}</em>`:''}</strong><span>${tr('Výška nejvyššího dílu {height} · dno {base}',{height:fmtLen(stats.heightMm),base:fmtLen(stats.effectiveBaseMm)})}</span><small>${tr('Objem geometrie. Skutečnou spotřebu a čas určí slicer podle výplně a nastavení.')}</small>${(stats.notes||[]).map(note=>`<small>${esc(errorText(note))}</small>`).join('')}</div>`:''}<details class="advanced export-printer" ${bedError?'open':''}><summary>${tr('Tiskárna a další možnosti')}</summary><div class="fields-row">${input(tr('Tisková plocha · šířka'),project.bedWidth,'bedWidth',{min:50,max:2000})}${input(tr('Tisková plocha · hloubka'),project.bedHeight,'bedHeight',{min:50,max:2000})}</div><label class="check-row"><input id="limit-bed" type="checkbox" ${project.limitToBed?'checked':''}>${tr('Kontrolovat rozměry podložky při exportu STL')}</label>${project.bottomMode==='magnet'?`<div class="fields-row">${input(tr('Průměr kapsy'),project.magnetDiameter,'magnetDiameter',{min:3,max:20})}${input(tr('Hloubka kapsy'),project.magnetDepth,'magnetDepth',{min:1,max:8})}</div>`:''}<p class="muted-note">${tr('Rozměry podložky se kontrolují pouze při exportu STL. Rozvržení šuplíku neovlivňují.')}</p></details><label class="check-row"><input id="export-size-labels" type="checkbox" ${project.sizeLabels?'checked':''}>${tr('Popisky velikostí v modelu')}</label>${labelStatus(entries)}<div id="bed-warnings"></div>`:''}${(issues.length||printError)&&exportFormat!=='json'?`<div class="issue-box">${issues.slice(0,3).map(i=>`<p>${esc(errorText(i))}</p>`).join('')}${printError?`<p>${esc(printError)}</p>`:''}<button class="section-link" data-repack>${tr('Přepočítat rozvržení')}</button></div>`:''}${exportFormat==='svg'||exportFormat==='dxf'?`<p class="muted-note">${tr('Černá / MODULES = obrys modulu, červená / POCKETS = kapsa včetně vůle. Všechny rozměry jsou v mm.')}</p>`:''}${exportFormat!=='json'?mmNote:''}${exportFormat==='json'?`<p class="muted-note">${tr('Uloží kontury, rozměry, provedení a polohy modulů. Na jiném zařízení otevřete JSON přes Moje šuplíky.')}</p>`:`<details class="advanced fit-check"><summary>${tr('Nejdřív ověřit velikost')}</summary><p>${tr('Přiložte nástroj na papír nebo zkuste tenký rámeček. Nemusíte hned tisknout celý inzert.')}</p><div class="test-actions"><button class="btn btn-light" data-fit-pdf ${issues.length||!entries.length?'disabled':''}>${icon('print')}${tr('PDF v měřítku 1:1')}</button><button class="btn btn-light" data-fit-stl ${issues.length||!entries.length?'disabled':''}>${icon('cube')}${tr('Tenká zkouška STL')}</button></div><p class="muted-note">${tr('PDF tiskněte na 100 % a přeměřte kontrolní úsečku 100 mm. Fotografie nemusí zachytit nejširší část vysokého nástroje.')}</p></details>`}`,footer:`<span class="footnote">${exportFormat==='stl'?tr('STL v mm · samostatné uzavřené díly'):tr('Soubory vznikají ve vašem zařízení')}</span><button class="btn btn-primary" data-do-export ${exportFormat!=='json'&&(issues.length||!entries.length||printError||bedError)?'disabled':''}>${icon('download')}${tr('Stáhnout {format}',{format:exportFormat==='stl'&&exportScope==='all'?'ZIP':exportFormat.toUpperCase()})}</button>`});
   const redraw=()=>{const scroll=modal.body.scrollTop;openExport();const body=document.querySelector('.modal-body');if(body)body.scrollTop=scroll;};
   const setting=(key,value)=>{remember();project[key]=value;persist();render();redraw();};
   modal.el.querySelectorAll('[data-format]').forEach(b=>b.onclick=()=>{exportFormat=b.dataset.format;redraw();});
@@ -872,7 +834,14 @@ function openExport(){
   modal.el.querySelector('#limit-bed')?.addEventListener('change',e=>setting('limitToBed',e.target.checked));
   modal.el.querySelectorAll('[data-field]').forEach(el=>el.onchange=()=>{const v=lengthFrom(el);if(v!==null)setting(el.dataset.field,v);});
   const oversized=entries.filter(m=>!((m.width-.5<=project.bedWidth&&m.height-.5<=project.bedHeight)||(m.height-.5<=project.bedWidth&&m.width-.5<=project.bedHeight)));
-  const bed=modal.el.querySelector('#bed-warnings');if(bed&&oversized.length){bed.innerHTML=`<div class="issue-box">${plural(oversized.length,['{n} modul se nevejde na tiskovou plochu. Zkontrolujte tiskárnu a přepočítejte sestavu.','{n} moduly se nevejdou na tiskovou plochu. Zkontrolujte tiskárnu a přepočítejte sestavu.','{n} modulů se nevejde na tiskovou plochu. Zkontrolujte tiskárnu a přepočítejte sestavu.'])}<br><button class="section-link" data-repack>${tr('Přepočítat rozvržení')}</button></div>`;if(project.limitToBed)modal.el.querySelector('[data-do-export]').disabled=true;}
+  const bed=modal.el.querySelector('#bed-warnings');if(bed&&bedError){
+    bed.innerHTML=`<div class="issue-box export-bed-warning" role="status"><p>${esc(bedError)}</p><p>${tr('Upravte rozměry podložky nebo rozdělte společný modul pro tisk.')}</p><ul>${oversized.map(m=>{
+      const own=project.tools.filter(t=>t.moduleId===m.id),canSplit=own.length>1&&!m.locked&&!own.some(t=>t.locked);
+      return `<li><span>${esc(m.name)} · ${fmtSize(m.width-.5,m.height-.5)}</span>${canSplit?`<button type="button" class="btn btn-light" data-export-split-module="${esc(m.id)}">${tr('Rozdělit modul pro tisk')}</button>`:''}</li>`;
+    }).join('')}</ul></div>`;
+    modal.el.querySelector('[data-do-export]').disabled=true;
+  }
+  modal.el.querySelectorAll('[data-export-split-module]').forEach(button=>button.onclick=()=>{try{splitModuleForExport(button.dataset.exportSplitModule);openExport();}catch(error){toast(errorText(error));}});
   modal.el.querySelectorAll('[data-repack]').forEach(b=>b.onclick=()=>{commit(()=>arrange());redraw();});
   const fitFiles=()=>entries.map((m,i)=>({name:`${String(i+1).padStart(2,'0')}-${slug(m.name)}-zkouska.stl`,data:exportFitSTL(project,{moduleId:m.id})}));
   modal.el.querySelector('[data-fit-pdf]')?.addEventListener('click',()=>{try{download(slug(project.name)+'-meritko-1-1.pdf',exportFitPDF(project,opts),'application/pdf');toast(tr('PDF připraveno. Tiskněte na 100 % bez přizpůsobení stránce.'));}catch(e){toast(errorText(e));}});
@@ -882,6 +851,7 @@ function openExport(){
     await new Promise(r=>requestAnimationFrame(()=>setTimeout(r,30)));
     try{
       const name=slug(project.name);
+      if(exportFormat==='stl')validatePrintBed(project,entries);
       if(exportFormat==='json')saveJSON();
       else if(exportFormat==='svg')download(name+'.svg',exportSVG(project,opts),'image/svg+xml');
       else if(exportFormat==='dxf')download(name+'.dxf',exportDXF(project,opts),'application/dxf');
@@ -923,12 +893,12 @@ const actions={
  '2d':()=>{view='2d';render();},'3d':()=>{view='3d';render();},
  'zoom-in':()=>{if(view==='3d')camera3D=normalizeCamera3D({...camera3D,zoom:camera3D.zoom*1.25});else zoom=Math.min(3,zoom+.25);render();},'zoom-out':()=>{if(view==='3d')camera3D=normalizeCamera3D({...camera3D,zoom:camera3D.zoom/1.25});else zoom=Math.max(.5,zoom-.25);render();},fit:()=>{if(view==='3d')camera3D=createCamera3D();else{zoom=1;pan2D={x:0,y:0};}render();},
  'hide-tip':()=>{tipVisible=false;writeLocal('suplik-hide-tip',true);render();},
- rotate:()=>{const t=tool(),m=moduleFor();if(!t)return;if(m?.locked)return toast(tr('Nejprve odemkněte polohu modulu.'));commit(()=>{const b=bounds(t);t.rotation=(t.rotation+90)%360;const next=bounds(t);t.x=b.x+(b.width-next.width)/2;t.y=b.y+(b.height-next.height)/2;},tr('Nástroj otočen. Pokud přesahuje modul, spusťte Auto rozložení.'));},
- 'module-step':stepModule,'print-bed':openPrintBedSettings,
+ rotate:()=>rotateCurrentTool(90),'rotate-module':()=>applyModuleEdit(moduleEdit.rotateModule,90,tr('Modul otočen.')),'duplicate-module':duplicateCurrentModule,
+ 'module-step':stepModule,
  'arrange-current-set':openSetPlacement,'toggle-size-labels':()=>commit(()=>project.sizeLabels=!project.sizeLabels),
  'select-all-tools':()=>{bulkSelection=new Set(project.tools.map(t=>t.id));render();},'select-no-tools':()=>{bulkSelection.clear();render();},
  'bulk-rotate':()=>applyBulk(bulk.bulkRotate,90),'bulk-flip':()=>applyBulk(bulk.bulkRotate,180),'bulk-delete':()=>applyBulk(bulk.bulkDelete),
- 'bulk-move':openBulkMove,'bulk-depth':openBulkDepth,'bulk-lock':()=>applyBulk(bulk.bulkLock,true),'bulk-unlock':()=>applyBulk(bulk.bulkLock,false),
+ 'bulk-move':openBulkMove,'bulk-depth':openBulkDepth,'bulk-angle':openBulkAngle,'bulk-align':openBulkAlign,'bulk-grips-auto':()=>applyBulk(bulk.bulkFingerGrips,{mode:'auto',radius:9}),'bulk-grips-clear':()=>applyBulk(bulk.bulkFingerGrips,{mode:'clear'}),'bulk-lock':()=>applyBulk(bulk.bulkLock,true),'bulk-unlock':()=>applyBulk(bulk.bulkLock,false),
  'bulk-create-set':()=>editToolSet({id:uid(),name:tr('Nová sada'),toolIds:selectedIds(),layout:'shared',arrangement:'ordered',order:'asc'},false),
  lock:()=>{const m=moduleFor();if(!m)return;commit(()=>{m.locked=!m.locked;project.tools.filter(t=>t.moduleId===m.id).forEach(t=>t.locked=m.locked);},m.locked?tr('Poloha modulu je odemčená.'):tr('Poloha modulu je zamčená.'));},
  duplicate:()=>{const t=tool();if(t)addTools([{...clone(t),name:t.name+' · '+tr('kopie')}]);},
@@ -942,9 +912,9 @@ $('#app').addEventListener('click',e=>{
   const sel=e.target.closest('[data-select]');
   if(sel){if(e.shiftKey||e.ctrlKey||e.metaKey){toggleToolSelection(sel.dataset.select);return;}selected=sel.dataset.select;selectedModule=null;inspectorTab='tool';render();return;}
   const group=e.target.closest('[data-module]');
-  if(group&&(view==='3d'||!moveMode)){
-    const m=project.modules.find(m=>m.id===group.dataset.module),t=project.tools.find(t=>t.moduleId===m?.id);
-    if(e.shiftKey||e.ctrlKey||e.metaKey){const members=project.tools.filter(t=>t.moduleId===m?.id),remove=members.every(t=>bulkSelection.has(t.id));for(const t of members)remove?bulkSelection.delete(t.id):bulkSelection.add(t.id);render();return;}
+  if(group&&(view==='3d'||!moveMode||e.target.closest('[data-tool]'))){
+    const m=project.modules.find(m=>m.id===group.dataset.module),t=boardToolFromTarget(e.target,m);
+    if(e.shiftKey||e.ctrlKey||e.metaKey){if(t&&e.target.closest('[data-tool]')){toggleToolSelection(t.id);return;}const members=project.tools.filter(t=>t.moduleId===m?.id),remove=members.every(t=>bulkSelection.has(t.id));for(const t of members)remove?bulkSelection.delete(t.id):bulkSelection.add(t.id);render();return;}
     selected=t?.id||null;selectedModule=t?null:m?.id;inspectorTab='tool';render();return;
   }
   const a=e.target.closest('[data-action]');if(a){e.preventDefault();try{actions[a.dataset.action]?.(a.dataset.value);}catch(error){toast(errorText(error));}}
@@ -958,6 +928,16 @@ $('#app').addEventListener('change',e=>{
     if(field==='unit'){commit(()=>{if(value)t.unit=value;else delete t.unit;});return;}
     if(field==='name'&&!value){render();return;}
     if(field==='sizeLabel'){commit(()=>t.sizeLabel=value.slice(0,24));return;}
+    if(field==='rotation'){
+      try{const next=bulk.bulkSetRotation(project,[t.id],readAngle(value));if(same(next)!==same(project))commit(()=>project=next,tr('Nástroj otočen.'));else render();}
+      catch(error){toast(errorText(error));render();}return;
+    }
+    if(field==='toolX'||field==='toolY'){
+      const m=moduleFor();if(!m){render();return;}
+      const dx=field==='toolX'?value-(t.x-m.x):0,dy=field==='toolY'?value-(t.y-m.y):0;
+      try{const next=bulk.bulkMoveTools(project,[t.id],{dx,dy});if(same(next)!==same(project))commit(()=>project=next,tr('Nástroj přesunut.'));else render();}
+      catch(error){toast(errorText(error));render();}return;
+    }
     // Šířka kontury, Měřítko and Délka all scale the outline uniformly through one path.
     const ratio=toolScaleRatio(t,field,value);if(ratio===false){render();return;}
     let scaled=null;
@@ -975,7 +955,14 @@ $('#app').addEventListener('change',e=>{
       if(m)note=releaseUniformSet(m.id,{ifUnsatisfied:true});
     }else t[field]=typeof value==='string'?value.slice(0,100):value;});
     if(note)toast(note.trim());
-  }else if(scope==='module'){const m=moduleFor();if(!m||field!=='unit')return;commit(()=>{if(value)m.unit=value;else delete m.unit;});}
+  }else if(scope==='module'){
+    const m=moduleFor();if(!m)return;
+    if(field==='unit'){commit(()=>{if(value)m.unit=value;else delete m.unit;});return;}
+    if(field==='moduleX'||field==='moduleY'){
+      try{const next=moduleEdit.moveModule(project,m.id,{x:field==='moduleX'?value:m.x,y:field==='moduleY'?value:m.y});if(same(next)!==same(project))commit(()=>project=next,tr('Modul přesunut.'));else render();}
+      catch(error){toast(errorText(error));render();}
+    }
+  }
   else commit(()=>project[field]=value);
 });
 $('#app').addEventListener('pointerdown',e=>{
@@ -994,7 +981,7 @@ $('#app').addEventListener('pointerdown',e=>{
   if(e.pointerType==='touch'&&!moveMode)return;
   const group=e.target.closest('[data-module]'),svg=$('#board-svg');if(!group||!svg)return;
   const m=project.modules.find(m=>m.id===group.dataset.module);if(!m)return;
-  const t=project.tools.find(t=>t.moduleId===m.id);selected=t?.id||null;selectedModule=t?null:m.id;inspectorTab='tool';
+  const t=boardToolFromTarget(e.target,m);selected=t?.id||null;selectedModule=t?null:m.id;inspectorTab='tool';
   const chosen=selectedIds(),movingSelection=chosen.length>1&&project.tools.some(t=>t.moduleId===m.id&&bulkSelection.has(t.id));
   if(movingSelection){
     const chosenSet=new Set(chosen),moduleIds=new Set(project.tools.filter(t=>chosenSet.has(t.id)).map(t=>t.moduleId));
@@ -1050,8 +1037,8 @@ function cancelEditGesture(e){
   render();
 }
 $('#app').addEventListener('pointerup',endDrag);$('#app').addEventListener('pointercancel',cancelEditGesture);$('#app').addEventListener('lostpointercapture',cancelEditGesture);window.addEventListener('blur',cancelEditGesture);
-$('#app').addEventListener('keydown',e=>{const group=e.target.closest('[data-module]');if(group&&(e.key==='Enter'||e.key===' ')){e.preventDefault();const m=project.modules.find(m=>m.id===group.dataset.module),t=project.tools.find(t=>t.moduleId===m.id);selected=t?.id||null;selectedModule=t?null:m.id;inspectorTab='tool';render();}});
-document.addEventListener('keydown',e=>{if(e.target.matches('input,textarea,select')||$('#modal-root').children.length)return;if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='z'){e.preventDefault();e.shiftKey?redo():undo();}else if(e.altKey&&e.shiftKey&&!e.ctrlKey&&!e.metaKey&&{ArrowRight:1,ArrowLeft:1,ArrowDown:1,ArrowUp:1}[e.key]){if(moduleFor()){e.preventDefault();stepModule({ArrowRight:'w+',ArrowLeft:'w-',ArrowDown:'h+',ArrowUp:'h-'}[e.key]);}}else if(!e.ctrlKey&&!e.metaKey&&!e.altKey&&e.key.toLowerCase()==='r')actions.rotate();else if(e.key==='Delete'||e.key==='Backspace'){e.preventDefault();actions.delete();}else if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='s'){e.preventDefault();actions['save-project']();}});
+$('#app').addEventListener('keydown',e=>{const group=e.target.closest('[data-module]');if(group&&(e.key==='Enter'||e.key===' ')){e.preventDefault();const m=project.modules.find(m=>m.id===group.dataset.module),t=boardToolFromTarget(e.target,m);selected=t?.id||null;selectedModule=t?null:m.id;inspectorTab='tool';render();}});
+document.addEventListener('keydown',e=>{if(e.target.matches('input,textarea,select')||$('#modal-root').children.length)return;if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='z'){e.preventDefault();e.shiftKey?redo():undo();}else if(e.altKey&&e.shiftKey&&!e.ctrlKey&&!e.metaKey&&{ArrowRight:1,ArrowLeft:1,ArrowDown:1,ArrowUp:1}[e.key]){if(moduleFor()){e.preventDefault();stepModule({ArrowRight:'w+',ArrowLeft:'w-',ArrowDown:'h+',ArrowUp:'h-'}[e.key]);}}else if(!e.ctrlKey&&!e.metaKey&&!e.altKey&&e.key.toLowerCase()==='r'){e.preventDefault();try{actions.rotate();}catch(error){toast(errorText(error));}}else if(e.key==='Delete'||e.key==='Backspace'){e.preventDefault();actions.delete();}else if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='s'){e.preventDefault();actions['save-project']();}});
 $('#project-file').addEventListener('change',async e=>{const file=e.target.files[0];e.target.value='';if(!file)return;if(file.size>12*1024*1024)return toast(tr('Projekt je příliš velký. Maximum je 12 MB.'));try{const data=JSON.parse(await file.text());if(data.schemaVersion&&data.schemaVersion!==1)throw i18nError('Tato verze projektu zatím není podporovaná.');const imported=validateProject(data);imported.id=uid();switchProject(imported);toast(tr('Projekt otevřen. Původní projekty zůstaly uložené.'));}catch(error){toast(tr('Projekt nelze otevřít: {error}',{error:errorText(error)}));}});
 document.addEventListener('keydown',e=>{
   if(e.target.matches('input,textarea,select')||$('#modal-root').children.length)return;

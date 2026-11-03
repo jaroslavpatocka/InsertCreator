@@ -25,8 +25,24 @@ function assertPocketAir(project,result){
   }}
 }
 
+// With central shaft grips, the default narrow handles fit one 42 mm cell each.
+// Sharing tests need a genuine contour-nesting benefit: widen only the transverse
+// handle/shaft dimension while retaining the original physical slant and length.
+function nestingProject(seed=1,options={}){
+  const project=screwdriverProject(seed,options);
+  project.tools=project.tools.map(tool=>{
+    const a=tool.points[0],b=tool.points[1],length=Math.hypot(b.x-a.x,b.y-a.y),normal={x:(b.x-a.x)/length,y:(b.y-a.y)/length};
+    let points=tool.points.map(p=>{const across=(p.x-a.x)*normal.x+(p.y-a.y)*normal.y;return{x:p.x+normal.x*across*.5,y:p.y+normal.y*across*.5};});
+    const minX=Math.min(...points.map(p=>p.x)),minY=Math.min(...points.map(p=>p.y));points=points.map(p=>({x:p.x-minX,y:p.y-minY}));
+    const next={...tool,points,x:0,y:0,moduleId:null};next.fingerGrips=automaticFingerGrips(next);return next;
+  });
+  project.modules=[];const result={...project,...autoArrange(project)};
+  for(const module of result.modules)module.unit='mm';
+  return result;
+}
+
 test('six slanted screwdrivers genuinely interleave with finger access and save at least a quarter of individual module area',async()=>{
-  const project=screwdriverProject(),snapshot=structuredClone(project),result=await smartArrange(project);
+  const project=nestingProject(),snapshot=structuredClone(project),result=await smartArrange(project);
   assert.equal(result.unplaced.length,0);assert.ok(result.stats.sharedModules>=2);assert.ok(result.stats.savedPercent>=25);assert.equal(result.stats.beforeArea,moduleArea(project.modules));assert.equal(result.stats.afterArea,moduleArea(result.modules));
   assertPreserved(project,result);assertPocketAir(project,result);assert.deepEqual(project,snapshot);
   let interleaved=0;
@@ -42,7 +58,7 @@ test('six slanted screwdrivers genuinely interleave with finger access and save 
 
 test('seeded sizes, straight contours and repeat runs are deterministic without growing or dissolving groups',async()=>{
   for(const seed of [2,7,19]){
-    const project=screwdriverProject(seed,{slanted:seed!==7}),first=await smartArrange(project),again=await smartArrange(project);
+    const project=nestingProject(seed,{slanted:seed!==7}),first=await smartArrange(project),again=await smartArrange(project);
     assert.deepEqual(first,again);assert.ok(first.stats.savedPercent>=25);assert.ok(first.stats.sharedModules>0);assertPocketAir(project,first);
     const repeated=await smartArrange({...project,tools:first.tools,modules:first.modules});
     assert.deepEqual(repeated.tools,first.tools);assert.deepEqual(repeated.modules,first.modules);assert.equal(repeated.stats.changed,false);
@@ -78,15 +94,15 @@ test('explicitly deleted finger bays remain deleted and separate; legacy absence
   assertPocketAir(legacy,arranged);
 });
 
-test('printer limits are enforced without newly abandoning any previously placed tool',async()=>{
-  const project=screwdriverProject(9,{bed:210}),result=await smartArrange(project);assert.equal(result.unplaced.length,0);
-  for(const module of result.modules)assert.ok((module.width-.5<=210&&module.height-.5<=210)||(module.width-.5<=210&&module.height-.5<=210));
-  assertPocketAir(project,result);
-  const small=screwdriverProject(9,{bed:120}),unchanged=await smartArrange(small);assert.deepEqual(unchanged.tools,small.tools);assert.deepEqual(unchanged.modules,small.modules);assert.equal(unchanged.stats.changed,false);
+test('smart arrangement produces the same drawer with legacy printer checks on or off',async()=>{
+  const project=nestingProject(9,{bed:120}),snapshot=structuredClone(project),result=await smartArrange(project),unlimited=await smartArrange({...project,limitToBed:false});
+  assert.equal(result.unplaced.length,0);assert.ok(result.stats.changed);assert.ok(result.stats.sharedModules>0);
+  assert.deepEqual(result.tools,unlimited.tools);assert.deepEqual(result.modules,unlimited.modules);assert.deepEqual(result.stats,unlimited.stats);
+  assertPocketAir(project,result);assert.deepEqual(project,snapshot);
 });
 
 test('new group IDs avoid fixed-ID collisions and inherit the deterministic first source module unit',async()=>{
-  const project=screwdriverProject(10,{count:2}),first=await smartArrange(project),id=first.modules.find(m=>m.grouped).id;
+  const project=nestingProject(10,{count:2}),first=await smartArrange(project),id=first.modules.find(m=>m.grouped).id;
   const firstTool=[...project.tools].sort((a,b)=>a.id.localeCompare(b.id))[0];project.modules.find(m=>m.id===firstTool.moduleId).unit='in';project.unit='mm';
   const filler={id,name:'Kolizní identifikátor',x:0,y:378,width:42,height:42,unit:'mm'};project.modules.push(filler);
   const result=await smartArrange(project),group=result.modules.find(m=>m.grouped);assert.ok(group);assert.notEqual(group.id,id);assert.equal(group.unit,'in');assert.deepEqual(result.modules.find(m=>m.id===id),filler);assertPreserved(project,result);assertPocketAir(project,result);
@@ -99,7 +115,7 @@ test('already unplaced locked modules survive exactly and are reported consisten
 });
 
 test('different group memberships cannot collide when tool IDs contain separator characters',async()=>{
-  let project=screwdriverProject(15,{count:4,slanted:false});const ids=['a','b|c','a|b','c'];
+  let project=nestingProject(15,{count:4,slanted:false});const ids=['a','b|c','a|b','c'];
   project.tools=project.tools.map((tool,i)=>{const length=Math.max(...tool.points.map(p=>p.y)),scale=(i<2?190:120)/length;return{...tool,id:ids[i],moduleId:null,x:0,y:0,points:tool.points.map(p=>({x:p.x,y:p.y*scale})),fingerGrips:tool.fingerGrips.map(grip=>({...grip,y:grip.y*scale}))};});
   project.modules=[];project={...project,...autoArrange(project)};
   const result=await smartArrange(project);assert.ok(result.stats.sharedModules>=2);assertPreserved(project,result);assertPocketAir(project,result);

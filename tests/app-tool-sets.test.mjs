@@ -82,10 +82,12 @@ test('project tool sets are editable, reversible and respected by real worker la
     const metadata=serialized();change('[data-smart-mode]','compact');assert.equal(JSON.parse(localStorage.getItem('suplik-studio-smart-mode')),'compact');click('[data-tool-sets-close]');action('tool-sets');assert.equal($('[data-smart-mode]').value,'compact');assert.equal(serialized(),metadata);
     change('[data-smart-mode]','sets');click('[data-tool-sets-close]');assert.equal(JSON.parse(localStorage.getItem('suplik-studio-smart-mode')),'sets');
   });
-  await t.test('an unavailable whole shared set reports an actionable warning and never silently becomes pairs',async()=>{
-    open('sets-unavailable');const ids=saved().tools.map(t=>t.id);createSet('Celá sada na malé tiskárně',ids,'shared');const snapshot=serialized(),undo=history();
-    await optimize();assert.equal(serialized(),snapshot);assert.deepEqual(history(),undo);assert.ok(!saved().modules.some(m=>m.grouped));
-    assert.match($('.smart-layout-result').textContent,/Celá sada na malé tiskárně/);assert.match($('.smart-layout-result').textContent,/stejné moduly/);assert.match($('.smart-layout-result').textContent,/tiskov/);click('[data-smart-close]');
+  await t.test('an oversized whole shared set is arranged without changing its saved printer settings',async()=>{
+    open('sets-unavailable');const ids=saved().tools.map(t=>t.id);createSet('Celá sada na malé tiskárně',ids,'shared');const snapshot=serialized(),before=logical(saved()),undo=history();
+    await optimize();assert.notEqual(serialized(),snapshot);assert.equal(saved().modules.length,1);assert.ok(saved().modules[0].grouped);assert.deepEqual(validateLayout(saved()),[]);
+    assert.deepEqual([saved().limitToBed,saved().bedWidth,saved().bedHeight],[true,220,220]);
+    assert.doesNotMatch($('.smart-layout-result').textContent,/tiskovou plochu|stejné moduly/);click('[data-smart-close]');
+    action('undo');assert.deepEqual(logical(saved()),before);assert.equal(history().undo,undo.undo);
   });
   await t.test('cancellation and a real stale sets response cannot overwrite user edits',async()=>{
     open('sets-cancel');let snapshot=serialized(),undo=history(),count=created.length;action('smart-layout');assert.ok($('[data-smart-progress]'));await waitFor(()=>created.length>count,'Start a real sets worker');click('[data-smart-cancel]');assert.ok(created.at(-1).terminated);assert.equal(serialized(),snapshot);assert.deepEqual(history(),undo);

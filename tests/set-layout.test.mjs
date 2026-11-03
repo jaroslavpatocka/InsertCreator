@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {smartArrange} from '../dist/smart-layout.js';
-import {autoArrange,validateLayout,exportSTL} from '../dist/geometry.js';
+import {autoArrange,validateLayout,exportSTL,pocketOutline} from '../dist/geometry.js';
 import {findToolSets,setCoherence,analyzeToolShape} from '../dist/tool-sets.js';
 import {blankProject,validateProject} from '../dist/model.js';
 import {automaticFingerGrips} from '../dist/finger-grip.js';
@@ -40,7 +40,7 @@ test('a whole screwdriver set chooses one common heading and one complete shared
   assert.equal(r.modules.length,1);assert.equal(r.modules[0].setLayout,'shared');assert.equal(r.modules[0].grouped,true);assert.equal(r.unplaced.length,0);
   assert.equal(r.stats.setScoreBefore,0);assert.equal(r.stats.setScoreAfter,6);assert.equal(r.stats.setsApplied.length,1);assert.equal(r.stats.setSummary[0].applied,'shared');
   preserved(p,r);assert.deepEqual(p,snapshot);assert.ok(r.stats.afterArea<r.stats.beforeArea);
-  for(const printMode of ['solid','light'])inspectSTL(exportSTL({...next,printMode}));
+  for(const printMode of ['solid','light'])inspectSTL(exportSTL({...next,printMode},{checkBed:false}));
 });
 
 test('explicit uniform policy and ordinary Auto preserve exactly equal footprints and raw geometry',async()=>{
@@ -53,16 +53,28 @@ test('explicit uniform policy and ordinary Auto preserve exactly equal footprint
   coherent(restored,again,6);preserved(restored,again);
 });
 
-test('a printer that cannot fit the entire shared set falls back to coherent uniform modules',async()=>{
-  const p=screwdriverProject(5,{bed:220}),r=await smartArrange(p,{mode:'sets'});coherent(p,r,6);
-  assert.equal(r.modules.length,6);assert.ok(r.modules.every(m=>m.setLayout==='uniform'));assert.ok(r.modules.every(m=>m.width-.5<=220&&m.height-.5<=220));preserved(p,r);
-  const explicit=policy(p,'shared'),unavailable=await smartArrange(explicit,{mode:'sets'});
-  assert.deepEqual(logical(unavailable),logical(explicit),'an unavailable explicit shared policy must not silently create opposite pairs');
-  assert.ok(unavailable.stats.warnings.length);assert.equal(unavailable.stats.setSummary[0].status,'unavailable');
+test('set-aware arrangement keeps a complete shared set even when it exceeds the saved bed',async()=>{
+  const p=screwdriverProject(5,{bed:220,count:8}),snapshot=structuredClone(p),r=await smartArrange(p,{mode:'sets'});coherent(p,r,8);
+  assert.equal(r.modules.length,1);assert.equal(r.modules[0].setLayout,'shared');assert.ok(r.modules[0].width-.5>220||r.modules[0].height-.5>220);preserved(p,r);
+  const explicit=policy(p,'shared'),arranged=await smartArrange(explicit,{mode:'sets'}),unlimited=await smartArrange({...explicit,limitToBed:false},{mode:'sets'});
+  assert.equal(arranged.stats.setSummary[0].status,'applied');assert.deepEqual(logical(arranged),logical(unlimited));
+  assert.deepEqual(p,snapshot);assert.equal(p.limitToBed,true);assert.deepEqual([p.bedWidth,p.bedHeight],[220,220]);
 });
 
 test('set-aware mode dissolves old automatic opposite pairs and reorganizes all members together',async()=>{
-  const p=screwdriverProject(7),compact=await smartArrange(p,{mode:'compact'}),old={...p,...compact};assert.ok(old.modules.some(m=>m.grouped));
+  // Persisted old pairs are the input being migrated. Their existence must not depend on whether
+  // the current compact heuristic still prefers pairs after finger-grip placement improves.
+  const p=screwdriverProject(7,{slanted:false}),old=structuredClone(p);old.modules=[];
+  for(let pair=0;pair<3;pair++){
+    const module={id:`legacy-pair-${pair}`,name:`Pár ${pair+1}`,x:pair*126,y:0,width:126,height:210,grouped:true,sizeMode:'auto',locked:false};old.modules.push(module);
+    for(let member=0;member<2;member++){
+      const tool=old.tools[pair*2+member];tool.moduleId=module.id;tool.rotation=member*180;
+      const poly=pocketOutline({...tool,x:0,y:0},old.clearance),xs=poly.map(p=>p.x),ys=poly.map(p=>p.y),x=Math.min(...xs),y=Math.min(...ys),width=Math.max(...xs)-x,height=Math.max(...ys)-y;
+      tool.x=module.x+member*63+(63-width)/2-x;tool.y=module.y+(module.height-height)/2-y;
+    }
+  }
+  assert.deepEqual(validateLayout(old),[]);assert.equal(old.modules.length,3);assert.ok(old.modules.every(m=>m.grouped));
+  assert.ok(old.tools.some(tool=>tool.rotation===180),'the saved pairs contain opposite headings');
   const r=await smartArrange(old,{mode:'sets'});coherent(old,r,6);assert.equal(r.modules.length,1);assert.equal(r.tools.filter(t=>t.moduleId===r.modules[0].id).length,6);preserved(old,r);
 });
 
@@ -91,7 +103,7 @@ test('raster-derived photo contours form a complete set with mixed pocket depths
   assert.ok(r.modules.length===1||r.modules.length===6,'a complete shared set or identical separate modules must replace arbitrary pairs');
   for(const old of p.tools){const tool=r.tools.find(t=>t.id===old.id);assert.deepEqual(tool.points,old.points);assert.equal(tool.depth,old.depth);if(r.modules.length===1)assert.ok(tool.fingerGrips.length>0);else if(Object.hasOwn(old,'fingerGrips'))assert.deepEqual(tool.fingerGrips,old.fingerGrips);else assert.equal(Object.hasOwn(tool,'fingerGrips'),false);}
   if(r.modules.length===6)assert.ok(r.stats.warnings.some(w=>/vyrobit/.test(w)),'a manufacturing fallback must explain why it uses uniform modules');
-  for(const printMode of ['solid','light'])inspectSTL(exportSTL({...next,printMode}));
+  for(const printMode of ['solid','light'])inspectSTL(exportSTL({...next,printMode},{checkBed:false}));
 });
 
 test('set mode cancellation is abortable and the bounded limit leaves the source unchanged',async()=>{

@@ -317,145 +317,65 @@ test('real combination wrench set in the demo drawer: placed or an explicit choi
 });
 function chooseLayoutReset(){click('#app [data-action="library"]');const s=$('[data-set-layout]');if(s){s.value='group';s.dispatchEvent(new win.Event('change',{bubbles:true}));}click('[data-modal-close]');}
 
-// ---- Print bed (user report "Nástroj „Očkoplochý klíč 17 mm“ zatím nemá umístěný modul.") ----
-// A fresh demo drawer keeps the defaults: limitToBed with a 220 × 220 mm bed. 17–19 mm wrenches need a module
-// longer than 220 mm, so the set never fits the bed; the app must say so and offer explicit fixes.
+// Saved printer dimensions belong to export, never to catalogue insertion.
 async function openRealSets(){click('#app [data-action="library"]');if(tab('catalog').getAttribute('aria-selected')!=='true')click(tab('catalog'));await waitFor(()=>$('.catalog-chip[data-catalog-category="sets"]'));click('.catalog-chip[data-catalog-category="sets"]');}
-const freshDemo=()=>{click('#app [data-action="demo-drawer"]');const p=saved();assert.equal(p.limitToBed,true);assert.equal(p.bedWidth,220);assert.equal(p.bedHeight,220);return p;};
+const freshDrawer=()=>{
+  click('#app [data-action="projects"]');click('[data-new]');
+  for(const [key,value] of [['drawerName','Export bed regression'],['drawerWidth',672],['drawerHeight',420]]){const el=$('[data-field="'+key+'"]');el.value=value;el.dispatchEvent(new win.Event('input',{bubbles:true}));}
+  click('[data-create-drawer]');const p=saved();assert.equal(p.limitToBed,true);assert.deepEqual([p.bedWidth,p.bedHeight],[220,220]);return p;
+};
 const unplacedOf=(p,toolIds)=>p.tools.filter(t=>toolIds.has(t.id)&&!placedInDrawer(p,t)).length;
-const onBed=(m,bw=220,bh=220)=>(m.width-.5<=bw&&m.height-.5<=bh)||(m.height-.5<=bw&&m.width-.5<=bh);
-// A drawer that is too small afterwards is a separate, explicit choice; enlarge it.
+const onBed=m=>(m.width-.5<=220&&m.height-.5<=220)||(m.height-.5<=220&&m.width-.5<=220);
 const finishDrawer=()=>{const grow=$('[data-fit="grow"]');if(grow){assert.equal(grow.disabled,false);click(grow);}};
-async function addRealSet(id,layout){await openRealSets();chooseLayout(id,layout);click(`[data-set-add="${id}"]`);}
+async function addRealSet(id,layout){await openRealSets();chooseLayout(id,layout);click('[data-set-add="'+id+'"]');}
 
-test('bed: 8–19 mm set in the default demo drawer explains the 220 mm bed; split (+ the remaining long tools) → all placed, one undo',async()=>{
+test('a catalogue set larger than the saved bed is placed as one module with no printer dialog, and one undo',async()=>{
   setCatalogSource(null);
   try{
-    const before=freshDemo(),old=ids(before);
+    const before=freshDrawer(),old=ids(before);
     await addRealSet('combination-wrench-set-8-19mm','group');
-    let p=saved();const added=newOf(old,p),addedIds=new Set(added.map(t=>t.id));
-    assert.equal(added.length,12,'nothing is dropped');
-    assert.equal($('#modal-title').textContent,'Sada se nevejde na tiskovou plochu','explicit choice instead of a silent list of issues');
-    assert.match($('.modal .help-intro').textContent,/ale tisková plocha je jen 220 × 220 mm/);
-    assert.ok($('[data-fit="split"]').classList.contains('primary'),'splitting is the default');
-    assert.equal($('[data-fit="split"]').disabled,false);
-    assert.ok($('[data-fit="nobed"]')&&$('[data-fit="keep"]')&&$('[data-fit="bed"]')&&$('[data-field="fitBedWidth"]'));
-    // Tools that cannot be printed on the bed even alone are named explicitly (the short ones never are).
-    const note=$('[data-fit-too-long]')?.textContent||'';
-    assert.doesNotMatch(note,/klíč (8|9|10|11|12|13|14|15|16) mm/);
-    const stuck=added.filter(t=>note.includes(`„${t.name}“`)).map(t=>t.id);
-    click('[data-fit="split"]');
-    p=saved();
-    const own=p.tools.filter(t=>addedIds.has(t.id));
-    assert.equal(own.length,12);
-    assert.ok(new Set(own.map(t=>t.moduleId)).size>=3,'several modules');
-    for(const t of own)if(!stuck.includes(t.id))assert.ok(onBed(p.modules.find(x=>x.id===t.moduleId)),`${t.name}: module fits the bed`);
-    if(stuck.length){
-      assert.equal($('#modal-title').textContent,'Nástroje se nevejdou na tiskovou plochu','the remaining long tools are explained again');
-      assert.equal($('[data-fit="split"]'),null,'no second split');
-      for(const id of stuck)assert.match($('[data-fit-too-long]').textContent,new RegExp(added.find(t=>t.id===id).name));
-      click('[data-fit="nobed"]');
-    }
-    finishDrawer();
-    p=saved();
-    assert.equal(p.limitToBed,!stuck.length);
-    assert.equal(unplacedOf(p,addedIds),0,'every tool placed');
-    assert.deepEqual(toolIssues(p,addedIds).map(i=>i.message),[],'valid layout');
-    assert.ok($('.modal')===null);
-    click('#app [data-action="undo"]');
-    const u=saved();assert.equal(u.tools.length,before.tools.length,'one undo reverts the addition and the fixes');assert.equal(u.limitToBed,true);
+    const p=saved(),added=newOf(old,p),addedIds=new Set(added.map(t=>t.id));
+    assert.equal(added.length,12);assert.ok($('.modal')===null,'A bed mismatch must never interrupt insertion');
+    const modules=[...new Set(added.map(t=>t.moduleId))].map(id=>p.modules.find(m=>m.id===id));
+    assert.equal(modules.length,1);assert.equal(onBed(modules[0]),false);assert.equal(unplacedOf(p,addedIds),0);
+    assert.deepEqual(toolIssues(p,addedIds),[]);assert.deepEqual([p.limitToBed,p.bedWidth,p.bedHeight],[true,220,220]);
+    assert.ok($('#app [data-action="print-bed"]')===null);assert.doesNotMatch($('#app .issue-box')?.textContent||'',/tiskov/);
+    click('#app [data-action="undo"]');assert.equal(saved().tools.length,before.tools.length);assert.equal(saved().limitToBed,true);
   }finally{setCatalogSource(source);}
 });
 
-test('bed: "Vypnout omezení tiskovou plochou" places the whole set as one module',async()=>{
+test('uniform catalogue insertion is limited by drawer space only and keeps printer preferences',async()=>{
   setCatalogSource(null);
   try{
-    const before=freshDemo(),old=ids(before);
-    await addRealSet('combination-wrench-set-8-19mm','group');
-    click('[data-fit="nobed"]');
-    finishDrawer();
-    const p=saved(),addedIds=new Set(newOf(old,p).map(t=>t.id));
-    assert.equal(addedIds.size,12);assert.equal(p.limitToBed,false);
-    assert.equal(new Set(p.tools.filter(t=>addedIds.has(t.id)).map(t=>t.moduleId)).size,1,'still one module');
-    assert.equal(unplacedOf(p,addedIds),0);
-    assert.deepEqual(toolIssues(p,addedIds).map(i=>i.message),[]);
-    click('#app [data-action="undo"]');assert.equal(saved().tools.length,before.tools.length);
-  }finally{setCatalogSource(source);}
-});
-
-test('bed: "Zvětšit tiskovou plochu" with inline sizes (prefilled with the needed size) places the set',async()=>{
-  setCatalogSource(null);
-  try{
-    const before=freshDemo(),old=ids(before);
-    await addRealSet('combination-wrench-set-8-19mm','group');
-    const w=$('[data-field="fitBedWidth"]'),h=$('[data-field="fitBedHeight"]');
-    assert.ok(Number(w.dataset.mm)>220,'needed width is prefilled');
-    // Too small → the remaining problem is explained again.
-    w.value='230';h.value='230';click('[data-fit="bed"]');
-    assert.equal(saved().bedWidth,230);
-    assert.ok($('[data-fit-bed]'),'still offered because 230 mm is not enough');
-    const need=[Number($('[data-field="fitBedWidth"]').dataset.mm),Number($('[data-field="fitBedHeight"]').dataset.mm)];
-    click('[data-fit="bed"]');
-    finishDrawer();
-    const p=saved(),addedIds=new Set(newOf(old,p).map(t=>t.id));
-    assert.deepEqual([p.bedWidth,p.bedHeight],need);assert.equal(p.limitToBed,true);
-    assert.equal(unplacedOf(p,addedIds),0);
-    assert.deepEqual(toolIssues(p,addedIds).map(i=>i.message),[]);
-    click('#app [data-action="undo"]');const u=saved();assert.equal(u.tools.length,before.tools.length);assert.equal(u.bedWidth,220);
-  }finally{setCatalogSource(source);}
-});
-
-test('bed: per-tool mode explains the bed too (no split offered); "keep" leaves the tools outside',async()=>{
-  setCatalogSource(null);
-  try{
-    const before=freshDemo(),old=ids(before);
+    const before=freshDrawer(),old=ids(before);
     await addRealSet('combination-wrench-set-8-19mm','each');
     assert.equal(newOf(old).length,12);
-    assert.equal($('#modal-title').textContent,'Nástroje se nevejdou na tiskovou plochu');
-    assert.match($('.modal .help-intro').textContent,/na tiskovou plochu 220 × 220 mm/);
-    assert.match($('[data-fit-too-long]').textContent,/Očkoplochý klíč 19 mm/);
-    assert.equal($('[data-fit="split"]'),null);
-    click('[data-fit="keep"]');
-    assert.ok($('.modal')===null);assert.match($('#toast').textContent,/mimo šuplík/);
-    assert.equal(saved().tools.length,before.tools.length+12,'tools stay in the project');
-    click('#app [data-action="undo"]');assert.equal(saved().tools.length,before.tools.length);
+    assert.ok($('[data-fit="nobed"]')===null);assert.ok($('[data-fit="bed"]')===null);
+    finishDrawer();
+    const p=saved(),addedIds=new Set(newOf(old,p).map(t=>t.id)),modules=p.modules.filter(m=>p.tools.some(t=>addedIds.has(t.id)&&t.moduleId===m.id));
+    assert.equal(modules.length,12);assert.equal(new Set(modules.map(m=>m.width+'x'+m.height)).size,1);assert.ok(modules.some(m=>!onBed(m)));
+    assert.equal(unplacedOf(p,addedIds),0);assert.deepEqual(toolIssues(p,addedIds),[]);assert.deepEqual([p.limitToBed,p.bedWidth,p.bedHeight],[true,220,220]);
+    click('#app [data-action="undo"]');assert.equal(saved().tools.length,before.tools.length);assert.deepEqual([saved().width,saved().height],[before.width,before.height]);
     chooseLayoutReset();
   }finally{setCatalogSource(source);}
 });
 
-test('bed: a set whose tools all fit the bed is split into bed-sized modules, all placed, valid layout',async()=>{
-  const bars=Array.from({length:8},(_,i)=>({id:'bar-'+i,category:'wrenches',name:{cs:`Tyčka ${i+1}`,en:`Rod ${i+1}`},points:rect(180,26),depth:6,unit:'mm',size:i+1,accuracy:'typical',source:{name:'Test'}}));
+test('bed-sized splitting is an explicit export action with a single undo, never an insertion side effect',async()=>{
+  const bars=Array.from({length:8},(_,i)=>({id:'bar-'+i,category:'wrenches',name:{cs:'Tyčka '+(i+1),en:'Rod '+(i+1)},points:rect(180,26),depth:6,unit:'mm',size:i+1,accuracy:'typical',source:{name:'Test'}}));
   setCatalogSource(async()=>({categories:CATEGORIES,items:bars,sets:[{id:'bar-set',category:'wrenches',name:{cs:'Sada tyček',en:'Rod set'},items:bars.map(b=>b.id),unit:'mm'}],setsCategory:{id:'sets',cs:'Sady nářadí',en:'Tool sets'}}));
   try{
-    const before=freshDemo(),old=ids(before);
-    await openSets();chooseLayout('bar-set','group');click('[data-set-add="bar-set"]');
-    assert.equal($('#modal-title').textContent,'Sada se nevejde na tiskovou plochu');
-    assert.equal($('[data-fit-too-long]'),null,'every tool fits the bed alone');
-    assert.ok($('[data-fit="split"]').classList.contains('primary'));
-    click('[data-fit="split"]');
-    finishDrawer();
-    const p=saved(),own=newOf(old,p),addedIds=new Set(own.map(t=>t.id));
-    assert.equal(own.length,8);
-    const mods=[...new Set(own.map(t=>t.moduleId))].map(id=>p.modules.find(m=>m.id===id));
-    assert.ok(mods.length>=2,'split into several modules');assert.ok(mods.every(m=>onBed(m)),'each module fits the 220 mm bed');
-    assert.equal(p.limitToBed,true);
-    assert.equal(unplacedOf(p,addedIds),0);
-    assert.deepEqual(toolIssues(p,addedIds).map(i=>i.message),[]);
+    const before=freshDrawer(),old=ids(before);
+    await openSets();chooseLayout('bar-set','group');click('[data-set-add="bar-set"]');finishDrawer();
+    const inserted=saved(),added=newOf(old,inserted),addedIds=new Set(added.map(t=>t.id)),moduleId=added[0].moduleId;
+    assert.equal(new Set(added.map(t=>t.moduleId)).size,1);assert.ok($('.modal')===null);
+    click('#app [data-action="export"]');assert.match($('#bed-warnings').textContent,/nevejde/);assert.equal($('[data-do-export]').disabled,true);
+    assert.equal(saved().modules.length,inserted.modules.length,'Opening export cannot split the module');
+    click('[data-export-split-module="'+moduleId+'"]');finishDrawer();
+    const p=saved(),own=p.tools.filter(t=>addedIds.has(t.id)),modules=[...new Set(own.map(t=>t.moduleId))].map(id=>p.modules.find(m=>m.id===id));
+    assert.equal(own.length,8);assert.ok(modules.length>=2);assert.ok(modules.every(onBed));assert.deepEqual(toolIssues(p,addedIds),[]);
+    assert.deepEqual([p.limitToBed,p.bedWidth,p.bedHeight],[true,220,220]);
+    if($('[data-modal-close]'))click('[data-modal-close]');click('#app [data-action="undo"]');
+    assert.deepEqual(saved().modules,inserted.modules);assert.deepEqual(saved().tools,inserted.tools,'One undo restores the unsplit group');
     click('#app [data-action="undo"]');assert.equal(saved().tools.length,before.tools.length);
   }finally{setCatalogSource(source);}
-});
-
-test('bed: English texts',async()=>{
-  setCatalogSource(null);setLang('en');
-  try{
-    freshDemo();
-    await addRealSet('combination-wrench-set-8-19mm','group');
-    assert.equal($('#modal-title').textContent,'The set does not fit the print bed');
-    assert.match($('.modal .help-intro').textContent,/print bed is only 220 × 220 mm/);
-    assert.match($('[data-fit="split"]').textContent,/Split the set into modules that fit the print bed/);
-    assert.match($('[data-fit-bed]').textContent,/Enlarge the print bed/);
-    assert.match($('[data-fit="nobed"]').textContent,/Turn off the print bed limit/);
-    assert.match($('[data-fit-bed]').textContent,/At least [0-9]+ × [0-9]+ mm is needed/);
-    click('[data-fit="keep"]');click('#app [data-action="undo"]');
-  }finally{setLang('cs');setCatalogSource(source);}
 });

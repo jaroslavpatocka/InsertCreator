@@ -101,9 +101,12 @@ test('an unplaced manual group survives JSON reload and packs after enlarging it
   assert.equal(own(packed).length,2);assertContoursPreserved(source,packed);assert.deepEqual(validateLayout(packed),[]);
 });
 
-test('resizing preserves printing settings and enforces the existing bed and Gridfinity constraints',()=>{
+test('resizing ignores the print bed, preserves printing settings and keeps Gridfinity constraints',()=>{
   const source=groupProject();source.limitToBed=true;source.bedWidth=220;source.bedHeight=220;
-  assert.throws(()=>resizeModule(source,'group',{width:240,height:160}),/tiskovou plochu/);
+  const enlarged=resizeModule(source,'group',{width:240,height:160});
+  assert.equal(group(enlarged).width,240);assert.deepEqual(validateLayout(enlarged),[]);
+  for(const key of ['limitToBed','bedWidth','bedHeight','printMode','bottomMode'])assert.equal(enlarged[key],source[key]);
+  assert.throws(()=>exportSTL(enlarged),/tiskovou plochu/,'the same oversized part is checked when exported');
   const simple={...source,bottomMode:'grid',modules:[{id:'group',name:'Grid',x:0,y:0,width:84,height:84,locked:false}],tools:[{id:'one',name:'Nástroj',points:rectangle(20,40),x:10,y:10,rotation:0,depth:10,moduleId:'group',locked:false}]};
   assert.throws(()=>resizeModule(simple,'group',{width:73,height:84}),/násobcích 42/);
   assert.throws(()=>resizeModule({...simple,grid:30},'group',{mode:'auto'}),/rastr přesně 42/);

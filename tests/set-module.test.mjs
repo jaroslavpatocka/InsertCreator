@@ -133,20 +133,23 @@ test('a set too big for the drawer is kept outside the drawer, nothing lost',()=
   assert.equal(reloaded.tools.filter(t=>t.moduleId===moduleId).length,tools.length);
 });
 
-test('print bed limit: a set larger than the bed is still placed in an empty default drawer, with reason "bed"',()=>{
-  // The user's bug: default project (limitToBed, 220 × 220 bed, 504 × 378 drawer) left the 8–19 mm set unplaced.
+test('legacy print-bed settings never affect set insertion or the drawer result',()=>{
   const project=blankProject(),tools=toolsOf('combination-wrench-set-8-19mm');
   assert.equal(project.limitToBed,true);
-  for(const opts of [{},{toolSet:{name:'Klíče',layout:'shared'}}]){
+  for(const opts of [{},{toolSet:{id:'test-wrenches',name:'Klíče',layout:'shared'}}]){
     const result=addToolGroup(project,tools,opts),m=result.project.modules.find(x=>x.id===result.moduleId);
-    assert.equal(result.placed,true);assert.equal(result.reason,'bed');assert.equal(result.onBed,false);
+    assert.equal(result.placed,true);assert.equal(result.reason,'ok');assert.equal(Object.hasOwn(result,'onBed'),false);
     assert.ok(m.x>=0&&m.y>=0&&m.x+m.width<=project.width&&m.y+m.height<=project.height,'inside the drawer');
     assert.ok(m.width-.5>220||m.height-.5>220,'really larger than the bed');
     assert.equal(result.project.tools.filter(t=>t.moduleId===m.id).length,tools.length);
-    assert.equal(validateLayout(result.project).length,0,'no layout issue apart from the bed size');
+    assert.deepEqual(validateLayout(result.project),[]);
+    for(const key of ['limitToBed','bedWidth','bedHeight'])assert.equal(result.project[key],project[key]);
+    const unlimited=addToolGroup({...project,limitToBed:false},tools,opts);
+    assert.deepEqual(result.project.modules,unlimited.project.modules,'printer settings do not rank editor candidates');
+    assert.deepEqual(result.project.tools,unlimited.project.tools);
   }
   const hex=toolsOf('hex-key-set-1-5-10mm'),fits=addToolGroup(project,hex);
-  assert.equal(fits.placed,true);assert.equal(fits.reason,'ok');assert.equal(fits.onBed,true);
+  assert.equal(fits.placed,true);assert.equal(fits.reason,'ok');
   const m=fits.project.modules[0];assert.ok(m.width-.5<=220&&m.height-.5<=220);
   // No room at all: reason "drawer".
   const tiny=addToolGroup({...project,width:126,height:126},tools);
@@ -158,7 +161,7 @@ test('6–32 mm wrench set (26 pieces) packs into one valid module in a 1000 × 
   for(const [project,opts] of [[drawer({width:1000,height:800}),{}],[{...blankProject(),width:1000,height:800},{toolSet:{name:'6–32',layout:'shared'}}]]){
     const start=performance.now(),result=addToolGroup(project,tools,opts),ms=performance.now()-start;
     assert.ok(ms<1000,`took ${ms.toFixed(0)} ms`);
-    assert.equal(result.placed,true);assert.ok(['ok','bed'].includes(result.reason));
+    assert.equal(result.placed,true);assert.equal(result.reason,'ok');
     const m=result.project.modules.find(x=>x.id===result.moduleId);
     assert.ok(m.x+m.width<=1000&&m.y+m.height<=800);
     assert.equal(issuesFor(result.project,result.moduleId).length,0,'walls between pockets incl. finger grips');
@@ -204,6 +207,9 @@ test('splitForBed packs a set into few bed-sized modules registered as one set',
   assert.equal(next.toolSets[0].toolIds.length,tools.length);
   const reloaded=validateProject(JSON.parse(JSON.stringify(next)));
   assert.equal(reloaded.modules.length,modules.length);assert.equal(validateToolSets(reloaded.toolSets,reloaded.tools.map(t=>t.id)).length,1);
+  const unchecked=splitForBed({...project,limitToBed:false},tools);
+  assert.equal(unchecked.project.limitToBed,false);assert.ok(unchecked.moduleIds.length>=2,'Explicit splitting still uses bed dimensions when export checking is disabled');
+  assert.ok(unchecked.moduleIds.every(id=>{const m=unchecked.project.modules.find(module=>module.id===id);return(m.width-.5<=220&&m.height-.5<=220)||(m.height-.5<=220&&m.width-.5<=220);}));
   // Rigid groups: autoArrange keeps every module and every placement.
   const arranged=autoArrange(reloaded);assert.equal(arranged.unplaced.length,0);
   // The default 504 × 378 drawer is too small for the split set: nothing is lost, every module stays printable.

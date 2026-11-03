@@ -30,6 +30,33 @@ test('automatic grips attach to real filled regions of straight, rotated and con
   }
 });
 
+test('asymmetric wrench heads cannot pull automatic grips away from the middle of the shaft',()=>{
+  const wrench=points([[0,-25],[28,-25],[35,-8],[195,-8],[202,-48],[240,-48],[240,48],[202,48],[195,8],[35,8],[28,25],[0,25],[0,12],[17,12],[17,-12],[0,-12]]);
+  for(const contourAngle of [0,37,129]){
+    const angle=contourAngle*Math.PI/180,c=Math.cos(angle),s=Math.sin(angle),contour=wrench.map(p=>({x:p.x*c-p.y*s,y:p.x*s+p.y*c}));
+    const tool={id:'asymmetric-wrench',points:contour,x:84,y:42,rotation:73,fingerGrips:[{id:'manual',x:0,y:0,radius:12}]},before=clone(tool);
+    for(const radius of [7,9,14]){
+      const grips=automaticFingerGrips(tool,{radius}),local=grips.map(g=>({x:g.x*c+g.y*s,y:-g.x*s+g.y*c}));
+      assert.ok(local.every(g=>Math.abs(g.x-120)<.001),'both opposed grips must sit halfway along the actual 240 mm contour');
+      assert.ok(local[0].y*local[1].y<0,'grips must face each other across the shaft');
+      assert.ok(grips.every(g=>g.radius===radius&&inside(g,contour)),'radius stays in millimetres and centres stay on real material');
+      assert.ok(area(pocketOutline({...tool,fingerGrips:grips},0))>area(contour));
+    }
+    assert.deepEqual(tool,before,'automatic placement does not overwrite stored manual grips');
+  }
+});
+
+test('central concave sections use a filled branch and malformed silhouettes fail safely',()=>{
+  const u=points([[0,0],[10,0],[10,180],[40,180],[40,0],[50,0],[50,200],[0,200]]),tool={id:'central-concave',points:u};
+  const grips=automaticFingerGrips(tool);
+  assert.ok(grips.every(g=>inside(g,u)&&Math.abs(g.y-100)<.001),'a hollow middle must use one real side branch at the longitudinal midpoint');
+  assert.ok(area(pocketOutline({...tool,fingerGrips:grips},0))>area(u));
+  for(const contour of [points([[0,0],[40,40],[0,40],[40,0]]),points([[0,0],[40,40],[0,40],[40,0],[50,20]]),[{x:0,y:0},{x:NaN,y:20},{x:20,y:0}]]){
+    const invalid={id:'malformed',points:contour},before=structuredClone(invalid);
+    assert.throws(()=>automaticFingerGrips(invalid));assert.deepEqual(invalid,before);
+  }
+});
+
 test('rotating grips retains the raw rotated-bounds anchor and actual radius independently of clearance',()=>{
   const tool={id:'rotated',points:points([[10,20],[30,20],[30,100],[10,100]]),x:100,y:200,rotation:90,fingerGrips:[{id:'side',x:9,y:60,radius:9}]},before=clone(tool);
   const pocket=pocketOutline(tool),box=bounds(pocket);

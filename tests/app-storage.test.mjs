@@ -19,16 +19,17 @@ const nativeTimeout=globalThis.setTimeout;
 globalThis.setTimeout=(callback,delay,...args)=>{const timer=nativeTimeout(callback,delay,...args);if(delay>=4000)timer.unref?.();return timer;};
 
 const catalogSet=catalogSets().find(set=>set.id==='hex-key-set-1-5-10mm');assert.ok(catalogSet);
-function fixture(id,{arrangement='ordered',moduleLocked=false,toolLocked=false}={}){
+function fixture(id,{arrangement='ordered',order='asc',moduleLocked=false,toolLocked=false}={}){
   const tools=catalogSet.tools.map((item,index)=>{
     const tool={id:`${id}-${index}`,name:item.name.cs,points:structuredClone(item.points),depth:Math.min(item.depth,17.6),unit:item.unit,nominalSize:{value:item.size,unit:item.unit},x:0,y:0,rotation:0,locked:false};
     tool.fingerGrips=automaticFingerGrips(tool,{radius:9});if(index===0)tool.sizeLabel='1,5 mm';return tool;
   });
-  const project=addToolGroup({...blankProject(),id,name:id,width:504,height:600,limitToBed:false},tools,{moduleId:`group-${id}`,arrangement,order:'asc',toolSet:{id:`set-${id}`,name:'Sada imbusů',layout:'shared'}}).project;
+  const project=addToolGroup({...blankProject(),id,name:id,width:504,height:600,limitToBed:true,bedWidth:220,bedHeight:220},tools,{moduleId:`group-${id}`,arrangement,order,toolSet:{id:`set-${id}`,name:'Sada imbusů',layout:'shared'}}).project;
   if(moduleLocked)project.modules[0].locked=true;if(toolLocked)project.tools[3].locked=true;
   return project;
 }
-const projects=[fixture('storage-ordered',{arrangement:'compact'}),fixture('storage-compact'),fixture('storage-uniform'),fixture('storage-locked-module',{moduleLocked:true}),fixture('storage-locked-tool',{toolLocked:true}),{...blankProject(),id:'storage-catalog',name:'storage-catalog',width:504,height:600,limitToBed:false}];
+const oversized=addToolGroup({...blankProject(),id:'storage-oversized',name:'Oversized shared set',width:588,height:420,limitToBed:true,bedWidth:220,bedHeight:220},[10,13].map((value,i)=>({id:'long-'+i,name:'Long '+value,nominalSize:{value,unit:'mm'},points:[{x:0,y:0},{x:250,y:0},{x:250,y:20},{x:0,y:20}],fingerGrips:[],depth:8,x:0,y:0,rotation:0})),{arrangement:'ordered',order:'asc',toolSet:{id:'long-set',name:'Long set',layout:'shared'}}).project;
+const projects=[fixture('storage-ordered',{arrangement:'compact'}),fixture('storage-compact',{order:'desc'}),fixture('storage-uniform'),fixture('storage-locked-module',{moduleLocked:true}),fixture('storage-locked-tool',{toolLocked:true}),oversized,{...blankProject(),id:'storage-catalog',name:'storage-catalog',width:504,height:600,limitToBed:false}];
 localStorage.setItem('suplik-studio-projects-v1',JSON.stringify(projects));localStorage.setItem('suplik-studio-current',JSON.stringify(projects[0].id));
 localStorage.setItem('suplik-studio-lang','"cs"');localStorage.setItem('suplik-studio-unit','"mm"');
 const {setCatalogSource}=await import('../dist/catalog-ui.js');
@@ -62,6 +63,7 @@ const headings=project=>new Set(project.tools.map(tool=>Math.round(wrap(tool.rot
 function assertChanged(before,variant){
   const after=saved();assert.equal($('#modal-root').children.length,0,'Applying the layout closes the dialog without a fit prompt');
   assertRawTools(before,after);assert.deepEqual(validateLayout(after),[]);
+  for(const key of ['limitToBed','bedWidth','bedHeight'])assert.equal(after[key],before[key],'Rearranging cannot change '+key);
   const set=after.toolSets.find(set=>set.id===before.toolSets[0].id);assert.ok(set,'The editable set keeps its identity');
   assert.equal(set.order,'desc');assert.equal(set.layout,variant==='uniform'?'uniform':'shared');assert.equal(set.arrangement,variant==='uniform'?'ordered':variant);
   assert.deepEqual(setCoherence(after,findToolSets(after).sets).unsatisfied,[]);
@@ -90,6 +92,12 @@ test('uniform storage rebuilds equal modules in descending physical reading orde
   assert.equal(after.modules.length,before.tools.length);assert.equal(new Set(after.modules.map(module=>`${module.width}x${module.height}`)).size,1);
   const physical=[...after.modules].sort((a,b)=>a.y-b.y||a.x-b.x).map(module=>getToolSize(after.tools.find(tool=>tool.moduleId===module.id)).mm);
   assert.deepEqual(physical,expectedValues(after));assertUndoRedo(before,after);
+});
+
+test('reapplying storage to a module larger than a legacy checked 220 mm bed needs no printer change',()=>{
+  const before=open('storage-oversized');assert.ok(before.modules[0].width>220);
+  apply('compact');const after=assertChanged(before,'compact');assert.ok(after.modules[0].width>220);
+  assert.deepEqual([after.limitToBed,after.bedWidth,after.bedHeight],[true,220,220]);assertUndoRedo(before,after);
 });
 
 test('a locked module or set member rejects rearrangement without project or history changes',()=>{

@@ -55,14 +55,13 @@ function usefulGrips(tool){
     return intersectionArea(circle,raw,Clipper.ClipType.ctDifference)>=Math.max(6,Math.PI*grip.radius*grip.radius*.12);
   });
 }
-const fitsBed=(width,height,project)=>!project.limitToBed||((width-.5<=number(project.bedWidth,220)+EPS&&height-.5<=number(project.bedHeight,220)+EPS)||(height-.5<=number(project.bedWidth,220)+EPS&&width-.5<=number(project.bedHeight,220)+EPS));
 function orientations(tool,project,separation,{nest=false}={}){
   const aligned=90-principalAngle(tool.points),rotations=[aligned,aligned+180,aligned+90,aligned+270,...(nest?[]:[number(tool.rotation),number(tool.rotation)+90,number(tool.rotation)+180,number(tool.rotation)+270])];
   const unique=[...new Set(rotations.map(angle))],padding=number(project.wall,2.4)+.26,grid=number(project.grid,42),result=[];
   for(const rotation of unique){
     const source=pocketOutline({...tool,x:0,y:0,rotation},project.clearance),bounds=box(source),polygon=source.map(p=>({x:p.x-bounds.minX,y:p.y-bounds.minY}));
     const width=Math.ceil((bounds.width+2*padding-EPS)/grid)*grid,height=Math.ceil((bounds.height+2*padding-EPS)/grid)*grid;
-    if(width>project.width+EPS||height>project.height+EPS||!fitsBed(width,height,project))continue;
+    if(width>project.width+EPS||height>project.height+EPS)continue;
     result.push({tool,rotation,bounds,polygon,width,height,...(nest?{profile:profile(expanded(polygon,separation/2+.06))}:{})});
   }
   return result.sort((a,b)=>area(a)-area(b)||Math.max(a.width,a.height)-Math.max(b.width,b.height)||a.rotation-b.rotation);
@@ -75,7 +74,7 @@ const hash=string=>{let value=2166136261;for(let i=0;i<string.length;i++){value^
 function pairOption(a,b,dx,dy,project){
   const padding=number(project.wall,2.4)+.26,grid=number(project.grid,42),minX=Math.min(0,dx),minY=Math.min(0,dy),w=Math.max(a.bounds.width,dx+b.bounds.width)-minX,h=Math.max(a.bounds.height,dy+b.bounds.height)-minY;
   const width=Math.ceil((w+2*padding-EPS)/grid)*grid,height=Math.ceil((h+2*padding-EPS)/grid)*grid;
-  if(width>project.width+EPS||height>project.height+EPS||!fitsBed(width,height,project))return null;
+  if(width>project.width+EPS||height>project.height+EPS)return null;
   // A shared rectangle alone is not contour nesting: the pocket bounds must
   // actually interleave while their full, expanded silhouettes remain separate.
   if(Math.min(a.bounds.width,dx+b.bounds.width)-Math.max(0,dx)<.5||Math.min(a.bounds.height,dy+b.bounds.height)-Math.max(0,dy)<.5)return null;
@@ -115,7 +114,6 @@ function pack(project,fixed,atoms,order){
   for(const atom of ranked){
     let chosen=null;
     for(const option of atom.options){
-      if(!fitsBed(option.width,option.height,project))continue;
       for(let y=0;y+option.height<=project.height+EPS;y+=grid){let found=false;
         for(let x=0;x+option.width<=project.width+EPS;x+=grid){
           const rect={x,y,width:option.width,height:option.height};if(modules.some(module=>intersects(rect,module)))continue;

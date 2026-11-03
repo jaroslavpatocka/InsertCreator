@@ -23,9 +23,15 @@ Podrobné kroky před nasazením a kontrolu po něm najdete v [DEPLOY.md](./DEPL
 5. Spusťte automatické rozvržení. Velikost nového modulu se přizpůsobí nástroji včetně vůle a stěn. U vybraného modulu můžete zadat vlastní šířku a hloubku nebo znovu použít automatickou velikost podle nástroje. Změna modulu neškáluje obrys nástroje. Ručně zadané rozměry zůstávají zachované při uložení i dalším rozvržení. Moduly lze přesouvat a nástroje otáčet; zamknuté polohy zůstanou při dalším rozvržení na místě.
 6. Vyřešte hlášené kolize, přesahy a neplatné hloubky. Potom exportujte podklady.
 
-Velikost vybraného odemčeného modulu můžete ve **2D** měnit také tažením úchytů na jeho okraji. Tlačítka **− / +** v nastavení a klávesy **Alt+Shift+šipky** mění šířku nebo hloubku o jeden krok rastru. Tažení hlídá prostor pro kapsy a stěny, sousední moduly, okraj šuplíku a tiskovou plochu. Celé tažení lze vrátit jedním krokem **Zpět**. Pro přesné zadání použijte **Změnit velikost**; tlačítko **Podle nástroje** obnoví automatickou velikost.
+Velikost vybraného odemčeného modulu můžete ve **2D** měnit také tažením úchytů na jeho okraji. Tlačítka **− / +** v nastavení a klávesy **Alt+Shift+šipky** mění šířku nebo hloubku o jeden krok rastru. Tažení hlídá prostor pro kapsy a stěny, sousední moduly a okraj šuplíku. Celé tažení lze vrátit jedním krokem **Zpět**. Pro přesné zadání použijte **Změnit velikost**; tlačítko **Podle nástroje** obnoví automatickou velikost.
 
 U vybraného nástroje lze upravit **Měřítko** v procentech nebo zadat jeho **Délku** (delší stranu aktuálního obrysu). Obě volby mění obrys rovnoměrně v obou osách. Hloubka kapsy a průměr výřezů pro prsty se nemění. Automatický modul se přizpůsobí; ručně nastavený modul si ponechá rozměry a případné přesahy se zobrazí jako upozornění.
+
+Pole **Otočení** nastaví absolutní úhel vybraného nástroje. Pro více označených nástrojů použijte **Úhel otočení…** a zvolte **Otočit o** nebo **Nastavit na**. Každý se otáčí kolem vlastního středu; ostatní členové společného modulu zůstávají na místě. Kolize či přesah změnu odmítne a úspěšné otočení vrátíte jedním krokem **Zpět**.
+
+Pole **X · zleva** a **Y · shora** určují polohu vybraného nástroje uvnitř jeho modulu. Více nástrojů označíte pomocí Ctrl/Shift nebo zaškrtávacích polí. Při hromadném přesunu zvolte, zda přesouváte celé moduly, nebo pouze nástroje uvnitř nich. **Zarovnat / rozestupy** upraví vybrané nástroje v jednom modulu; stejné mezery vyžadují alespoň tři kusy. Rozměry modulu i nevybrané nástroje zůstávají zachované. Hromadně lze také připravit prostřední výřezy pro prsty nebo vybrané výřezy odstranit.
+
+Vlastnosti modulu obsahují jeho přesnou polohu **X/Y v šuplíku**, **Otočit modul o 90°** a **Kopie modulu**. Otočení zahrne všechny jeho nástroje a ponechá levý horní roh na místě. Kopie získá nové identifikátory a první volné místo v rastru, ostatní moduly se nepřesouvají. Pokud se další kopie nevejde, projekt zůstane beze změny. Zamčený originál lze zkopírovat; nová kopie je odemčená. Všechny tyto změny lze vrátit přes **Zpět**.
 
 ## Jazyk a jednotky / Language and units
 
@@ -77,7 +83,7 @@ Inzert lze navrhnout i bez fotografování. **Knihovna nástrojů** má složky 
 
 Kategorie **Sady nářadí** nabízí 38 sad podle složení běžně prodávaných sad, například sadu očkoplochých klíčů 6–32 mm (26 ks), imbusy 1,5–10 mm nebo sadu nástrčných hlavic 1/2" 10–32 mm. **Přidat sadu** vloží celou sadu jedním krokem, který jde vrátit přes Zpět. V obsahu sady lze odškrtnout velikosti, které nemáte. Nástroje, které se do šuplíku nevejdou, zůstanou v projektu a aplikace je ohlásí.
 
-Před přidáním sady zvolte **Jeden modul pro celou sadu** (výchozí) nebo **Samostatný modul pro každý nástroj**. U společného modulu můžete vybrat přehledné nebo úsporné uložení; obě rozložení nabízejí vzestupné a sestupné pořadí velikostí. Samostatné moduly mají stejné vnější rozměry a nástroje míří stejným směrem. Volby konkrétní sady se pamatují po dobu otevřené aplikace. Přidaná sada se objeví i v nabídce **Sady nástrojů**, kde ji lze dále upravovat. Při hromadném přidání zůstanou jednotlivé sady zachované a celé vložení vrátíte jedním krokem **Zpět**. Pokud se nevejdou, aplikace nabídne rozšíření nebo nový šuplík se zachováním skupin a sad; změnu tiskového omezení ukáže zvlášť.
+Před přidáním sady zvolte **Jeden modul pro celou sadu** (výchozí) nebo **Samostatný modul pro každý nástroj**. U společného modulu můžete vybrat přehledné nebo úsporné uložení; obě rozložení nabízejí vzestupné a sestupné pořadí velikostí. Samostatné moduly mají stejné vnější rozměry a nástroje míří stejným směrem. Volby konkrétní sady se pamatují po dobu otevřené aplikace. Přidaná sada se objeví i v nabídce **Sady nástrojů**, kde ji lze dále upravovat. Při hromadném přidání zůstanou jednotlivé sady zachované a celé vložení vrátíte jedním krokem **Zpět**. Pokud se nevejdou do šuplíku, aplikace nabídne rozšíření nebo nový šuplík se zachováním skupin a sad.
 
 V rozbalovací nabídce **Upravit měřítko** u katalogového nástroje nebo sady můžete zadat **20–500 %** nebo požadovanou délku. U sady se délka vztahuje k nejdelšímu vybranému nástroji a všechny vybrané obrysy se zvětší či zmenší stejným poměrem. Náhled ukazuje výslednou délku ještě před přidáním nebo uložením do knihovny.
 
@@ -85,7 +91,7 @@ Obrysy z katalogu jsou jmenovité. Konkrétní nástroj se může lišit, proto 
 
 ## Výřezy pro prsty
 
-Novým nástrojům se automaticky připraví dva boční výřezy pro snazší vyjmutí z kapsy. U vybraného nástroje je můžete znovu automaticky umístit, přidat další, upravit jejich polohu a průměr nebo je jednotlivě či všechny odstranit. Změny lze vrátit přes Zpět a ukládají se s projektem i do JSON. Smazané výřezy se při automatickém rozvržení samy neobnovují; u starších nástrojů se přidají až na vaše přání.
+Novým nástrojům se automaticky připraví dva boční výřezy pro snazší vyjmutí z kapsy, přednostně uprostřed délky obrysu. Ve společném modulu vyberte konkrétní nástroj klepnutím na jeho obrys. U vybraného nástroje můžete výřezy znovu automaticky umístit, přidat další, upravit jejich polohu a průměr nebo je jednotlivě či všechny odstranit. Změny lze vrátit přes Zpět a ukládají se s projektem i do JSON. Uložené ruční výřezy zůstávají beze změny. Smazané výřezy se při automatickém rozvržení samy neobnovují; u starších nástrojů se přidají až na vaše přání.
 
 Výřezy mají stejnou hloubku jako kapsa nástroje. Jejich prostor se započítává do automatické velikosti modulu a výrobních exportů STL, SVG, DXF i zkušebního PDF. Skutečný naměřený obrys a rozměry nástroje se nemění. U ručně zmenšeného nebo zamčeného modulu musí zbýt dost místa na stěnu; neplatné výřezy je potřeba upravit nebo modul zvětšit.
 
@@ -102,6 +108,8 @@ Tiskové písmo podporuje čísla, latinku bez diakritiky a běžné značky roz
 Výchozí rastr je **42 mm**. Automatická velikost modulu se zaokrouhluje nahoru do rastru; ručně lze zadat vlastní rozměry v milimetrech. Skutečné vnější rozměry jsou o 0,5 mm menší než jmenovité rozměry modulu, aby sousední díly měly montážní mezeru. Nabídka exportu obsahuje plné a úsporné provedení, hladké dno, patky Gridfinity, kapsy pro magnety a variantu k lepení. Patky Gridfinity vyžadují rastr a rozměry v násobcích 42 mm; systém neobsahuje stohovací lem.
 
 **STL** obsahuje uzavřenou trojúhelníkovou geometrii s opravdovými zapuštěnými kapsami a dnem; jednotky jsou milimetry. ZIP umožňuje získat samostatné díly pro tisk. **SVG a DXF** obsahují obrysy modulů a kapes v milimetrech pro další zpracování, například řezání pěny. Nevytvářejí dráhy CNC ani G-code. Nastavená vůle zvětšuje obrys kapsy; rohy se zaoblují s tolerancí přibližně 0,015 mm.
+
+Rozměry tiskové podložky se kontrolují až při **exportu STL**. Při úpravách šuplíku, vkládání sad, změně velikosti ani automatickém rozložení nic neomezují, i když má starší projekt tiskové omezení zapnuté. V exportu můžete změnit rozměry podložky, vypnout kontrolu nebo výslovně rozdělit společný modul na menší tisknutelné moduly. Samotné otevření exportu rozložení nemění. SVG a DXF velikost podložky neomezují.
 
 Fotografie nedává zaručenou výrobní přesnost. Stíny, lesklé plochy, výška nástroje nad papírem a perspektiva ovlivňují obrys. Překrývající se nástroje se mohou spojit. Automatické hodnocení kvality je heuristické a nepředstavuje záruku rozměrové přesnosti. Nečitelnou hranu nelze z chybějící obrazové informace spolehlivě odhadnout. Kontrolujte měřítko podle skutečného rozměru a před tiskem celé sestavy vytiskněte jeden zkušební díl. Hloubku kapsy určujete sami; z jedné fotografie ji nelze spolehlivě změřit.
 

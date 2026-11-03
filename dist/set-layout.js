@@ -9,7 +9,6 @@ const bounds=points=>{let x=Infinity,y=Infinity,maxX=-Infinity,maxY=-Infinity;fo
 const polygonArea=points=>Math.abs(points.reduce((s,p,i)=>{const q=points[(i+1)%points.length];return s+p.x*q.y-q.x*p.y;},0)/2);
 const inside=(m,p)=>m.x>=-EPS&&m.y>=-EPS&&m.x+m.width<=p.width+EPS&&m.y+m.height<=p.height+EPS;
 const intersects=(a,b)=>a.x<b.x+b.width-EPS&&a.x+a.width>b.x+EPS&&a.y<b.y+b.height-EPS&&a.y+a.height>b.y+EPS;
-const bedFits=(w,h,p)=>!p.limitToBed||((w-.5<=p.bedWidth+EPS&&h-.5<=p.bedHeight+EPS)||(h-.5<=p.bedWidth+EPS&&w-.5<=p.bedHeight+EPS));
 const hash=value=>{let h=2166136261;for(const c of value){h^=c.charCodeAt(0);h=Math.imul(h,16777619);}return(h>>>0).toString(16);};
 function metric(project,sets){
   const modules=project.modules.filter(m=>inside(m,project)),ids=new Set(modules.map(m=>m.id)),placed=new Set(project.tools.filter(t=>ids.has(t.moduleId)).map(t=>t.id));
@@ -34,7 +33,7 @@ function planOptions(project,set,allocate){
         try{
           const result=addToolGroup({...project,tools:[],modules:[],toolSets:[]},tools,{name:set.name,moduleId:sharedId,arrangement:set.arrangement,order:set.order||'asc',toolSet:{id:set.id,name:set.name,layout:'shared'}});
           const module=result.project.modules.find(m=>m.id===result.moduleId);
-          if(result.placed&&bedFits(module.width,module.height,project)){
+          if(result.placed){
             const old=project.modules.find(m=>m.id===source[0].moduleId);
             if(old&&Object.hasOwn(old,'unit'))module.unit=old.unit;else if(Object.hasOwn(project,'unit'))module.unit=project.unit;
             options.push({set,layout,heading:-1,width:module.width,height:module.height,modules:[module],tools:result.project.tools,cost:area(module)});
@@ -47,10 +46,9 @@ function planOptions(project,set,allocate){
       const maxW=Math.max(...items.map(i=>i.b.width)),maxH=Math.max(...items.map(i=>i.b.height));
       const cellW=layout==='uniform'?Math.ceil((maxW+2*padding-EPS)/grid)*grid:maxW+gap;
       const cellH=layout==='uniform'?Math.ceil((maxH+2*padding-EPS)/grid)*grid:maxH+gap;
-      if(layout==='uniform'&&!bedFits(cellW,cellH,project))continue;
       for(let columns=1;columns<=items.length;columns++){
         const rows=Math.ceil(items.length/columns),width=layout==='uniform'?cellW*columns:Math.ceil((columns*cellW-gap+2*padding-EPS)/grid)*grid,height=layout==='uniform'?cellH*rows:Math.ceil((rows*cellH-gap+2*padding-EPS)/grid)*grid;
-        if(width>project.width+EPS||height>project.height+EPS||(layout==='shared'&&!bedFits(width,height,project)))continue;
+        if(width>project.width+EPS||height>project.height+EPS)continue;
         const modules=[],placed=[];
         if(layout==='shared'){
           const first=[...source].sort((a,b)=>a.id.localeCompare(b.id))[0],old=project.modules.find(m=>m.id===first.moduleId),module={id:sharedId,name:set.name,width,height,x:0,y:0,locked:false,sizeMode:'auto',grouped:true,setId:set.id,setLayout:'shared'};
@@ -109,7 +107,7 @@ export async function arrangeToolSets(project,{onProgress,signal,compactArrange}
   const own=m=>source.tools.filter(t=>t.moduleId===m.id),protectedIds=new Set(source.modules.filter(m=>m.locked||m.sizeMode==='manual'||!own(m).length||own(m).some(t=>t.locked)||(!m.grouped&&m.setLayout!=='uniform'&&own(m).length>1)).map(m=>m.id));
   const blocked=new Set();for(const set of sets)if(set.toolIds.some(id=>protectedIds.has(source.tools.find(t=>t.id===id)?.moduleId))){blocked.add(set.id);warnings.push(`${set.name}: zamčené nebo ručně rozměrované moduly zůstaly zachované.`);}
   const usedIds=new Set(source.modules.map(m=>m.id)),allocate=id=>{let next=id,n=2;while(usedIds.has(next))next=`${id}-${n++}`;usedIds.add(next);return next;};
-  const families=sets.filter(s=>!blocked.has(s.id)).map(set=>{const options=planOptions(source,set,allocate);if(!options.length)warnings.push(`${set.name}: požadované uspořádání celé sady se nevejde do šuplíku nebo na tiskovou plochu, případně chybí přístup pro prsty.`);return{set,options};});
+  const families=sets.filter(s=>!blocked.has(s.id)).map(set=>{const options=planOptions(source,set,allocate);if(!options.length)warnings.push(`${set.name}: požadované uspořádání celé sady se nevejde do šuplíku, případně chybí přístup pro prsty.`);return{set,options};});
   let beams=[[]];for(const family of families){beams=beams.flatMap(choices=>[null,...family.options].map(option=>[...choices,option])).sort((a,b)=>b.reduce((s,p)=>s+(p?p.set.toolIds.length:0),0)-a.reduce((s,p)=>s+(p?p.set.toolIds.length:0),0)||a.reduce((s,p)=>s+(p?.cost||0),0)-b.reduce((s,p)=>s+(p?.cost||0),0)).slice(0,24);}
   // Also try each family alone so one blocked bay cannot prevent other sets.
   for(let i=0;i<families.length;i++){const alternatives=new Set(families[i].options.slice(0,3));for(const layout of ['uniform','shared']){const option=families[i].options.find(p=>p.layout===layout);if(option)alternatives.add(option);}for(const option of alternatives){const choices=families.map(()=>null);choices[i]=option;beams.push(choices);}}
@@ -120,7 +118,7 @@ export async function arrangeToolSets(project,{onProgress,signal,compactArrange}
       const own=candidate.tools.filter(t=>t.moduleId===module.id),signature=JSON.stringify({module:{width:module.width,height:module.height},tools:own.map(t=>({...t,x:t.x-module.x,y:t.y-module.y})),config:[source.wall,source.clearance,source.base,source.insertHeight,source.printMode,source.bottomMode,source.magnetDiameter,source.magnetDepth]});
       if(!manufacturing.has(signature)){
         progress(.8,'Ověřuji výrobní složitost společného modulu…');await pause();
-        try{exportSTL(candidate,{moduleId:module.id});manufacturing.set(signature,true);}
+        try{exportSTL(candidate,{moduleId:module.id,checkBed:false});manufacturing.set(signature,true);}
         catch(error){manufacturing.set(signature,false);const set=sets.find(s=>s.id===module.setId);manufacturingFailures.set(module.setId,`${set?.name||module.name}: společný model nelze bezpečně vyrobit (${error.message}).`);}
       }
       if(!manufacturing.get(signature))return;

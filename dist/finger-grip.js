@@ -101,12 +101,17 @@ function mainAxis(points){
   return{x:Math.cos(angle),y:Math.sin(angle)};
 }
 
-/** Two opposed circles near a broad, central, genuinely filled cross-section. */
+/** Two opposed circles at a filled cross-section nearest the longitudinal midpoint. */
 export function automaticFingerGrips(tool,{radius=9}={}){
   radius=numeric(radius,2,40,'poloměr výřezu pro prsty');
   const points=rawPoints(tool),axis=mainAxis(points),normal={x:-axis.y,y:axis.x};
+  // A self-crossing outline must not turn into a different silhouette during the circle union.
+  const filled=combine([points]),rawArea=Math.abs(Clipper.Clipper.Area(toInt(points)))/(SCALE*SCALE);
+  if(filled.length!==1||Math.abs(Math.abs(area(filled[0]))-rawArea)>Math.max(.0001,rawArea*1e-7))throw i18nError('Pro tento obrys se nepodařilo automaticky umístit připojené výřezy pro prsty.');
   const along=points.map(p=>p.x*axis.x+p.y*axis.y),lo=Math.min(...along),length=Math.max(...along)-lo,candidates=[];
-  for(const fraction of [.5,.4,.6,.3,.7,.2,.8,.1,.9,.05,.95]){
+  // Prefer the middle itself, rather than a broad head or handle near either end. Nearby
+  // stations cover concave outlines where the centre section cannot make a connected pocket.
+  for(const fraction of [.5,.475,.525,.45,.55,.425,.575,.4,.6,.375,.625,.35,.65]){
     const station=lo+length*fraction,crossings=[];
     for(let i=0;i<points.length;i++){
       const a=points[i],b=points[(i+1)%points.length],sa=along[i],sb=along[(i+1)%points.length];
@@ -115,10 +120,10 @@ export function automaticFingerGrips(tool,{radius=9}={}){
     crossings.sort((a,b)=>a-b);
     for(let i=0;i+1<crossings.length;i+=2){
       const left=crossings[i],right=crossings[i+1],width=right-left;
-      if(width>.01)candidates.push({station,left,right,width,score:width*(1-.7*Math.abs(fraction-.5))});
+      if(width>.01)candidates.push({station,left,right,width,distance:Math.abs(fraction-.5)});
     }
   }
-  candidates.sort((a,b)=>b.score-a.score);
+  candidates.sort((a,b)=>a.distance-b.distance||b.width-a.width||a.left-b.left);
   const prefix=String(tool.id||'tool').slice(0,80);
   for(const candidate of candidates){
     const inset=Math.min(radius*.15,candidate.width*.2);

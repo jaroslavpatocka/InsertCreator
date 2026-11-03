@@ -27,34 +27,29 @@ const unplacedIds=()=>{const p=saved();return p.tools.filter(t=>!p.modules.some(
 const issueText=()=>$('#app .issue-box[role=status]')?.textContent??'';
 await import('../dist/app.js');
 
-test('tools longer than the print bed collapse into one explained line',()=>{
+test('tools longer than the saved bed stay placed with no editor printer warning',()=>{
   const p=createDrawerFromUI('Klíče',588,420);assert.equal(p.limitToBed,true);
   for(let i=0;i<3;i++)addRect(20,235);
-  assert.equal(unplacedIds().length,3,'235 mm + wall cannot get a module on a 220 mm bed');
-  const text=issueText();
-  assert.match(text,/3 nástroje jsou delší než tisková plocha 220 × 220 mm/);
-  assert.doesNotMatch(text,/zatím nemá umístěný modul/);
-  assert.doesNotMatch(text,/nevešl/);
-  assert.ok($('#app .issue-box[role=status] [data-action=print-bed]'));
-  assert.ok($('#app .issue-box[role=status] [data-action=auto]'));
+  assert.equal(unplacedIds().length,0,'The drawer can hold parts longer than the 220 mm printer bed');
+  assert.equal(issueText(),'');assert.ok($('#app [data-action=print-bed]')===null);
+  assert.deepEqual([saved().limitToBed,saved().bedWidth,saved().bedHeight],[true,220,220]);
+  const id=saved().tools[0].id;click('#app [data-select="'+id+'"]');assert.ok($('#app .unplaced-why')===null);
+  action('auto');assert.equal(unplacedIds().length,0);assert.equal(issueText(),'');
+  action('3d');assert.ok($('#app [data-action=print-bed]')===null);action('2d');
 });
 
-test('the selected unplaced tool explains why and the button opens the print bed settings',()=>{
-  const id=unplacedIds()[0];click(`#app [data-select="${id}"]`);
-  const note=$('#app .unplaced-why');assert.ok(note,'Explanation in the selected-tool panel');
-  assert.match(note.textContent,/delší než tisková plocha 220 × 220 mm/);
-  click('#app .unplaced-why [data-action=print-bed]');
-  const details=$('#modal-root details.advanced');assert.ok(details,'Export dialog with printer settings');
-  assert.equal(details.open,true);assert.ok(details.querySelector('[data-field=bedWidth]'));
-  closeModals();
-});
-
-test('a tool that fits the bed is not blamed on it',()=>{
-  // Turning the bed limit off leaves a plain "no room" / placed state, never the bed explanation.
-  action('export');const box=$('#limit-bed');assert.ok(box);box.checked=false;box.dispatchEvent(new win.Event('change',{bubbles:true}));closeModals();
-  assert.equal(saved().limitToBed,false);
-  assert.doesNotMatch(issueText(),/tisková plocha/);
-  action('auto');assert.equal(unplacedIds().length,0);assert.ok($('#app .issue-box[role=status]')===null);
+test('the same oversized part is warned about only in STL export; SVG and DXF remain available',()=>{
+  const before=JSON.stringify(saved().modules);action('export');
+  assert.match($('#bed-warnings').textContent,/nevejde/);assert.equal($('[data-do-export]').disabled,true);
+  assert.equal($('#limit-bed').checked,true);assert.equal(JSON.stringify(saved().modules),before);
+  for(const format of ['svg','dxf','json']){
+    click('[data-format="'+format+'"]');assert.equal($('[data-do-export]').disabled,false,format+' has no bed restriction');
+    assert.ok($('#bed-warnings')===null);
+  }
+  click('[data-format="stl"]');assert.equal($('[data-do-export]').disabled,true);
+  const box=$('#limit-bed');box.checked=false;box.dispatchEvent(new win.Event('change',{bubbles:true}));
+  assert.equal(saved().limitToBed,false);assert.equal($('[data-do-export]').disabled,false);closeModals();
+  assert.equal(JSON.stringify(saved().modules),before,'Export settings cannot repack the drawer');assert.equal(issueText(),'');
 });
 
 test('no free room and larger than the drawer are told apart',()=>{

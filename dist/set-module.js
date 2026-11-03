@@ -14,11 +14,6 @@ const num=(value,fallback=0)=>Number.isFinite(+value)?+value:fallback;
 const angle=value=>{const r=((value%360)+360)%360;return Math.round(r*1e6)/1e6;};
 const box=points=>{let minX=Infinity,minY=Infinity,maxX=-Infinity,maxY=-Infinity;for(const p of points){minX=Math.min(minX,p.x);minY=Math.min(minY,p.y);maxX=Math.max(maxX,p.x);maxY=Math.max(maxY,p.y);}return{minX,minY,maxX,maxY,width:maxX-minX,height:maxY-minY};};
 const intersects=(a,b,e=.001)=>a.x<b.x+b.width-e&&a.x+a.width>b.x+e&&a.y<b.y+b.height-e&&a.y+a.height>b.y+e;
-const fitsBed=(width,height,project)=>{
-  if(!project.limitToBed)return true;
-  const bw=num(project.bedWidth,220),bh=num(project.bedHeight,220);
-  return (width-.5<=bw&&height-.5<=bh)||(height-.5<=bw&&width-.5<=bh);
-};
 
 /** Uniformly scale a tool outline about its local origin. Grip centres move with the outline, grip radii stay finger-sized. */
 export function scaleTool(tool,factor,opts={}){
@@ -219,19 +214,13 @@ function begin(project,tools,opts,{forceLayout=null,maxModules=1}={}){
     const y=Math.min(Math.max(below,x<W?H+grid:0),4000-height);
     return{x,y};
   };
-  // autoArrange keeps every placed tool and places the new ones. The print bed is first ignored for the arrangement
-  // (an oversized group may sit in the drawer; the bed is a print constraint), but no other module may newly exceed it.
+  // Drawer arrangement is independent of printer settings, including settings saved by older versions.
   const tryArrange=own=>{
     const before=placedTools(next),wanted=own.map(t=>t.id),ownModules=new Set(own.map(t=>t.moduleId));
-    const old=new Map((project.modules||[]).map(m=>[m.id,m])),wasOver=id=>old.has(id)&&!fitsBed(old.get(id).width,old.get(id).height,next);
-    for(const trial of next.limitToBed?[{...next,limitToBed:false},next]:[next]){
-      const arranged=autoArrange(trial),candidate={...next,tools:arranged.tools,modules:arranged.modules},after=placedTools(candidate);
-      if(![...before].every(id=>after.has(id))||!wanted.every(id=>after.has(id)))continue;
-      if(trial!==next&&candidate.modules.some(m=>!ownModules.has(m.id)&&insideDrawer(m,candidate)&&!fitsBed(m.width,m.height,next)&&!wasOver(m.id)))continue;
-      if(checkManufacturing&&[...ownModules].some(id=>{const module=candidate.modules.find(m=>m.id===id);return !module||!candidateOk(module,candidate.tools.filter(t=>t.moduleId===id));}))continue;
-      return candidate;
-    }
-    return null;
+    const arranged=autoArrange(next),candidate={...next,tools:arranged.tools,modules:arranged.modules},after=placedTools(candidate);
+    if(![...before].every(id=>after.has(id))||!wanted.every(id=>after.has(id)))return null;
+    if(checkManufacturing&&[...ownModules].some(id=>{const module=candidate.modules.find(m=>m.id===id);return !module||!candidateOk(module,candidate.tools.filter(t=>t.moduleId===id));}))return null;
+    return candidate;
   };
   const register=toolIds=>{if(toolSet)next.toolSets=[...(next.toolSets||[]),{id:setId,name:String(toolSet.name||name).slice(0,100),toolIds,layout:toolSet.layout,...preferences}];};
   // Only geometric problems of the module itself count here (pocket depth is the editor's business).
@@ -241,11 +230,11 @@ function begin(project,tools,opts,{forceLayout=null,maxModules=1}={}){
     if(!geometryOk(module,own))return false;
     if(!checkManufacturing)return true;
     // Validate only the candidate being considered. A local cache avoids exporting identical shelf/bbox
-    // fallbacks twice. The bed is a separate constraint; both selectable constructions must be closed.
-    const local={...next,width:Math.max(42,module.width),height:Math.max(42,module.height),limitToBed:false,modules:[{...module,x:0,y:0}],tools:own.map(t=>({...t,x:t.x-module.x,y:t.y-module.y}))};
+    // fallbacks twice. Geometry validation does not apply the export-only print-bed constraint.
+    const local={...next,width:Math.max(42,module.width),height:Math.max(42,module.height),modules:[{...module,x:0,y:0}],tools:own.map(t=>({...t,x:t.x-module.x,y:t.y-module.y}))};
     const key=JSON.stringify([module.width,module.height,local.tools]);if(meshCache.has(key))return meshCache.get(key);
     let safe=true;
-    try{for(const printMode of ['solid','light'])exportSTL({...local,printMode});}catch{safe=false;}
+    try{for(const printMode of ['solid','light'])exportSTL({...local,printMode},{checkBed:false});}catch{safe=false;}
     meshCache.set(key,safe);return safe;
   };
   return{next,toolSet,setId,name,clearance,separation,gap,grid,padding,allocate,unit,W,H,inDrawer,size,freeSpot,park,tryArrange,register,geometryOk,candidateOk,arrangement,order,logicalOrder,regular,extra:setId?{setId}:{}};
@@ -264,7 +253,7 @@ function choose(candidates,ctx,makeModule,accept=null){
     const module=makeModule(candidate,0,0);
     return ctx.candidateOk(module,buildTools(candidate,module));
   };
-  const rank=(a,b)=>(ctx.inDrawer(b.width,b.height)&&fitsBed(b.width,b.height,ctx.next))-(ctx.inDrawer(a.width,a.height)&&fitsBed(a.width,a.height,ctx.next))||ctx.inDrawer(b.width,b.height)-ctx.inDrawer(a.width,a.height)||fitsBed(b.width,b.height,ctx.next)-fitsBed(a.width,a.height,ctx.next)||byArea(a,b);
+  const rank=(a,b)=>ctx.inDrawer(b.width,b.height)-ctx.inDrawer(a.width,a.height)||byArea(a,b);
   const pool=[...candidates],conservative=[],safeGap=Math.max(ctx.gap,2*num(ctx.next.wall,2.4)+.2),headings=new Map();
   for(const best of candidates){
     const items=best.rowItems.flat(),heading=items[0]?.normal.rotation;if(!headings.has(heading))headings.set(heading,items);
@@ -307,11 +296,10 @@ function choose(candidates,ctx,makeModule,accept=null){
 }
 
 /** Pack tools tightly into ONE module and place it in the drawer. Explicit arrangements reject unprintable meshes atomically.
- *  Returns {project, moduleId, placed, reason, onBed, setId?, moduleIds? (uniform only)}:
- *   reason 'ok'     — placed in the drawer and printable;
- *          'bed'    — placed in the drawer, but the module is larger than the print bed while limitToBed (offer splitForBed);
- *          'drawer' — no room in the drawer (module parked to the right of / below the drawer; onBed tells whether it is printable).
- *   onBed  — false when the module exceeds the bed while limitToBed is on.
+ *  Returns {project, moduleId, placed, reason, setId?, moduleIds? (uniform only)}:
+ *   reason 'ok'     — placed in the drawer;
+ *          'drawer' — no room in the drawer (module parked to the right of / below the drawer).
+ *  Printer dimensions never affect editing; bed size is checked only by an explicit print export.
  *  opts: {name, unit, moduleId, alternate (default: true without toolSet) — allow 180° turned neighbours so heads interleave,
  *         arrangement:'ordered'|'compact', order:'asc'|'desc', toolSet:{name?, id?, layout:'shared'|'uniform'|'auto'}}.
  *  Explicit arrangement/order sort nominal sizes (mm/in) into monotonic row segments. 'ordered' uses common-heading
@@ -323,15 +311,15 @@ export function addToolGroup(project,tools,opts={}){
   const ctx=begin(project,tools,opts),{next,toolSet,setId,name,grid,allocate,unit,inDrawer,freeSpot,park,tryArrange,extra}=ctx;
   ctx.register(tools.map(tool=>tool.id));
   const source=ctx.logicalOrder?orderTools(copy(tools),ctx.order):copy(tools);
-  const finish=(placed,onBed,more)=>({project:next,...more,placed,reason:placed?(onBed?'ok':'bed'):'drawer',onBed,...extra});
+  const finish=(placed,more)=>({project:next,...more,placed,reason:placed?'ok':'drawer',...extra});
 
   if(toolSet?.layout==='uniform'){
-    // Equal footprints for every member and one common heading; the smaller printable cell wins.
+    // Equal footprints for every member and one common heading; the smaller cell fitting the drawer wins.
     const cells=[90,0].map(heading=>{
       const items=source.map((tool,index)=>prepareOne(tool,index,ctx,{heading}));
       const width=Math.ceil((Math.max(...items.map(i=>i.bounds.width))+2*ctx.padding-EPS)/grid)*grid,height=Math.ceil((Math.max(...items.map(i=>i.bounds.height))+2*ctx.padding-EPS)/grid)*grid;
-      return{items,width,height,area:width*height,inDrawer:inDrawer(width,height),onBed:fitsBed(width,height,next)};
-    }).sort((a,b)=>(b.inDrawer&&b.onBed)-(a.inDrawer&&a.onBed)||b.inDrawer-a.inDrawer||a.area-b.area);
+      return{items,width,height,area:width*height,inDrawer:inDrawer(width,height)};
+    }).sort((a,b)=>b.inDrawer-a.inDrawer||a.area-b.area);
     const cell=cells.find(cell=>cell.items.every(item=>{
       const module={id:'uniform-check',x:0,y:0,width:cell.width,height:cell.height},tool={...item.tool,moduleId:module.id,rotation:item.normal.rotation,x:(cell.width-item.bounds.width)/2-item.bounds.minX,y:(cell.height-item.bounds.height)/2-item.bounds.minY};
       return ctx.candidateOk(module,[tool]);
@@ -346,31 +334,30 @@ export function addToolGroup(project,tools,opts={}){
       const tool={...item.tool,moduleId:id,rotation:item.normal.rotation,x:position.x+(cell.width-item.bounds.width)/2-item.bounds.minX,y:position.y+(cell.height-item.bounds.height)/2-item.bounds.minY};
       next.modules.push(module);next.tools.push(tool);own.push(tool);moduleIds.push(id);
     }
-    if(all)return finish(true,cell.onBed,{moduleId:moduleIds[0],moduleIds});
+    if(all)return finish(true,{moduleId:moduleIds[0],moduleIds});
     const arranged=cell.inDrawer?tryArrange(own):null;
     if(arranged)Object.assign(next,{tools:arranged.tools,modules:arranged.modules});
-    return finish(!!arranged,cell.onBed,{moduleId:moduleIds[0],moduleIds});
+    return finish(!!arranged,{moduleId:moduleIds[0],moduleIds});
   }
 
   // One shared module. A registered set uses one common heading (coherent for set-layout.js); a plain group may turn
   // every other row or tool by 180° so heads interleave with shanks.
   const lists=toolSet||ctx.logicalOrder?[90,0].map(heading=>source.map((tool,index)=>prepareOne(tool,index,ctx,{heading}))):[source.map((tool,index)=>prepareOne(tool,index,ctx))];
   const flips=ctx.regular?['none']:ctx.arrangement==='compact'?FLIPS:(opts.alternate??!toolSet)?FLIPS:['none'];
-  const bed=next.limitToBed?[num(next.bedWidth,220)-2*ctx.padding,num(next.bedHeight,220)-2*ctx.padding]:[];
-  const candidates=candidatesFor(lists,ctx,{limits:[ctx.W-2*ctx.padding,...bed],flips});
+  const candidates=candidatesFor(lists,ctx,{limits:[ctx.W-2*ctx.padding],flips});
   if(!candidates.length)throw i18nError('Sada je pro jeden modul příliš velká (nejvýše {max} v každém směru).',{max:fmtLen(MAX_SIZE)});
-  for(const c of candidates){c.inDrawer=inDrawer(c.width,c.height);c.onBed=fitsBed(c.width,c.height,next);}
-  candidates.sort((a,b)=>(b.inDrawer&&b.onBed)-(a.inDrawer&&a.onBed)||b.inDrawer-a.inDrawer||b.onBed-a.onBed||byArea(a,b));
+  for(const c of candidates)c.inDrawer=inDrawer(c.width,c.height);
+  candidates.sort((a,b)=>b.inDrawer-a.inDrawer||byArea(a,b));
   const moduleId=allocate(opts.moduleId||`set-${tools[0].id}`);
   const makeModule=(candidate,x,y)=>({id:moduleId,name,x,y,width:candidate.width,height:candidate.height,locked:false,sizeMode:setId?'auto':'manual',grouped:true,...(setId?{setId,setLayout:'shared'}:{}),...(unit?{unit}:{})});
   const best=choose(candidates,ctx,makeModule);
-  const fits=inDrawer(best.width,best.height),onBed=fitsBed(best.width,best.height,next),spot=fits?freeSpot(best.width,best.height):null;
+  const fits=inDrawer(best.width,best.height),spot=fits?freeSpot(best.width,best.height):null;
   const position=spot||park(best.width,best.height),module=makeModule(best,position.x,position.y),own=buildTools(best,module);
   next.modules.push(module);next.tools.push(...own);
-  if(spot)return finish(true,onBed,{moduleId});
+  if(spot)return finish(true,{moduleId});
   const arranged=fits?tryArrange(own):null;
   if(arranged)Object.assign(next,{tools:arranged.tools,modules:arranged.modules});
-  return finish(!!arranged,onBed,{moduleId});
+  return finish(!!arranged,{moduleId});
 }
 
 /** Bed-sized module limits in grid steps: module size − 0.5 mm must fit the bed, either way round (as geometry.js checks it). */
