@@ -126,7 +126,7 @@ function editModuleSize(){
   const fields=(w,h,u)=>`${input(tr('Jmenovitá šířka'),w,'moduleWidth',{unit:u,min:5,max:3000})}${input(tr('Jmenovitá hloubka'),h,'moduleHeight',{unit:u,min:5,max:3000})}`;
   const modal=openModal({title:tr('Rozměry modulu'),subtitle:m.name,body:`<div class="fields-row" data-module-fields>${fields(m.width,m.height,moduleUnit(m))}</div>${unitSelect(tr('Jednotky modulu'),m.unit,'module-modal')}<p class="muted-note">${tr('Skutečné vnější rozměry jsou o {gap} menší kvůli mezeře mezi moduly. Obrys nástroje zůstane stejně velký.',{gap:fmtLen(.5,{unit:moduleUnit(m)})})}</p>`,footer:`<span class="footnote">${tr('Zamknutí určuje polohu; ruční rozměr zůstane i při dalším rozložení.')}</span><button class="btn btn-primary" data-resize-module>${tr('Uložit rozměry')}</button>`});
   const read=()=>[readLength(modal.el.querySelector('[data-field=moduleWidth]')),readLength(modal.el.querySelector('[data-field=moduleHeight]'))];
-  const pick=modal.el.querySelector('[data-scope=module-modal]');
+  const pick=modal.el.querySelector('[data-scope=module-modal]');pick.value=m.unit||'';
   // Switching the unit here re-displays the typed sizes in the chosen unit.
   pick.onchange=()=>{const [w,h]=read();if(Number.isFinite(w)&&Number.isFinite(h))modal.el.querySelector('[data-module-fields]').innerHTML=fields(w,h,unitFor(pick.value));};
   modal.el.querySelector('[data-resize-module]').onclick=()=>{
