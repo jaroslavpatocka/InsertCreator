@@ -1,3 +1,5 @@
+import {validateFingerGrips} from './finger-grip.js';
+
 export const uid=()=>globalThis.crypto?.randomUUID?.()||`id-${Date.now()}-${Math.random().toString(36).slice(2)}`;
 export const clone=value=>JSON.parse(JSON.stringify(value));
 const finite=(value,min,max,label)=>{const n=Number(value);if(!Number.isFinite(n)||n<min||n>max)throw Error(`Neplatná hodnota: ${label} (${min}–${max}).`);return n;};
@@ -28,7 +30,7 @@ export function validateProject(input){
     const width=Math.max(...points.map(p=>p.x)),height=Math.max(...points.map(p=>p.y));
     if(width<.1||height<.1)throw Error('Kontura nemá platnou plochu.');
     if(width>3000||height>3000)throw Error('Kontura nesmí v žádném směru přesáhnout 3000 mm.');
-    return{id,name:text(t.name||'Nástroj'),points,x:finite(t.x??0,-1000000,1000000,'X nástroje'),y:finite(t.y??0,-1000000,1000000,'Y nástroje'),rotation:finite(t.rotation??0,-3600,3600,'otočení'),depth:finite(t.depth??12,.5,99,'hloubka kapsy'),locked:!!t.locked,moduleId:ids.has(t.moduleId)?t.moduleId:null};
+    return{id,name:text(t.name||'Nástroj'),points,x:finite(t.x??0,-1000000,1000000,'X nástroje'),y:finite(t.y??0,-1000000,1000000,'Y nástroje'),rotation:finite(t.rotation??0,-3600,3600,'otočení'),depth:finite(t.depth??12,.5,99,'hloubka kapsy'),locked:!!t.locked,moduleId:ids.has(t.moduleId)?t.moduleId:null,...(Object.hasOwn(t,'fingerGrips')?{fingerGrips:validateFingerGrips(t.fingerGrips,{minX,minY})}:{})};
   });return out;
 }
 export function readLocal(key,fallback){try{const value=localStorage.getItem(key);return value?JSON.parse(value):fallback;}catch{return fallback;}}

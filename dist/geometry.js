@@ -1,5 +1,7 @@
 import Clipper from './vendor/clipper.js';
 import {buildPrintTriangles,encodeSTL,trianglesVolume,printConfig,validatePrintBed} from './print-geometry.js';
+import {pocketOutline} from './finger-grip.js';
+export {pocketOutline} from './finger-grip.js';
 
 const EPS = 1e-7;
 const copy = value => JSON.parse(JSON.stringify(value));
@@ -98,7 +100,7 @@ export function resizeModule(project,moduleId,{width,height,mode='manual'}={}) {
   const next=copy(project),module=(next.modules||[]).find(m=>m.id===moduleId);
   if(!module)throw new Error('Vybraný modul neexistuje.');
   const tools=(next.tools||[]).filter(t=>t.moduleId===moduleId),clearance=n(next.clearance,.8);
-  const points=tools.flatMap(t=>transformedPoints(t,clearance)),content=points.length?box(points):null;
+  const points=tools.flatMap(t=>pocketOutline(t,clearance)),content=points.length?box(points):null;
   if(mode==='auto'){
     if(!tools.length)throw new Error('Automatickou velikost prázdného modulu nelze určit. Zadejte jeho rozměry.');
     if(!content)throw new Error('Nástroj nemá platnou konturu pro určení velikosti modulu.');
@@ -129,39 +131,46 @@ export function resizeModule(project,moduleId,{width,height,mode='manual'}={}) {
 /** Deterministic grid packing. Locked modules and every tool inside them stay in place. */
 export function autoArrange(project,{preserveLocked=true}={}) {
   const tools=copy(project.tools||[]),oldModules=copy(project.modules||[]),grid=Math.max(1,n(project.grid,42));
+  const clearance=n(project.clearance,.8),footprints=new Map(),invalid=new Set(),unplaced=[];
+  const markUnplaced=id=>{if(!unplaced.includes(id))unplaced.push(id);};
+  for(const tool of tools){
+    try{const poly=pocketOutline(tool,clearance);if(poly.length<3)throw new Error('Prázdná kapsa.');footprints.set(tool.id,box(poly));}
+    catch{invalid.add(tool.id);markUnplaced(tool.id);}
+  }
   // Fillers are explicit user-created parts, so packing must never discard them.
   const lockedIds=new Set(oldModules.filter(m=>!tools.some(t=>t.moduleId===m.id)||(preserveLocked&&(m.locked||tools.some(t=>t.moduleId===m.id&&t.locked)))).map(m=>m.id));
   const modules=oldModules.filter(m=>lockedIds.has(m.id));
-  const reservedTools=new Set(tools.filter(t=>lockedIds.has(t.moduleId)).map(t=>t.id));
+  const reservedTools=new Set(tools.filter(t=>lockedIds.has(t.moduleId)||invalid.has(t.id)).map(t=>t.id));
+  for(const tool of tools.filter(t=>invalid.has(t.id)&&!lockedIds.has(t.moduleId)&&!oldModules.some(m=>m.id===t.moduleId&&m.sizeMode==='manual'))){tool.moduleId=null;tool.x=n(project.width)+grid;tool.y=0;}
   // A fixed tool without a module receives a stationary enclosing module.
   for(const t of tools.filter(t=>preserveLocked&&t.locked&&!reservedTools.has(t.id))){
-    const b=bounds(t),padding=n(project.wall,2.4)+n(project.clearance,.8)+.25;
+    const b=footprints.get(t.id),padding=n(project.wall,2.4)+.25;
     const x=Math.floor((b.x-padding)/grid)*grid,y=Math.floor((b.y-padding)/grid)*grid;
     const module={id:t.moduleId||`mod-${t.id}`,name:t.name,x,y,width:Math.ceil((b.maxX+padding-x)/grid)*grid,height:Math.ceil((b.maxY+padding-y)/grid)*grid,locked:true,sizeMode:'auto'};
     t.moduleId=module.id;modules.push(module);reservedTools.add(t.id);
   }
-  const unplaced=[];
   // A manual footprint is a movable group; size selection does not lock position.
   const manual=oldModules.filter(m=>m.sizeMode==='manual'&&!lockedIds.has(m.id)).sort((a,b)=>b.width*b.height-a.width*a.height||String(a.id).localeCompare(String(b.id)));
   for(const original of manual){
     const own=tools.filter(t=>t.moduleId===original.id);let position=null;
     const fitsBed=!project.limitToBed||((original.width-.5<=n(project.bedWidth,220)&&original.height-.5<=n(project.bedHeight,220))||(original.height-.5<=n(project.bedWidth,220)&&original.width-.5<=n(project.bedHeight,220)));
-    if(fitsBed)for(let y=0;y+original.height<=n(project.height)+EPS&&!position;y+=grid)for(let x=0;x+original.width<=n(project.width)+EPS;x+=grid){
+    if(fitsBed&&!own.some(t=>invalid.has(t.id)))for(let y=0;y+original.height<=n(project.height)+EPS&&!position;y+=grid)for(let x=0;x+original.width<=n(project.width)+EPS;x+=grid){
       const candidate={x,y,width:original.width,height:original.height};
       if(!modules.some(m=>intersectsRect(candidate,m))){position={x,y};break;}
     }
     // Keep the group and its size reloadable even when the drawer is too small.
     const module={...original,...(position||{x:n(project.width)+grid,y:0})};
     const dx=module.x-original.x,dy=module.y-original.y;
-    for(const tool of own){tool.x=n(tool.x)+dx;tool.y=n(tool.y)+dy;reservedTools.add(tool.id);if(!position)unplaced.push(tool.id);}
+    for(const tool of own){tool.x=n(tool.x)+dx;tool.y=n(tool.y)+dy;reservedTools.add(tool.id);if(!position)markUnplaced(tool.id);}
     modules.push(module);
   }
   const padding=Math.max(n(project.wall,2.4),n(project.gap,3)/2)+.25;
-  const pending=tools.filter(t=>!reservedTools.has(t.id)).sort((a,b)=>{const x=bounds(a),y=bounds(b);return y.width*y.height-x.width*x.height||String(a.id).localeCompare(String(b.id));});
+  const pending=tools.filter(t=>!reservedTools.has(t.id)).sort((a,b)=>{const x=footprints.get(a.id),y=footprints.get(b.id);return y.width*y.height-x.width*x.height||String(a.id).localeCompare(String(b.id));});
   for(const tool of pending){
     const candidates=[];
     for(const rotation of [n(tool.rotation),n(tool.rotation)+90]){
-      const b=box(transformedPoints({...tool,x:0,y:0,rotation},n(project.clearance,.8))),width=Math.ceil((b.width+2*padding)/grid)*grid,height=Math.ceil((b.height+2*padding)/grid)*grid;
+      let b;try{b=box(pocketOutline({...tool,x:0,y:0,rotation},clearance));}catch{continue;}
+      const width=Math.ceil((b.width+2*padding)/grid)*grid,height=Math.ceil((b.height+2*padding)/grid)*grid;
       if(width>n(project.width)||height>n(project.height))continue;
       if(project.limitToBed&&!((width-.5<=n(project.bedWidth,220)&&height-.5<=n(project.bedHeight,220))||(height-.5<=n(project.bedWidth,220)&&width-.5<=n(project.bedHeight,220))))continue;
       for(let y=0;y+height<=n(project.height)+EPS;y+=grid){
@@ -197,9 +206,11 @@ export function validateLayout(project) {
   }
   const polygons=new Map();
   for(const t of tools){
-    const poly=transformedPoints(t,clearance),m=modules.find(m=>m.id===t.moduleId);polygons.set(t.id,poly);
+    let poly=[],pocketError=null;
+    try{poly=pocketOutline(t,clearance);}catch(error){pocketError=error;issues.push({type:'overlap',ids:[t.id],message:`${t.fingerGrips?.length?'Výřezy pro prsty nástroje':'Kontura'} „${t.name}“ ${t.fingerGrips?.length?'nejsou platné':'není platná'}: ${error.message}`});}
+    const m=modules.find(m=>m.id===t.moduleId);polygons.set(t.id,poly);
     const raw=transformedPoints(t);
-    if(poly.length<3||Math.abs(area(poly))<EPS||selfIntersects(raw)||selfIntersects(poly))issues.push({type:'overlap',ids:[t.id],message:`Kontura „${t.name}“ se kříží nebo není platná. Upravte konturu či zmenšete vůli.`});
+    if(!pocketError&&(poly.length<3||Math.abs(area(poly))<EPS||selfIntersects(raw)||selfIntersects(poly)))issues.push({type:'overlap',ids:[t.id],message:`Kontura „${t.name}“ se kříží nebo není platná. Upravte konturu či zmenšete vůli.`});
     if(!m)issues.push({type:'outside',ids:[t.id],message:`Nástroj „${t.name}“ zatím nemá umístěný modul.`});
     else if(poly.some(p=>p.x<m.x+wall+.25-.001||p.y<m.y+wall+.25-.001||p.x>m.x+m.width-wall-.25+.001||p.y>m.y+m.height-wall-.25+.001))issues.push({type:'outside',ids:[t.id,m.id],message:`Kolem „${t.name}“ není dost místa na stěnu. Zvětšete modul nebo spusťte rozvržení.`});
     if(!(n(t.depth,10)>0&&n(t.depth,10)<=height-base+.001))issues.push({type:'depth',ids:[t.id],message:`Hloubka kapsy „${t.name}“ musí být větší než 0 a nejvýše ${(height-base).toFixed(1)} mm.`});
@@ -226,7 +237,7 @@ const path=points=>points.map((p,i)=>`${i?'L':'M'}${fmt(p.x)},${fmt(p.y)}`).join
 export function exportSVG(project,{moduleId=null}={}) {
   const {modules,tools,origin,width,height}=selected(project,moduleId);
   const shift=p=>({x:p.x-origin.x,y:p.y-origin.y});
-  return `<?xml version="1.0" encoding="UTF-8"?>\n<svg xmlns="http://www.w3.org/2000/svg" width="${fmt(width)}mm" height="${fmt(height)}mm" viewBox="0 0 ${fmt(width)} ${fmt(height)}"><title>${xml(project.name||'Šuplík Studio')}</title><desc>Rozměry v mm. Černá = modul; červená = kapsa včetně vůle ${n(project.clearance,.8)} mm. Ploché dno, rozteč modulů ${n(project.grid,42)} mm.</desc><g id="modules" fill="none" stroke="black" stroke-width="0.15">${modules.map(m=>`<rect x="${fmt(m.x-origin.x+.25)}" y="${fmt(m.y-origin.y+.25)}" width="${fmt(m.width-.5)}" height="${fmt(m.height-.5)}"/>`).join('')}</g><g id="pockets" fill="none" stroke="red" stroke-width="0.15">${tools.map(t=>`<path id="${xml(t.id)}" data-depth-mm="${n(t.depth,10)}" d="${path(transformedPoints(t,n(project.clearance,.8)).map(shift))}"><title>${xml(t.name)}</title></path>`).join('')}</g></svg>`;
+  return `<?xml version="1.0" encoding="UTF-8"?>\n<svg xmlns="http://www.w3.org/2000/svg" width="${fmt(width)}mm" height="${fmt(height)}mm" viewBox="0 0 ${fmt(width)} ${fmt(height)}"><title>${xml(project.name||'Šuplík Studio')}</title><desc>Rozměry v mm. Černá = modul; červená = kapsa včetně vůle ${n(project.clearance,.8)} mm. Ploché dno, rozteč modulů ${n(project.grid,42)} mm.</desc><g id="modules" fill="none" stroke="black" stroke-width="0.15">${modules.map(m=>`<rect x="${fmt(m.x-origin.x+.25)}" y="${fmt(m.y-origin.y+.25)}" width="${fmt(m.width-.5)}" height="${fmt(m.height-.5)}"/>`).join('')}</g><g id="pockets" fill="none" stroke="red" stroke-width="0.15">${tools.map(t=>`<path id="${xml(t.id)}" data-depth-mm="${n(t.depth,10)}" d="${path(pocketOutline(t,n(project.clearance,.8)).map(shift))}"><title>${xml(t.name)}</title></path>`).join('')}</g></svg>`;
 }
 export function exportDXF(project,{moduleId=null}={}) {
   const {modules,tools,origin,height}=selected(project,moduleId),lines=[];
@@ -234,11 +245,11 @@ export function exportDXF(project,{moduleId=null}={}) {
   add(0,'SECTION');add(2,'HEADER');add(9,'$ACADVER');add(1,'AC1015');add(9,'$INSUNITS');add(70,4);add(0,'ENDSEC');add(0,'SECTION');add(2,'ENTITIES');
   const polygon=(points,layer)=>{add(0,'LWPOLYLINE');add(100,'AcDbEntity');add(8,layer);add(100,'AcDbPolyline');add(90,points.length);add(70,1);for(const p of points){add(10,fmt(p.x-origin.x));add(20,fmt(height-(p.y-origin.y)));}};
   for(const m of modules)polygon([{x:m.x+.25,y:m.y+.25},{x:m.x+m.width-.25,y:m.y+.25},{x:m.x+m.width-.25,y:m.y+m.height-.25},{x:m.x+.25,y:m.y+m.height-.25}],'MODULES');
-  for(const t of tools)polygon(transformedPoints(t,n(project.clearance,.8)),'POCKETS');
+  for(const t of tools)polygon(pocketOutline(t,n(project.clearance,.8)),'POCKETS');
   add(0,'ENDSEC');add(0,'EOF');return lines.join('\r\n')+'\r\n';
 }
 
-const printTools=(project,tools)=>tools.map(t=>({...t,poly:clean(transformedPoints(t,n(project.clearance,.8)))}));
+const printTools=(project,tools)=>tools.map(t=>({...t,poly:clean(pocketOutline(t,n(project.clearance,.8)))}));
 /** Binary STL in mm: solid or open contour walls, with the selected real underside. */
 export function exportSTL(project,{moduleId=null}={}){
   const {modules,tools,origin}=selected(project,moduleId);validatePrintBed(project,modules);
@@ -295,7 +306,7 @@ export function createDemoProject() {
   const layout=[[0,0,84,168],[84,0,84,168],[168,0,42,168],[210,0,42,168],[252,0,84,126],[0,168,168,84]];
   tools.forEach((t,i)=>{
     const [x,y,width,height]=layout[i],m={id:`mod-${t.id}`,name:t.name,x,y,width,height,locked:false,sizeMode:'auto'};
-    const b=box(transformedPoints(t,project.clearance));
+    const b=box(pocketOutline(t,project.clearance));
     t.moduleId=m.id;t.x=x+(width-b.width)/2-b.x;t.y=y+(height-b.height)/2-b.y;
     project.modules.push(m);
   });

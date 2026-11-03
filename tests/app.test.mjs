@@ -3,6 +3,8 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import {Window} from 'happy-dom';
 import {createCanvas,ImageData} from '@napi-rs/canvas';
+import {bounds} from '../dist/geometry.js';
+import {validateProject} from '../dist/model.js';
 
 const win=new Window({url:'http://localhost:5173'});
 const html=await fs.readFile(new URL('../dist/index.html',import.meta.url),'utf8');
@@ -69,6 +71,86 @@ test('rotation shortcut ignores Ctrl, Meta and Alt while plain R still rotates',
   win.document.body.dispatchEvent(new win.KeyboardEvent('keydown',{key:'r',bubbles:true}));
   assert.equal(saved().tools[0].rotation,(rotation+90)%360);
   action('undo');assert.equal(saved().tools[0].rotation,rotation);
+});
+
+test('legacy projects keep their original pockets until finger grips are explicitly requested',()=>{
+  const before=saved();assert.ok(before.tools.every(t=>!Object.prototype.hasOwnProperty.call(t,'fingerGrips')));
+  click('.tool-row');assert.match($('#app [data-action=finger-grips-auto]').textContent,/Přidat výřezy pro prsty/);
+  assert.ok($('.finger-grip-preview .grip-pocket'));assert.ok($('.finger-grip-preview .grip-tool'));
+  action('auto');assert.ok(saved().tools.every(t=>!Object.prototype.hasOwnProperty.call(t,'fingerGrips')));
+  assert.deepEqual(saved().tools.map(t=>t.points),before.tools.map(t=>t.points));action('undo');
+});
+
+test('new finger grips support editing, individual removal, undo and explicit empty JSON transfers',async()=>{
+  const original=saved(),scratch=createDrawerFromUI('Výřezy pro prsty',588,420);
+  action('add-shape');change('#shape-type','rect');change('[data-field=shapeName]','Test výřezů');change('[data-field=shapeWidth]',40);change('[data-field=shapeHeight]',80);click('[data-confirm]');
+  const first=saved().tools[0],points=first.points;assert.equal(first.fingerGrips.length,2);assert.ok(first.fingerGrips.every(g=>g.radius===9));
+  assert.equal(Number($('#app [data-field=toolWidth]').value),bounds(first).width,'Displayed tool size must exclude finger recesses');
+  action('finger-grips');const row=$('[data-grip-row]'),id=row.dataset.gripRow;
+  change(`[data-grip-row="${id}"] [data-field=fingerY]`,first.fingerGrips[0].y+2);change(`[data-grip-row="${id}"] [data-field=fingerDiameter]`,20);click('[data-grips-save]');
+  const edited=saved().tools[0].fingerGrips;assert.equal(edited[0].radius,10);assert.equal(edited[0].y,first.fingerGrips[0].y+2);assert.deepEqual(saved().tools[0].points,points);
+  action('finger-grips');change(`[data-grip-row="${id}"] [data-field=fingerX]`,'');assert.ok($('[data-grip-error]').textContent);assert.deepEqual(saved().tools[0].fingerGrips,edited);
+  click('[data-grip-delete]');assert.equal(win.document.querySelectorAll('[data-grip-row]').length,1,'An incomplete row must still be removable');click('[data-grips-save]');assert.equal(saved().tools[0].fingerGrips.length,1);
+  action('undo');assert.deepEqual(saved().tools[0].fingerGrips,edited);
+  action('finger-grips');click('[data-grip-add]');assert.equal(win.document.querySelectorAll('[data-grip-row]').length,3);click('[data-grips-save]');assert.equal(saved().tools[0].fingerGrips.length,3);action('undo');
+  action('finger-grips-clear');assert.deepEqual(saved().tools[0].fingerGrips,[]);action('auto');assert.deepEqual(saved().tools[0].fingerGrips,[]);
+  action('undo');assert.deepEqual(saved().tools[0].fingerGrips,[]);action('undo');assert.deepEqual(saved().tools[0].fingerGrips,edited);action('redo');assert.deepEqual(saved().tools[0].fingerGrips,[]);
+  action('duplicate');const copy=saved().tools.at(-1);assert.deepEqual(copy.fingerGrips,[],'Duplicating explicit removal must not generate new defaults');assert.deepEqual(copy.points,points);
+  action('library');const copyCard=[...win.document.querySelectorAll('.library-item')].find(el=>el.querySelector('strong').textContent===copy.name);assert.ok(copyCard);copyCard.querySelector('[data-library-add]').click();assert.deepEqual(saved().tools.at(-1).fingerGrips,[],'The library must preserve explicit removal');
+  const backup=await downloadFrom('#app [data-action=save-project]'),json=await backup.blob.text();assert.ok(JSON.parse(json).project.tools.every(t=>Array.isArray(t.fingerGrips)&&t.fingerGrips.length===0));
+  const fileInput=$('#project-file');Object.defineProperty(fileInput,'files',{configurable:true,value:[{size:json.length,text:async()=>json}]});
+  fileInput.dispatchEvent(new win.Event('change',{bubbles:true}));await waitFor(()=>saved().id!==scratch.id);delete fileInput.files;
+  const imported=saved();assert.ok(imported.tools.every(t=>Array.isArray(t.fingerGrips)&&t.fingerGrips.length===0));assert.deepEqual(imported.tools[0].points,points);
+  action('auto');assert.ok(saved().tools.every(t=>t.fingerGrips.length===0));
+  action('projects');click(`[data-open="${original.id}"]`);action('projects');click(`[data-remove-project="${scratch.id}"]`);click(`[data-remove-project="${imported.id}"]`);click('[data-modal-close]');
+});
+
+test('finger grip edits validate before commit and preserve manual locked modules and raw dimensions',()=>{
+  const original=saved(),scratch=createDrawerFromUI('Ověření výřezů',588,420);
+  action('add-shape');change('#shape-type','rect');change('[data-field=shapeName]','Pevný modul');change('[data-field=shapeWidth]',40);change('[data-field=shapeHeight]',80);click('[data-confirm]');
+  const first=saved().tools[0],module=saved().modules[0];
+  action('resize-module');change('[data-field=moduleWidth]',module.width);change('[data-field=moduleHeight]',module.height);click('[data-resize-module]');action('lock');const locked=saved();
+  action('finger-grips');const row=$('[data-grip-row]'),id=row.dataset.gripRow;
+  change(`[data-grip-row="${id}"] [data-field=fingerX]`,3000);click('[data-grips-save]');assert.deepEqual(saved(),locked);assert.ok($('[data-grip-error]').textContent);assert.ok($('[data-grips-save]'));
+  change(`[data-grip-row="${id}"] [data-field=fingerX]`,first.fingerGrips[0].x);change(`[data-grip-row="${id}"] [data-field=fingerDiameter]`,80);click('[data-grips-save]');assert.deepEqual(saved(),locked);assert.match($('[data-grip-error]').textContent,/Zvětšete modul/);
+  change(`[data-grip-row="${id}"] [data-field=fingerDiameter]`,20);change(`[data-grip-row="${id}"] [data-field=fingerY]`,first.fingerGrips[0].y+2);click('[data-grips-save]');
+  assert.deepEqual(saved().modules,locked.modules);assert.deepEqual(saved().tools[0].points,first.points);assert.equal(saved().tools[0].fingerGrips[0].radius,10);
+  action('undo');assert.deepEqual(saved().tools[0].fingerGrips,first.fingerGrips);action('lock');
+  const grips=saved().tools[0].fingerGrips,newWidth=bounds(saved().tools[0]).width*2;change('#app [data-field=toolWidth]',newWidth);const scaled=saved().tools[0];
+  assert.deepEqual(scaled.fingerGrips,grips.map(g=>({...g,x:g.x*2,y:g.y*2})));assert.equal(Number($('#app [data-field=toolWidth]').value),newWidth);action('undo');
+  action('size-module-auto');
+  action('add-shape');change('#shape-type','rect');change('[data-field=shapeName]','Jiný neumístěný nástroj');change('[data-field=shapeWidth]',1500);change('[data-field=shapeHeight]',1500);click('[data-confirm]');
+  const unplaced=saved().tools.at(-1);assert.equal(unplaced.moduleId,null);click(`[data-select="${first.id}"]`);
+  action('finger-grips');const editId=$('[data-grip-row]').dataset.gripRow;change(`[data-grip-row="${editId}"] [data-field=fingerDiameter]`,20);click('[data-grips-save]');
+  assert.equal(saved().tools.find(t=>t.id===first.id).fingerGrips[0].radius,10,'An unrelated unplaced tool must not block a valid grip edit');assert.equal(saved().tools.find(t=>t.id===unplaced.id).moduleId,null);
+  action('projects');click(`[data-open="${original.id}"]`);action('projects');click(`[data-remove-project="${scratch.id}"]`);click('[data-modal-close]');
+});
+
+test('finger grip growth cannot displace another previously placed tool or change undo history',()=>{
+  const original=saved(),scratch=createDrawerFromUI('Plný malý šuplík',84,84),ids=[];
+  for(const name of ['První nástroj','Druhý nástroj']){
+    action('add-shape');change('#shape-type','rect');change('[data-field=shapeName]',name);change('[data-field=shapeWidth]',30);change('[data-field=shapeHeight]',60);click('[data-confirm]');
+    ids.push(saved().tools.at(-1).id);action('finger-grips-clear');
+  }
+  action('auto');assert.equal(saved().modules.length,2);assert.ok(saved().modules.every(m=>m.width===84&&m.height===42));
+  click(`[data-select="${ids[0]}"]`);change('#app [data-field=name]','První nástroj před úpravou');const before=saved();
+  action('finger-grips-auto');assert.deepEqual(saved(),before,'A grip edit must not move an existing tool out of the drawer');
+  assert.match($('#toast').textContent,/místo/);assert.match($('#toast').textContent,/Druhý nástroj/);
+  action('undo');assert.equal(saved().tools.find(t=>t.id===ids[0]).name,'První nástroj','Rejected changes must not create an undo entry');
+  action('projects');click(`[data-open="${original.id}"]`);action('projects');click(`[data-remove-project="${scratch.id}"]`);click('[data-modal-close]');
+});
+
+test('tool scaling rejects detached prospective finger grips without mutating serialized state',()=>{
+  const original=saved(),scratch=createDrawerFromUI('Bezpečné měřítko výřezů',588,420);
+  action('add-shape');change('#shape-type','rect');change('[data-field=shapeWidth]',40);change('[data-field=shapeHeight]',80);click('[data-confirm]');
+  action('finger-grips');const id=$('[data-grip-row]').dataset.gripRow;
+  change(`[data-grip-row="${id}"] [data-field=fingerX]`,48);change(`[data-grip-row="${id}"] [data-field=fingerY]`,40);click('[data-grips-save]');assert.equal($('#modal-root').children.length,0);
+  const before=saved(),width=bounds(before.tools[0]).width;
+  change('#app [data-field=toolWidth]',width*2);
+  assert.deepEqual(saved(),before,'A circle that would detach after scaling must leave the saved project unchanged');
+  assert.equal(Number($('#app [data-field=toolWidth]').value),Math.round(width*10)/10);assert.match($('#toast').textContent,/Automaticky umístit/);
+  const restored=validateProject(JSON.parse(JSON.stringify(saved())));assert.deepEqual(restored.tools,before.tools,'The unchanged serialized project must remain reloadable');
+  action('projects');click(`[data-open="${original.id}"]`);action('projects');click(`[data-remove-project="${scratch.id}"]`);click('[data-modal-close]');
 });
 
 test('visible drawer dimensions control restores millimetre fields without resizing tools',()=>{

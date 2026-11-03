@@ -1,4 +1,4 @@
-import {exportSVG,transformedPoints} from './geometry.js';
+import {exportSVG,pocketOutline} from './geometry.js';
 
 // A small vector PDF writer. Coordinates are millimetres; PDF's native unit is 1/72 inch.
 // Standard Helvetica keeps the template self-contained. Labels are transliterated to ASCII.
@@ -31,7 +31,7 @@ export function exportFitPDF(project,options={}){
     const outline=points=>points.map((q,i)=>{const s=shift(q);return `${num(s.x)} ${num(s.y)} ${i?'l':'m'}`;}).join('\n')+'\nh S\n';
     content+='0.6 0.6 0.6 RG 0.18 w\n'+outline([{x:m.x+.25,y:m.y+.25},{x:m.x+m.width-.25,y:m.y+.25},{x:m.x+m.width-.25,y:m.y+m.height-.25},{x:m.x+.25,y:m.y+m.height-.25}]);
     content+='0 0 0 RG 0.25 w\n';
-    for(const t of project.tools.filter(t=>t.moduleId===m.id))content+=outline(transformedPoints(t,project.clearance));
+    for(const t of project.tools.filter(t=>t.moduleId===m.id))content+=outline(pocketOutline(t,project.clearance));
     content+='Q\n';
     // Exactly 100mm horizontal gauge on every page, outside the tiled drawing.
     content+=`0 0 0 RG 0.5 w ${num(10*PT)} ${num(14*PT)} m ${num(110*PT)} ${num(14*PT)} l S\n`;
