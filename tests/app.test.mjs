@@ -159,7 +159,7 @@ test('visible drawer dimensions control restores millimetre fields without resiz
   const scrolls=[];
   try{
     click('.tool-row');assert.ok($('#app [data-scope=tool][data-field=toolWidth]'));
-    assert.equal($('#app [data-scope=project][data-field=width]'),null);
+    assert.ok($('#app [data-scope=project][data-field=width]')===null);
     assert.match($('.drawer-dimensions').textContent,/Rozměry šuplíku/);
     win.happyDOM.setWindowSize({width:390,height:844});
     win.HTMLElement.prototype.scrollIntoView=function(options){scrolls.push({id:this.id,options});};
@@ -304,10 +304,10 @@ test('inch units display, typed lengths accept any unit and drawers can override
 test('sidebar lists all drawers with create, switch and delete, replacing the old menu item',()=>{
   const original=saved(),all=()=>JSON.parse(localStorage.getItem('suplik-studio-projects-v1')),confirm=win.confirm;
   assert.equal([...win.document.querySelectorAll('.sidebar-nav .nav-item')].filter(b=>/Moje šuplíky/.test(b.textContent)).length,0,'The menu item is replaced by the sidebar list');
-  assert.equal($('.sidebar [data-action=projects]'),null);assert.ok($('.mobile-nav [data-action=projects]'),'Mobile keeps the drawers modal');
+  assert.ok($('.sidebar [data-action=projects]')===null);assert.ok($('.mobile-nav [data-action=projects]'),'Mobile keeps the drawers modal');
   assert.match($('.drawer-section .sidebar-label').textContent,/MOJE ŠUPLÍKY/);
   assert.equal(win.document.querySelectorAll('.drawer-list .drawer-card').length,all().length);
-  assert.equal($('.drawer-list [aria-current=true]').dataset.drawerOpen,original.id);assert.equal($(`.drawer-list [data-drawer-remove="${original.id}"]`),null,'The open drawer cannot be deleted');
+  assert.equal($('.drawer-list [aria-current=true]').dataset.drawerOpen,original.id);assert.ok($(`.drawer-list [data-drawer-remove="${original.id}"]`)===null,'The open drawer cannot be deleted');
   click('.sidebar [data-action=new-drawer]');change('[data-field=drawerName]','Boční šuplík');change('[data-field=drawerWidth]',1100);change('[data-field=drawerHeight]',700);click('[data-create-drawer]');
   const created=saved();assert.equal(created.name,'Boční šuplík');assert.equal($('.drawer-list [aria-current=true]').dataset.drawerOpen,created.id);
   const card=()=>$(`.drawer-list [data-drawer-open="${created.id}"]`).textContent;
@@ -319,7 +319,7 @@ test('sidebar lists all drawers with create, switch and delete, replacing the ol
     win.confirm=()=>false;click(`.drawer-list [data-drawer-remove="${created.id}"]`);assert.ok(all().some(p=>p.id===created.id),'Cancelled confirm keeps the drawer');
     win.confirm=()=>true;click(`.drawer-list [data-drawer-remove="${created.id}"]`);assert.ok(!all().some(p=>p.id===created.id));
   }finally{win.confirm=confirm;}
-  assert.equal($(`.drawer-list [data-drawer-open="${created.id}"]`),null);assert.equal(saved().id,original.id);
+  assert.ok($(`.drawer-list [data-drawer-open="${created.id}"]`)===null);assert.equal(saved().id,original.id);
 });
 
 test('tools and modules can use their own units inside one millimetre drawer',()=>{
@@ -367,9 +367,9 @@ test('editor workflows and actual photo pipeline integrate with persistent proje
   // The measured sample needs a 252mm module including its walls and clearance.
   action('export');change('.modal [data-field=bedHeight]',256);click('[data-modal-close]');
   action('capture');click('#sample-scan');await waitFor(()=>$('#trace-items input[type=checkbox]'));
-  assert.equal($('#calibration-canvas'),null,'A4 scale and perspective must be automatic');
-  assert.equal($('#trace-threshold'),null,'The user must not have to tune a threshold');
-  assert.equal($('#trace-smoothing'),null,'The user must not have to tune smoothing');
+  assert.ok($('#calibration-canvas')===null,'A4 scale and perspective must be automatic');
+  assert.ok($('#trace-threshold')===null,'The user must not have to tune a threshold');
+  assert.ok($('#trace-smoothing')===null,'The user must not have to tune smoothing');
   assert.equal($('#capture-add').disabled,false,'Clean sample must be ready immediately');
   assert.equal(win.document.querySelectorAll('#trace-items input[type=checkbox]').length,2,'Actual sample raster must recover 2 separate tools');
   assert.match($('#trace-summary').textContent,/2/);

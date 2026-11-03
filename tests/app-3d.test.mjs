@@ -154,11 +154,11 @@ test('3D mouse navigation changes only the camera and preserves normal 2D behavi
     unchanged(snapshot,undo);
   });
 
-  await t.test('context menu is prevented only on the 3D SVG, while 2D touch scroll and left drag remain usable',async()=>{
+  await t.test('context menu is prevented on the board, while 2D touch scroll and left drag remain usable',async()=>{
     await reset();const snapshot=serialized(),undo=history();
     const context=target=>{const event=new win.MouseEvent('contextmenu',{button:2,bubbles:true,cancelable:true});target.dispatchEvent(event);return event.defaultPrevented;};
     assert.equal(context(board()),true);assert.equal(context(board().querySelector('[data-module]')),true);assert.equal(context($('.board-toolbar')),false);unchanged(snapshot,undo);
-    action('2d');await paint();assert.equal(context(board()),false);assert.equal(wheel().defaultPrevented,false);
+    action('2d');await paint();assert.equal(context(board()),true);assert.equal(wheel().defaultPrevented,true);await paint();
     const before=saved(),touch=pointer('pointerdown',board().querySelector('[data-module="m-move"]'),{pointerType:'touch',id:21});
     pointer('pointermove',board(),{pointerType:'touch',id:21,y:340});pointer('pointerup',board(),{pointerType:'touch',id:21,buttons:0});await paint();
     assert.equal(touch.defaultPrevented,false);assert.deepEqual(saved(),before,'a normal 2D touch must not move tools');
@@ -168,7 +168,7 @@ test('3D mouse navigation changes only the camera and preserves normal 2D behavi
 
     action('projects');$('[data-open="camera-empty"]').click();action('3d');await paint();
     const emptySnapshot=serialized(),emptyHistory=history();assert.equal(zoomPercent(),100);
-    assert.equal($('.board-empty'),null,'the empty-drawer capture prompt must not cover the 3D SVG');
+    assert.ok($('.board-empty')===null,'the empty-drawer capture prompt must not cover the 3D SVG');
     const reference=board().querySelector('[data-reference="drawer"]');assert.ok(reference,'an empty drawer still needs its navigable reference plane');
     const emptyMesh=geometry();await drag(reference,0,45,20,{id:31});assert.ok(geometry()!==emptyMesh,'empty 3D drawers must orbit');
     const emptyView=box();await drag(board(),2,35,-25,{id:32});assert.notDeepEqual(box(),emptyView,'empty 3D drawers must pan');

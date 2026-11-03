@@ -51,7 +51,7 @@ test('capture A4 flow uses real neural workers without user calibration or conto
     openCapture({onAdd:tools=>{added.push(...tools);}});click('#sample-scan');
     await waitFor(()=>$('#trace-items input[type=checkbox]'),'automatic ready result');
     assert.ok(neuralPhases.includes('inference'),'genuine neural worker must run');assert.equal(win.document.querySelectorAll('#trace-items input[type=checkbox]').length,2);assert.equal($('#capture-add').disabled,false);assert.match($('.recognition-status').textContent,/Rozpoznáno automaticky/);
-    assert.equal($('#calibration-canvas'),null);assert.equal(win.document.querySelector('input[type=range]'),null);assert.equal($('#trace-threshold'),null);assert.equal($('#trace-smoothing'),null);assert.equal($('#contour-svg'),null);
+    assert.ok($('#calibration-canvas')===null);assert.ok(win.document.querySelector('input[type=range]')===null);assert.ok($('#trace-threshold')===null);assert.ok($('#trace-smoothing')===null);assert.ok($('#contour-svg')===null);
     click('#capture-add');await waitFor(()=>!$('#modal-root').children.length,'capture closes after adding');assert.equal(added.length,2);
     const sizes=added.map(bounds).sort((a,b)=>b.height-a.height),expected=[{width:46.8,height:203.4},{width:23.5,height:149.6}];
     for(let i=0;i<2;i++){assert.ok(Math.abs(sizes[i].width-expected[i].width)<2,`sample width ${sizes[i].width}mm`);assert.ok(Math.abs(sizes[i].height-expected[i].height)<2,`sample height ${sizes[i].height}mm`);assert.ok(added[i].points.length>10);assert.ok(added[i].points.every(point=>Number.isFinite(point.x)&&Number.isFinite(point.y)&&point.x>=0&&point.y>=0));}
@@ -59,11 +59,11 @@ test('capture A4 flow uses real neural workers without user calibration or conto
   });
   await t.test('reset during the initial processing frames cannot resurrect a stale result',async()=>{
     const modal=openCapture({onAdd:tools=>added.push(...tools)});click('#sample-scan');await waitFor(()=>$('#cancel-processing'),'processing frame');click('#cancel-processing');
-    assert.ok($('#sample-scan'));await pause(180);assert.ok($('#sample-scan'),'cancelled run must remain on upload');assert.equal($('#capture-add'),null,'old processing must not replace reset with a result');assert.equal(added.length,2);modal.close();
+    assert.ok($('#sample-scan'));await pause(180);assert.ok($('#sample-scan'),'cancelled run must remain on upload');assert.ok($('#capture-add')===null,'old processing must not replace reset with a result');assert.equal(added.length,2);modal.close();
   });
   await t.test('reset during real inference leaves upload usable and cannot add stale tools',async()=>{
     const initial=neuralPhases.filter(phase=>phase==='inference').length,modal=openCapture({onAdd:tools=>added.push(...tools)});click('#sample-scan');
     await waitFor(()=>neuralPhases.filter(phase=>phase==='inference').length>initial,'real active inference');click('#cancel-processing');assert.ok($('#sample-scan'));await pause(250);
-    assert.ok($('#sample-scan'));assert.equal($('#capture-add'),null);assert.equal($('#trace-canvas'),null);assert.equal(added.length,2);modal.close();
+    assert.ok($('#sample-scan'));assert.ok($('#capture-add')===null);assert.ok($('#trace-canvas')===null);assert.equal(added.length,2);modal.close();
   });
 });

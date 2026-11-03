@@ -2,8 +2,9 @@
 // The catalogue data (./catalog/index.js) is imported lazily the first time the Katalog folder opens.
 // app.js stays the owner of the project and the user library: it passes callbacks for adding and saving.
 import {esc,icon,toast} from './ui.js';
-import {t,plural,errorText,getLang,fmtNum} from './i18n.js';
-import {unitFor,fmtSize} from './units.js';
+import {t,plural,errorText,getLang,fmtNum,i18nError} from './i18n.js';
+import {unitFor,fmtSize,fmtLen,inputValue,parseLength} from './units.js';
+import {scaleTool} from './set-module.js';
 
 const defaultSource=async()=>{const m=await import('./catalog/index.js');return{categories:m.CATEGORIES,items:m.catalogItems(),sets:typeof m.catalogSets==='function'?m.catalogSets():[],setsCategory:m.SETS_CATEGORY};};
 let source=defaultSource,loaded=null;
@@ -28,9 +29,12 @@ async function loadCatalog(){
 }
 
 // Session state: last opened folder and catalogue filters survive closing the modal.
-const state={folder:'mine',category:'all',system:'all',query:'',limit:96};
+// layout: how "Přidat sadu" places a set – 'group' = one module for the whole set (default), 'each' = one module per tool.
+const state={folder:'mine',category:'all',system:'all',query:'',limit:96,layout:'group'};
 const PAGE=96,SET_PREVIEW=3,SET_SEARCH_PREVIEW=6,SET_THUMB_MAX=8;
 export const catalogFolder=()=>state.folder;
+/** Session choice of the set layout: 'group' (one module per set, default) or 'each' (one module per tool). */
+export const setLayout=()=>state.layout;
 
 const localName=item=>typeof item.name==='string'?item.name:(item.name?.[getLang()]||item.name?.cs||item.name?.en||item.id);
 const localText=v=>v==null?'':typeof v==='string'?v:(v[getLang()]||v.cs||v.en||'');
@@ -55,6 +59,26 @@ function haystack(item){
 export function catalogTool(item){
   return{name:localName(item),points:item.points.map(p=>({x:Number(p.x),y:Number(p.y)})),depth:Number(item.depth)||12,...(item.unit==='mm'||item.unit==='in'?{unit:item.unit}:{}),x:0,y:0,rotation:0};
 }
+// ---- Scale ("Měřítko") ----
+export const SCALE_MIN=.2,SCALE_MAX=5;
+/** Longest bounding-box side (mm) over the given catalogue items / tools. */
+export function longestSide(list){return Math.max(0,...list.map(i=>{const b=box(i.points);return Math.max(b.width,b.height);}));}
+/**
+ * Scale factor from a scale setting. spec = {mode:'percent'|'length', text}; an empty/missing spec means 1.
+ * 'percent': "110", "110 %", "92,5". 'length': target length of the longest tool, in any unit (parseLength, default `unit`).
+ * Throws a translated error when the text is invalid or the factor is outside 20–500 %.
+ */
+export function scaleFactor(spec,list,unit){
+  const text=String(spec?.text??'').trim();if(!spec||!text)return 1;
+  let f;
+  if(spec.mode==='length'){const target=parseLength(text,unit),cur=longestSide(list);f=cur>0&&target>0?target/cur:NaN;}
+  else{const m=text.replace(/\s*%$/,'').replace(',','.');f=/^\d+(\.\d+)?$|^\.\d+$/.test(m)?Number(m)/100:NaN;}
+  if(!Number.isFinite(f))throw i18nError('Zadejte platné měřítko, například 110 % nebo délku 200 mm.');
+  if(f<SCALE_MIN-1e-9||f>SCALE_MAX+1e-9)throw i18nError('Měřítko musí být od {min} do {max} %.',{min:SCALE_MIN*100,max:SCALE_MAX*100});
+  return f;
+}
+const pct=f=>fmtNum(Math.round(f*1000)/10,1)+' %';
+
 /** Small SVG thumbnail in the same style as library thumbnails (long outlines are decimated). */
 export function catalogThumb(item){
   const pts=item.points,step=Math.max(1,Math.ceil(pts.length/400)),b=box(pts);
@@ -122,13 +146,17 @@ const FOLDERS=[{id:'mine',label:'Moje nástroje',icon:'library'},{id:'catalog',l
 /**
  * Render the folder tabs into an open modal and wire them.
  * opts.mine() → {body,footer} HTML of the user's library (re-evaluated every time the folder is shown).
- * opts.onAdd(tools) adds tools to the current drawer (may throw); a whole set is passed in ONE call (one undo step, one arrangement).
+ * opts.onAdd(tools,addOpts) adds tools to the current drawer (may throw); a whole set is passed in ONE call (one undo step, one arrangement).
+ *   addOpts.set={name,unit} marks the tools as one catalogue set (registered as a project tool set);
+ *   addOpts.group={name,unit} asks for ONE module holding the whole set (the default layout of "Přidat sadu").
+ * Tools are already scaled when the user set a scale ("Upravit měřítko").
  * opts.onSave(tools) → number of newly saved tools.
  */
 export function mountLibraryFolders(modal,{mine,onAdd,onSave}){
   modal.body.innerHTML=`<div class="library-folders" role="tablist" aria-label="${esc(t('Složky knihovny'))}">${FOLDERS.map(f=>`<button type="button" role="tab" class="library-folder" id="library-tab-${f.id}" data-library-folder="${f.id}" aria-controls="library-panel" aria-selected="false" tabindex="-1">${icon(f.icon)}<span>${esc(t(f.label))}</span></button>`).join('')}</div><div id="library-panel" class="library-panel" role="tabpanel"></div>`;
   const tabs=[...modal.body.querySelectorAll('[data-library-folder]')],panel=modal.body.querySelector('#library-panel');
   const selected=new Set(),selectedSets=new Set(),expanded=new Set(),unticked=new Map();
+  const scales=new Map(),scaleOpen=new Set(); // key 's:<set id>' | 'i:<item id>' → {mode:'percent'|'length',text}
   let items=[],categories=[],sets=[],setsCategory=SETS_DEFAULT,timer=null,token=0;
   const byId=id=>items.find(i=>i.id===id),setById=id=>sets.find(s=>s.id===id);
   const SETS=()=>setsCategory.id;
@@ -198,10 +226,40 @@ export function mountLibraryFolders(modal,{mine,onAdd,onSave}){
     const keys=[...groups.keys()].sort((a,b)=>rank(a)-rank(b));
     results.innerHTML=`<p class="catalog-count">${esc(plural(list.length,['{n} sada','{n} sady','{n} sad']))}</p>`+keys.map(k=>`<section class="catalog-set-group" data-catalog-set-group="${esc(k)}"><h3 class="catalog-group-title">${esc(label(k))} <span>${groups.get(k).length}</span></h3><div class="catalog-grid catalog-set-grid">${groups.get(k).map(setHTML).join('')}</div></section>`).join('');
   }
+  // Scale target of a key: the tools it scales (a set: its ticked members) and its default length unit.
+  function scaleTarget(key){
+    if(key.startsWith('s:')){const set=setById(key.slice(2));if(!set)return null;const list=checkedTools(set);return{list:list.length?list:set.tools,unit:unitFor(set.unit),set:true};}
+    const item=byId(key.slice(2));return item?{list:[item],unit:itemUnit(item),set:false}:null;
+  }
+  const lenValue=(mm,u)=>inputValue(mm,{unit:u,digits:u==='in'?2:1});
+  function scaleState(key){
+    const target=scaleTarget(key);if(!target)return null;
+    const spec=scales.get(key),cur=longestSide(target.list);let f=1,error='';
+    try{f=scaleFactor(spec,target.list,target.unit);}catch(e){error=errorText(e);}
+    const preview=error||t(target.set?'Nejdelší nástroj: {from} → {to}':'Délka: {from} → {to}',{from:fmtLen(cur,{unit:target.unit}),to:fmtLen(cur*f,{unit:target.unit})});
+    return{...target,spec,cur,f,error,preview,badge:!error&&Math.abs(f-1)>1e-9?pct(f):''};
+  }
+  function scaleHTML(key){
+    const st=scaleState(key);if(!st)return'';
+    const k=esc(key),pctText=st.spec?.mode==='percent'?st.spec.text:st.error?'':String(Math.round(st.f*1000)/10),lenText=st.spec?.mode==='length'?st.spec.text:st.error?'':lenValue(st.cur*st.f,st.unit);
+    const lenLabel=t(st.set?'Délka nejdelšího nástroje':'Délka nástroje');
+    return`<details class="catalog-scale" data-scale="${k}" ${scaleOpen.has(key)?'open':''}><summary>${esc(t('Upravit měřítko'))}<b data-scale-badge>${esc(st.badge)}</b></summary><div class="catalog-scale-body"><label><span>${esc(t('Měřítko'))}</span><span class="catalog-scale-input"><input type="text" inputmode="decimal" autocomplete="off" spellcheck="false" data-scale-pct value="${esc(pctText)}" aria-label="${esc(t('Měřítko v procentech'))}"><em>%</em></span></label><label><span>${esc(lenLabel)}</span><span class="catalog-scale-input"><input type="text" inputmode="decimal" autocomplete="off" spellcheck="false" data-scale-len value="${esc(lenText)}" aria-label="${esc(lenLabel+' ('+st.unit+')')}"><em>${esc(st.unit)}</em></span></label><small class="catalog-scale-preview ${st.error?'invalid':''}" data-scale-preview aria-live="polite">${esc(st.preview)}</small></div></details>`;
+  }
+  // Refresh preview/badge (and the other field) of one scale control after typing or a member change.
+  function refreshScale(details,edited){
+    const st=scaleState(details.dataset.scale);if(!st)return;
+    const p=details.querySelector('[data-scale-preview]');p.textContent=st.preview;p.classList.toggle('invalid',!!st.error);
+    details.querySelector('[data-scale-badge]').textContent=st.badge;
+    if(st.error)return;
+    if(edited!=='pct')details.querySelector('[data-scale-pct]').value=String(Math.round(st.f*1000)/10);
+    if(edited!=='len')details.querySelector('[data-scale-len]').value=lenValue(st.cur*st.f,st.unit);
+  }
+  const LAYOUTS=[['group','Jeden modul pro celou sadu'],['each','Samostatný modul pro každý nástroj']];
+  const layoutHTML=set=>set.tools.length<2?'':`<label class="catalog-set-layout"><span>${esc(t('Rozložení'))}</span><select data-set-layout="${esc(set.id)}" aria-label="${esc(t('Rozložení sady {name}',{name:localName(set)}))}">${LAYOUTS.map(([id,label])=>`<option value="${id}" ${state.layout===id?'selected':''}>${esc(t(label))}</option>`).join('')}</select></label>`;
   function itemHTML(item){
     const name=localName(item),acc=ACCURACY[item.accuracy]||ACCURACY.typical,src=item.source||{},on=selected.has(item.id);
     const tip=t('Zdroj: {source} · Licence: {license}',{source:src.name||'—',license:src.license||'—'});
-    return`<div class="catalog-item ${on?'selected':''}" data-catalog-item="${esc(item.id)}"><label class="catalog-check"><input type="checkbox" data-catalog-select="${esc(item.id)}" ${on?'checked':''} aria-label="${esc(t('Vybrat {name}',{name}))}"></label><span class="tool-thumb catalog-thumb">${catalogThumb(item)}</span><strong class="catalog-name">${esc(name)}</strong><span class="catalog-meta"><span>${esc(sizeText(item))}</span><span class="accuracy-badge accuracy-${esc(item.accuracy||'typical')}" title="${esc(tip)}" tabindex="0" role="note" aria-label="${esc(t(acc)+' · '+tip)}">${esc(t(acc))}</span></span><span class="catalog-actions"><button type="button" class="btn btn-light" data-catalog-add="${esc(item.id)}" aria-label="${esc(t('Přidat {name} do šuplíku',{name}))}">${icon('plus')}${esc(t('Přidat do šuplíku'))}</button><button type="button" class="icon-btn" data-catalog-save="${esc(item.id)}" title="${esc(t('Uložit do mých nástrojů'))}" aria-label="${esc(t('Uložit {name} do mých nástrojů',{name}))}">${icon('save')}</button></span></div>`;
+    return`<div class="catalog-item ${on?'selected':''}" data-catalog-item="${esc(item.id)}"><label class="catalog-check"><input type="checkbox" data-catalog-select="${esc(item.id)}" ${on?'checked':''} aria-label="${esc(t('Vybrat {name}',{name}))}"></label><span class="tool-thumb catalog-thumb">${catalogThumb(item)}</span><strong class="catalog-name">${esc(name)}</strong><span class="catalog-meta"><span>${esc(sizeText(item))}</span><span class="accuracy-badge accuracy-${esc(item.accuracy||'typical')}" title="${esc(tip)}" tabindex="0" role="note" aria-label="${esc(t(acc)+' · '+tip)}">${esc(t(acc))}</span></span>${scaleHTML('i:'+item.id)}<span class="catalog-actions"><button type="button" class="btn btn-light" data-catalog-add="${esc(item.id)}" aria-label="${esc(t('Přidat {name} do šuplíku',{name}))}">${icon('plus')}${esc(t('Přidat do šuplíku'))}</button><button type="button" class="icon-btn" data-catalog-save="${esc(item.id)}" title="${esc(t('Uložit do mých nástrojů'))}" aria-label="${esc(t('Uložit {name} do mých nástrojů',{name}))}">${icon('save')}</button></span></div>`;
   }
   const domId=id=>'catalog-set-'+String(id).replace(/[^a-zA-Z0-9_-]/g,'_');
   function addLabel(set){const n=checkedTools(set).length;return n===set.tools.length?t('Přidat sadu'):t('Přidat vybrané ze sady ({n})',{n});}
@@ -216,6 +274,7 @@ export function mountLibraryFolders(modal,{mine,onAdd,onSave}){
       +`<span class="catalog-meta">${/\(\d+\s*(?:ks|pcs)\.?\)/i.test(name)?'':`<span class="catalog-set-count">${esc(plural(total,['{n} kus','{n} kusy','{n} kusů']))}</span>`}${range?`<span class="catalog-set-range">${esc(range)}</span>`:''}<span class="unit-badge">${unit}</span><span class="accuracy-badge accuracy-${acc}" title="${esc(tip)}" tabindex="0" role="note" aria-label="${esc(t(ACCURACY[acc])+' · '+tip)}">${esc(t(ACCURACY[acc]))}</span></span>`
       +`<button type="button" class="catalog-set-toggle" data-set-toggle="${esc(id)}" aria-expanded="${open}" aria-controls="${domId(id)}">${icon('chevron')}<span>${esc(t(open?'Skrýt obsah':'Zobrazit obsah'))}</span><small data-set-picked>${n<total?esc(t('{n} z {total} vybráno',{n,total})):''}</small></button>`
       +(open?membersHTML(set):'')
+      +`<div class="catalog-set-options">${layoutHTML(set)}${scaleHTML('s:'+set.id)}</div>`
       +`<span class="catalog-actions"><button type="button" class="btn btn-light" data-set-add="${esc(id)}" ${n?'':'disabled'} aria-label="${esc(addAria(set,n))}">${icon('plus')}<span data-set-add-label>${esc(addLabel(set))}</span></button><button type="button" class="icon-btn" data-set-save="${esc(id)}" ${n?'':'disabled'} title="${esc(t('Uložit sadu do mých nástrojů'))}" aria-label="${esc(t('Uložit sadu {name} do mých nástrojů',{name}))}">${icon('save')}</button></span></div>`;
   }
   function membersHTML(set){
@@ -231,32 +290,65 @@ export function mountLibraryFolders(modal,{mine,onAdd,onSave}){
     btn.disabled=!n;keep.disabled=!n;btn.querySelector('[data-set-add-label]').textContent=addLabel(set);btn.setAttribute('aria-label',addAria(set,n));
     card.querySelector('[data-set-picked]').textContent=n<total?t('{n} z {total} vybráno',{n,total}):'';
     const off=unticked.get(set.id)||new Set();for(const box of card.querySelectorAll('[data-set-member]'))box.checked=!off.has(Number(box.dataset.index));
+    const sc=card.querySelector('[data-scale]');if(sc)refreshScale(sc);
   }
-  const add=list=>{if(!list.length)return;try{onAdd(list.map(catalogTool));selected.clear();selectedSets.clear();}catch(error){toast(errorText(error));}};
-  const save=(list,already='Tento obrys už v mých nástrojích je.')=>{
+  // Catalogue items → tools, scaled by the scale set for `key` (throws a translated error for an invalid scale).
+  const scaledTools=(list,key)=>{const target=scaleTarget(key),f=scaleFactor(scales.get(key),target?.list||list,target?.unit);return list.map(i=>{const tool=catalogTool(i);return f===1?tool:scaleTool(tool,f);});};
+  const itemTools=item=>scaledTools([item],'i:'+item.id);
+  const setTools=set=>scaledTools(checkedTools(set),'s:'+set.id);
+  // `make` builds the tool list lazily, so an invalid scale only shows a toast and adds nothing.
+  const add=(make,opts={})=>{let list;try{list=make();}catch(error){toast(errorText(error));return;}if(!list.length)return;try{onAdd(list,opts);selected.clear();selectedSets.clear();}catch(error){toast(errorText(error));}};
+  const save=(make,already='Tento obrys už v mých nástrojích je.')=>{
+    let list;try{list=make();}catch(error){toast(errorText(error));return;}
     if(!list.length)return;
-    try{const n=onSave(list.map(catalogTool));toast(n?plural(n,['{n} obrys uložen do mých nástrojů.','{n} obrysy uloženy do mých nástrojů.','{n} obrysů uloženo do mých nástrojů.']):t(already));}
+    try{const n=onSave(list);toast(n?plural(n,['{n} obrys uložen do mých nástrojů.','{n} obrysy uloženy do mých nástrojů.','{n} obrysů uloženo do mých nástrojů.']):t(already));}
     catch(error){toast(errorText(error));}
   };
-  const chosen=()=>[...[...selected].map(byId).filter(Boolean),...[...selectedSets].map(setById).filter(Boolean).flatMap(checkedTools)];
+  const chosen=()=>[...[...selected].map(byId).filter(Boolean).flatMap(itemTools),...[...selectedSets].map(setById).filter(Boolean).flatMap(setTools)];
+  // Build the complete batch before calling onAdd, so one invalid scale cannot add a partial selection.
+  // Ranges refer to this flattened list; each set keeps its own scale, members and editable layout.
+  const addChosen=()=>{
+    try{
+      const tools=[...selected].map(byId).filter(Boolean).flatMap(itemTools),collections=[];
+      for(const set of [...selectedSets].map(setById).filter(Boolean)){
+        const members=setTools(set),start=tools.length;
+        tools.push(...members);
+        if(members.length>1)collections.push({start,count:members.length,name:localName(set),unit:set.unit==='in'?'in':'mm',layout:state.layout==='group'?'shared':'uniform'});
+      }
+      add(()=>tools,{collections});
+    }catch(error){toast(errorText(error));}
+  };
+  // set: the added tools become one project tool set; group: ONE module for them (default layout).
+  const setAddOpts=(set,n)=>{const info={name:localName(set),unit:set.unit==='in'?'in':'mm'};return n>1?{set:info,...(state.layout==='group'?{group:info}:{})}:{};};
   panel.addEventListener('click',e=>{
     if(state.folder!=='catalog')return;
+    const summary=e.target.closest('.catalog-scale > summary');
+    if(summary){const d=summary.parentElement,key=d.dataset.scale;if(d.open)scaleOpen.delete(key);else scaleOpen.add(key);return;}
     const chip=e.target.closest('[data-catalog-category]'),sys=e.target.closest('[data-catalog-system]'),one=e.target.closest('[data-catalog-add]'),keep=e.target.closest('[data-catalog-save]');
     if(chip){state.category=chip.dataset.catalogCategory;state.limit=PAGE;renderResults();[...panel.querySelectorAll("[data-catalog-category]")].find(b=>b.dataset.catalogCategory===state.category)?.focus();return;}
     if(sys){state.system=sys.dataset.catalogSystem;state.limit=PAGE;for(const b of panel.querySelectorAll('[data-catalog-system]')){const on=b===sys;b.classList.toggle('active',on);b.setAttribute('aria-pressed',String(on));}renderResults();return;}
     if(e.target.closest('[data-catalog-more]')){state.limit+=PAGE;renderResults();return;}
-    if(one){const item=byId(one.dataset.catalogAdd);if(item)add([item]);return;}
-    if(keep){const item=byId(keep.dataset.catalogSave);if(item)save([item]);return;}
+    if(one){const item=byId(one.dataset.catalogAdd);if(item)add(()=>itemTools(item));return;}
+    if(keep){const item=byId(keep.dataset.catalogSave);if(item)save(()=>itemTools(item));return;}
     const btn=e.target.closest('[data-set-add],[data-set-save],[data-set-toggle],[data-set-all],[data-set-none]');if(!btn)return;
     const ds=btn.dataset,set=setById(ds.setAdd??ds.setSave??ds.setToggle??ds.setAll??ds.setNone);if(!set)return;
-    if(ds.setAdd!=null)add(checkedTools(set));
-    else if(ds.setSave!=null)save(checkedTools(set),'Všechny obrysy této sady už v mých nástrojích jsou.');
+    if(ds.setAdd!=null)add(()=>setTools(set),setAddOpts(set,checkedTools(set).length));
+    else if(ds.setSave!=null)save(()=>setTools(set),'Všechny obrysy této sady už v mých nástrojích jsou.');
     else if(ds.setToggle!=null){
       if(expanded.has(set.id))expanded.delete(set.id);else expanded.add(set.id);
       const card=setCard(set.id);if(card){card.outerHTML=setHTML(set);setCard(set.id)?.querySelector('[data-set-toggle]')?.focus();}
     }else{if(ds.setAll!=null)unticked.delete(set.id);else unticked.set(set.id,new Set(set.tools.map((_,i)=>i)));updateSet(set);}
   });
+  panel.addEventListener('input',e=>{
+    const field=e.target.closest('[data-scale-pct],[data-scale-len]');if(!field)return;
+    const details=field.closest('[data-scale]'),pctField=field.hasAttribute('data-scale-pct');
+    scales.set(details.dataset.scale,{mode:pctField?'percent':'length',text:field.value});
+    refreshScale(details,pctField?'pct':'len');
+  });
   panel.addEventListener('change',e=>{
+    const layout=e.target.closest('[data-set-layout]');
+    if(layout){state.layout=layout.value==='each'?'each':'group';for(const s of panel.querySelectorAll('[data-set-layout]'))s.value=state.layout;return;}
+    if(e.target.closest('[data-scale-pct],[data-scale-len]'))return;
     const member=e.target.closest('[data-set-member]');
     if(member){
       const set=setById(member.dataset.setMember);if(!set)return;
@@ -276,8 +368,8 @@ export function mountLibraryFolders(modal,{mine,onAdd,onSave}){
   });
   modal.footer.addEventListener('click',e=>{
     if(state.folder!=='catalog')return;
-    if(e.target.closest('[data-catalog-add-selected]'))add(chosen());
-    else if(e.target.closest('[data-catalog-save-selected]')){save(chosen());selected.clear();selectedSets.clear();renderResults();modal.footer.innerHTML=footerHTML();}
+    if(e.target.closest('[data-catalog-add-selected]'))addChosen();
+    else if(e.target.closest('[data-catalog-save-selected]')){save(chosen);selected.clear();selectedSets.clear();renderResults();modal.footer.innerHTML=footerHTML();}
   });
   show(state.folder);
 }

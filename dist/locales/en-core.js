@@ -123,4 +123,13 @@ export default {
   "Modul nemá platnou síť pro náhled.":"The module has no valid mesh for the preview.",
   "Modul nelze zobrazit jako výrobní síť.":"The module cannot be shown as a manufacturing mesh.",
   "Sestava zatím nemá moduly.":"The layout has no modules yet.",
+  // set-module.js — tool sets as one module, tool scaling
+  'Měřítko nástroje musí být mezi {min}× a {max}×.':'Tool scale must be between {min}× and {max}×.',
+  'Nástroj nemá platnou konturu pro změnu měřítka.':'The tool has no valid outline to scale.',
+  'Nástroj „{name}“ nemá platnou kapsu: {error}':'Tool “{name}” has no valid pocket: {error}',
+  'Sada neobsahuje žádné nástroje.':'The set contains no tools.',
+  'Sada je pro jeden modul příliš velká (nejvýše {max} v každém směru).':'The set is too large for one module (at most {max} in each direction).',
+  'Sadu se nepodařilo bezpečně uspořádat do jednoho modulu.':'The set could not be safely arranged into one module.',
+  'Sada nástrojů':'Tool set',
+  'Zvolte automatické, sjednocené nebo společné uspořádání sady.':'Choose automatic, uniform or shared arrangement for the set.',
 };

@@ -98,7 +98,7 @@ test('adding one item creates a drawer tool with the item unit and depth, plus a
   const before=saved().tools.length;
   await openCatalog();
   click('[data-catalog-add="wrench-half-inch"]');
-  assert.equal($('.modal'),null,'modal closes after adding');
+  assert.ok($('.modal')===null,'modal closes after adding');
   const tools=saved().tools;assert.equal(tools.length,before+1);
   const tool=tools.at(-1);
   assert.equal(tool.name,'Očkoplochý klíč 1/2 in');assert.equal(tool.unit,'in');assert.equal(tool.depth,8);
@@ -167,7 +167,7 @@ test('the real catalogue module loads lazily through the default source',async()
   try{
     await openCatalog();
     assert.ok($('.catalog-grid')||$('.catalog-empty'),'catalogue renders either items or the empty state');
-    assert.equal($('[role=alert]'),null,'loading the real catalogue must not fail');
+    assert.ok($('[role=alert]')===null,'loading the real catalogue must not fail');
     click('[data-modal-close]');
   }finally{setCatalogSource(async()=>({categories:CATEGORIES,items}));}
 });

@@ -1,9 +1,10 @@
 import {bounds,transformedPoints,autoArrange,resizeModule,validateLayout,exportSVG,exportDXF,exportSTL,exportFitSTL,printStats,zipFiles,createDemoProject} from './geometry.js';
 import {printPreview,createCamera3D,normalizeCamera3D} from './preview3d.js';
-import {createViewControls} from './view-controls.js';
+import {createViewControls,createViewControls2D} from './view-controls.js';
 import {exportFitPDF} from './fit-sheet.js';
 import {openCapture} from './capture.js';
 import {mountLibraryFolders} from './catalog-ui.js';
+import {addToolGroup,scaleTool} from './set-module.js';
 import {esc,icon,openModal,closeModal,toast,download} from './ui.js';
 import {uid,clone,validateProject,readLocal,writeLocal,blankProject} from './model.js';
 import {automaticFingerGrips,pocketOutline,validateFingerGrips} from './finger-grip.js';
@@ -45,7 +46,7 @@ if(!Array.isArray(library))library=localizeDemo(createDemoProject()).tools.map(t
 library=library.flatMap(t=>{try{return[validateProject({...blankProject(),tools:[t]}).tools[0]];}catch{return[];}});
 let selected=project.tools[0]?.id||null,selectedModule=null,inspectorTab='drawer',view='2d',zoom=1,snap=true,showGrid=true,showLabels=true,tipVisible=!readLocal('suplik-hide-tip',false);
 let undoStack=[],redoStack=[],drag=null,storageFailed=false,moveMode=false;
-let camera3D=createCamera3D(),cameraFrame={width:1000,height:600,zoom:1},viewControls=null;
+let camera3D=createCamera3D(),cameraFrame={width:1000,height:600,zoom:1},viewControls=null,pan2D={x:0,y:0};
 let smartLayoutRun=null;
 const smartModeKey='suplik-studio-smart-mode';
 let smartMode=readLocal(smartModeKey,'sets');if(!['sets','compact'].includes(smartMode))smartMode='sets';writeLocal(smartModeKey,smartMode);
@@ -258,25 +259,138 @@ function editFingerGrips(){
   redraw();
 }
 function showDrawerDimensions(){inspectorTab='drawer';render();if(window.innerWidth<=760)$('#drawer-settings')?.scrollIntoView({block:'start',behavior:'smooth'});}
-function moduleSizing(m){const u=moduleUnit(m),count=project.tools.filter(t=>t.moduleId===m.id).length;return `<div class="module-sizing"><strong>${m.sizeMode==='manual'?tr('Rozměry modulu · ruční'):tr('Rozměry modulu · automatické')}${unitBadge(m.unit)}</strong><small>${tr('Jmenovité {size}',{size:fmtSize(m.width,m.height,{unit:u})})}<br>${tr('Vnější {size}',{size:fmtSize(m.width-.5,m.height-.5,{unit:u})})}${count>1?`<br>${tr('Nástrojů ve společném modulu: {n}',{n:count})}`:''}</small>${unitSelect(tr('Jednotky modulu'),m.unit,'module')}<div class="selected-actions"><button class="btn btn-light" data-action="resize-module">${icon('ruler')}${tr('Upravit rozměry modulu')}</button>${project.tools.some(t=>t.moduleId===m.id)?`<button class="btn btn-light" data-action="size-module-auto">${tr('Podle nástroje')}</button>`:''}${count>1?`<button class="btn btn-light" data-action="split-module">${tr('Rozdělit modul')}</button>`:''}</div></div>`;}
+function moduleSizing(m){const u=moduleUnit(m),count=project.tools.filter(t=>t.moduleId===m.id).length;return `<div class="module-sizing"><strong>${m.sizeMode==='manual'?tr('Rozměry modulu · ruční'):tr('Rozměry modulu · automatické')}${unitBadge(m.unit)}</strong><small>${tr('Jmenovité {size}',{size:fmtSize(m.width,m.height,{unit:u})})}<br>${tr('Vnější {size}',{size:fmtSize(m.width-.5,m.height-.5,{unit:u})})}${count>1?`<br>${tr('Nástrojů ve společném modulu: {n}',{n:count})}`:''}</small>${unitSelect(tr('Jednotky modulu'),m.unit,'module')}${moduleStepControls(m)}<div class="selected-actions"><button class="btn btn-soft module-resize-button" data-action="resize-module">${icon('ruler')}${tr('Změnit velikost')}</button>${project.tools.some(t=>t.moduleId===m.id)?`<button class="btn btn-light" data-action="size-module-auto">${tr('Podle nástroje')}</button>`:''}${count>1?`<button class="btn btn-light" data-action="split-module">${tr('Rozdělit modul')}</button>`:''}</div></div>`;}
+/** −/+ one grid step for the module width and depth, right in the inspector. */
+function moduleStepControls(m){
+  const step=fmtLen(project.grid,{unit:moduleUnit(m)}),off=m.locked?` disabled title="${tr(LOCKED_RESIZE)}"`:'';
+  const pair=(label,key,less,more)=>`<span class="module-step-label">${label}</span><button class="icon-btn module-step-btn" data-action="module-step" data-value="${key}-" aria-label="${tr(less,{step})}"${off}>−</button><button class="icon-btn module-step-btn" data-action="module-step" data-value="${key}+" aria-label="${tr(more,{step})}"${off}>+</button>`;
+  return `<div class="module-steps" role="group" aria-label="${tr('Rychlá změna velikosti o krok rastru')}">${pair(tr('Šířka'),'w','Zúžit o {step}','Rozšířit o {step}')}${pair(tr('Hloubka'),'h','Zkrátit o {step}','Prodloužit o {step}')}</div><p class="muted-note module-resize-hint">${m.locked?tr(LOCKED_RESIZE):tr('Velikost změníte také tažením úchytů na okraji modulu nebo klávesami Alt+Shift+šipky.')}</p>`;
+}
 function editModuleSize(){
   const m=moduleFor();if(!m)return;
   const fields=(w,h,u)=>`${input(tr('Jmenovitá šířka'),w,'moduleWidth',{unit:u,min:5,max:3000})}${input(tr('Jmenovitá hloubka'),h,'moduleHeight',{unit:u,min:5,max:3000})}`;
-  const modal=openModal({title:tr('Rozměry modulu'),subtitle:m.name,body:`<div class="fields-row" data-module-fields>${fields(m.width,m.height,moduleUnit(m))}</div>${unitSelect(tr('Jednotky modulu'),m.unit,'module-modal')}<p class="muted-note">${tr('Skutečné vnější rozměry jsou o {gap} menší kvůli mezeře mezi moduly. Obrys nástroje zůstane stejně velký.',{gap:fmtLen(.5,{unit:moduleUnit(m)})})}</p>`,footer:`<span class="footnote">${tr('Zamknutí určuje polohu; ruční rozměr zůstane i při dalším rozložení.')}</span><button class="btn btn-primary" data-resize-module>${tr('Uložit rozměry')}</button>`});
+  const modal=openModal({title:tr('Rozměry modulu'),subtitle:m.name,body:`<div class="fields-row" data-module-fields>${fields(m.width,m.height,moduleUnit(m))}</div><div class="module-steps" role="group" aria-label="${tr('Rychlá změna velikosti o krok rastru')}">${[['moduleWidth',tr('Šířka')],['moduleHeight',tr('Hloubka')]].map(([key,label])=>`<span class="module-step-label">${label}</span><button type="button" class="icon-btn module-step-btn" data-dialog-step="${key}" data-dir="-1" aria-label="${tr('{label} − {step}',{label,step:fmtLen(project.grid,{unit:moduleUnit(m)})})}">−</button><button type="button" class="icon-btn module-step-btn" data-dialog-step="${key}" data-dir="1" aria-label="${tr('{label} + {step}',{label,step:fmtLen(project.grid,{unit:moduleUnit(m)})})}">+</button>`).join('')}</div>${unitSelect(tr('Jednotky modulu'),m.unit,'module-modal')}<p class="muted-note">${tr('Skutečné vnější rozměry jsou o {gap} menší kvůli mezeře mezi moduly. Obrys nástroje zůstane stejně velký.',{gap:fmtLen(.5,{unit:moduleUnit(m)})})}</p>`,footer:`<span class="footnote">${tr('Zamknutí určuje polohu; ruční rozměr zůstane i při dalším rozložení.')}</span><button class="btn btn-primary" data-resize-module>${tr('Uložit rozměry')}</button>`});
   const read=()=>[readLength(modal.el.querySelector('[data-field=moduleWidth]')),readLength(modal.el.querySelector('[data-field=moduleHeight]'))];
   const pick=modal.el.querySelector('[data-scope=module-modal]');pick.value=m.unit||'';
   // Switching the unit here re-displays the typed sizes in the chosen unit.
   pick.onchange=()=>{const [w,h]=read();if(Number.isFinite(w)&&Number.isFinite(h))modal.el.querySelector('[data-module-fields]').innerHTML=fields(w,h,unitFor(pick.value));};
+  // −/+ buttons change the typed size by one grid step; nothing is saved until "Uložit rozměry".
+  modal.el.addEventListener('click',e=>{
+    const b=e.target.closest('[data-dialog-step]');if(!b)return;const el=modal.el.querySelector(`[data-field=${b.dataset.dialogStep}]`),v=readLength(el);
+    if(!Number.isFinite(v))return toast(tr('Zadejte platnou délku, například 12, 12,5 mm nebo 3 1/2 in.'));
+    const next=Math.round(Math.min(3000,Math.max(5,v+Number(b.dataset.dir)*project.grid))*1e4)/1e4;el.dataset.mm=next;el.setAttribute('value',inputValue(next,{unit:el.dataset.unit}));el.value=el.getAttribute('value');
+  });
   modal.el.querySelector('[data-resize-module]').onclick=()=>{
     const [width,height]=read(),u=pick.value;
     if(!Number.isFinite(width)||!Number.isFinite(height))return toast(tr('Zadejte platnou délku, například 12, 12,5 mm nebo 3 1/2 in.'));
-    try{const next=resizeModule(project,m.id,{width,height,mode:'manual'}),nm=next.modules.find(x=>x.id===m.id);if(nm){if(u)nm.unit=u;else delete nm.unit;}commit(()=>project=next,tr('Rozměry modulu uloženy.'));modal.close();}catch(error){toast(errorText(error));}
+    try{const next=resizeModule(project,m.id,{width,height,mode:'manual'}),nm=next.modules.find(x=>x.id===m.id);if(nm){if(u)nm.unit=u;else delete nm.unit;}let note='';commit(()=>{project=next;note=releaseUniformSet(m.id);});toast(tr('Rozměry modulu uloženy.')+note);modal.close();}catch(error){toast(errorText(error));}
   };
 }
-function sizeModuleAutomatically(){const m=moduleFor();if(!m)return;const next=resizeModule(project,m.id,{mode:'auto'});commit(()=>project=next,tr('Velikost modulu upravena podle nástroje.'));}
+function sizeModuleAutomatically(){const m=moduleFor();if(!m)return;const next=resizeModule(project,m.id,{mode:'auto'});let note='';commit(()=>{project=next;note=releaseUniformSet(m.id,{ifUnsatisfied:true});});toast(tr('Velikost modulu upravena podle nástroje.')+note);}
+// ---- Direct module resizing: board handles, Alt+Shift+arrows and inspector quick buttons ----
+const SIXTEENTH_IN=25.4/16,LOCKED_RESIZE='Odemkněte modul pro změnu velikosti';
+let resizeDrag=null;
+/** Smallest nominal size that still holds every pocket of the module plus the wall on each side. */
+function moduleMinSize(p,m){
+  const pts=p.tools.filter(t=>t.moduleId===m.id).flatMap(t=>safePocket(t,p.clearance));if(!pts.length)return{width:5,height:5};
+  const xs=pts.map(q=>q.x),ys=pts.map(q=>q.y),pad=2*(p.wall+.25);
+  return{width:Math.max(5,Math.max(...xs)-Math.min(...xs)+pad),height:Math.max(5,Math.max(...ys)-Math.min(...ys)+pad)};
+}
+/**
+ * Resize candidate for moving edges `dir` (any of e/w/s/n) of module `id` in `base` by dx/dy mm.
+ * Snaps to the grid (or 1 mm / 1/16 in), clamps to the minimum, the drawer and neighbouring modules,
+ * and validates through resizeModule(). Returns {project,width,height,limit,min} or {error,min}.
+ */
+function resizeCandidate(base,id,dir,dx,dy,{step,relative=!snap}={}){
+  const m=base.modules.find(x=>x.id===id);if(!m)return null;
+  step=step||(snap?base.grid:(moduleUnit(m)==='in'?SIXTEENTH_IN:1));
+  const min=moduleMinSize(base,m),others=base.modules.filter(o=>o.id!==id),eps=.001,L0=m.x,T0=m.y,R0=m.x+m.width,B0=m.y+m.height;
+  const move=(edge,d)=>relative?edge+Math.round(d/step)*step:Math.round((edge+d)/step)*step;
+  const up=v=>relative?v:Math.ceil(v/step-1e-9)*step,down=v=>relative?v:Math.floor(v/step+1e-9)*step;
+  let L=L0,T=T0,R=R0,B=B0,limit='';
+  if(dir.includes('e'))R=move(R0,dx);if(dir.includes('w'))L=move(L0,dx);if(dir.includes('s'))B=move(B0,dy);if(dir.includes('n'))T=move(T0,dy);
+  if(R-L<min.width-1e-6){limit='min';if(dir.includes('e'))R=up(L+min.width);else L=down(R-min.width);}
+  if(B-T<min.height-1e-6){limit='min';if(dir.includes('s'))B=up(T+min.height);else T=down(B-min.height);}
+  if(R>base.width+eps){R=base.width;limit=limit||'drawer';}if(L<-eps){L=0;limit=limit||'drawer';}
+  if(B>base.height+eps){B=base.height;limit=limit||'drawer';}if(T<-eps){T=0;limit=limit||'drawer';}
+  for(const o of others){
+    if(!(o.y<B0-eps&&o.y+o.height>T0+eps))continue;
+    if(dir.includes('e')&&o.x>=R0-eps&&R>o.x){R=o.x;limit='overlap';}
+    if(dir.includes('w')&&o.x+o.width<=L0+eps&&L<o.x+o.width){L=o.x+o.width;limit='overlap';}
+  }
+  for(const o of others){
+    if(!(o.x<R-eps&&o.x+o.width>L+eps))continue;
+    if(dir.includes('s')&&o.y>=B0-eps&&B>o.y){B=o.y;limit='overlap';}
+    if(dir.includes('n')&&o.y+o.height<=T0+eps&&T<o.y+o.height){T=o.y+o.height;limit='overlap';}
+  }
+  if(R-L<min.width-1e-6||B-T<min.height-1e-6)return{error:tr('Modul tu nemá místo. Nejmenší velikost je {size}.',{size:fmtSize(min.width,min.height,{unit:moduleUnit(m)})}),min};
+  const r=v=>Math.round(v*1e4)/1e4,attempt=(l,t,rr,b)=>{const tmp=clone(base),tm=tmp.modules.find(x=>x.id===id),width=r(rr-l),height=r(b-t);tm.x=r(l);tm.y=r(t);return{project:resizeModule(tmp,id,{width,height,mode:'manual'}),width,height};};
+  try{return{...attempt(L,T,R,B),limit,min};}catch(error){
+    // E.g. the print bed: step the moving edges back towards the original size and keep the largest valid one.
+    const grow=(R-L)>m.width+1e-6||(B-T)>m.height+1e-6;
+    if(grow)for(let k=1;k<=200;k++){
+      const l=dir.includes('w')?Math.min(L0,L+k*step):L,rr=dir.includes('e')?Math.max(R0,R-k*step):R,t=dir.includes('n')?Math.min(T0,T+k*step):T,b=dir.includes('s')?Math.max(B0,B-k*step):B;
+      if(rr-l<min.width-1e-6||b-t<min.height-1e-6)break;
+      try{return{...attempt(l,t,rr,b),limit:'max',reason:errorText(error),min};}catch{}
+      if(l===L0&&rr===R0&&t===T0&&b===B0)break;
+    }
+    return{error:errorText(error),min};
+  }
+}
+function resizeLabel(m,c){
+  const u=moduleUnit(m),size=fmtSize(m.width,m.height,{unit:u});
+  if(c?.error)return size+' · '+c.error;
+  if(c?.limit==='min')return size+' · '+tr('nejmenší možná velikost');
+  if(c?.limit==='overlap')return size+' · '+tr('dál je jiný modul');
+  if(c?.limit==='drawer')return size+' · '+tr('okraj šuplíku');
+  if(c?.limit==='max')return size+' · '+c.reason;
+  return size;
+}
+/** One grid step from the inspector buttons or Alt+Shift+arrows; code is w+, w-, h+ or h-. */
+function stepModule(code){
+  const m=moduleFor();if(!m)return;if(m.locked)return toast(tr(LOCKED_RESIZE));
+  const dir=code[0]==='w'?'e':'s',d=(code[1]==='-'?-1:1)*project.grid,c=resizeCandidate(project,m.id,dir,dir==='e'?d:0,dir==='s'?d:0,{step:project.grid,relative:true});
+  if(!c)return;if(c.error)return toast(c.error);
+  if(Math.abs(c.width-m.width)<1e-6&&Math.abs(c.height-m.height)<1e-6)return toast(resizeLabel(m,c));
+  let note='';commit(()=>{project=c.project;note=releaseUniformSet(m.id);});
+  toast(tr('Velikost modulu: {size}',{size:fmtSize(c.width,c.height,{unit:moduleUnit(m)})})+note);
+}
+/**
+ * A hand-resized module can no longer match its siblings in a 'uniform' tool set. Rather than silently
+ * resizing (and possibly pushing) every sibling, the set switches to 'auto' and the user is told why.
+ * Call inside the commit; returns the extra toast text ('' when no set was affected).
+ */
+function releaseUniformSet(moduleId,{ifUnsatisfied=false}={}){
+  const m=project.modules.find(x=>x.id===moduleId);if(!m||!Array.isArray(project.toolSets))return '';
+  const ids=new Set(project.tools.filter(t=>t.moduleId===moduleId).map(t=>t.id));
+  const set=project.toolSets.find(s=>s.layout==='uniform'&&((m.setId&&s.id===m.setId)||s.toolIds.some(id=>ids.has(id))));if(!set)return '';
+  if(ifUnsatisfied&&setCoherence(project,[set]).satisfied.includes(set.id))return '';
+  project.toolSets=project.toolSets.map(s=>s.id===set.id?{...s,layout:'auto'}:s);
+  return ' '+tr('Sada „{name}“ už nemá stejně velké moduly, její uspořádání je teď Automaticky.',{name:set.name});
+}
+// ---- Uniform tool scaling (Měřítko / Délka / Šířka kontury) ----
+/**
+ * scaleTool() from set-module.js scales points and grip centres (radius stays); here the placed outline
+ * also keeps its centre. The editor never silently swaps grips: if scaleTool had to re-place them, it fails.
+ */
+function scaleToolCentred(tool,factor){
+  const next=scaleTool(tool,factor),b=bounds(tool),nb=bounds(next);
+  if(tool.fingerGrips?.length&&same(next.fingerGrips)!==same(tool.fingerGrips.map(g=>({...g,x:Number(g.x)*factor,y:Number(g.y)*factor}))))throw i18nError('Výřezy pro prsty by po změně velikosti nebyly platné.');
+  next.x=tool.x+(b.width-nb.width)/2;next.y=tool.y+(b.height-nb.height)/2;return next;
+}
+/** Scale factor requested by a tool size field; null = not a scale field, false = invalid input (already reported). */
+function toolScaleRatio(t,field,value){
+  const b=bounds(t);
+  if(field==='toolWidth')return value/b.width;
+  if(field==='toolLength')return value/Math.max(b.width,b.height);
+  if(field!=='toolScale')return null;
+  const pct=Number(String(value).replace(/[\s%]/g,'').replace(',','.'));
+  if(!Number.isFinite(pct)||pct<20||pct>500){toast(tr('Zadejte měřítko od {min} do {max} %.',{min:20,max:500}));return false;}
+  return pct/100;
+}
 
 function selectedPanel(){const t=tool(),m=moduleFor();if(!t&&!m)return `<div class="panel-header"><h2 class="panel-title">${tr('Vlastnosti nástroje')}</h2></div><div class="empty-note">${tr('Vyberte nástroj v náhledu nebo v seznamu.')}</div>`;if(!t)return `<div class="panel-header"><h2 class="panel-title">${tr('Prázdný modul')}</h2><button class="icon-btn" data-action="drawer-tab" aria-label="${tr('Rozměry šuplíku')}">${icon('ruler')}</button></div><div class="panel-body">${moduleSizing(m)}<p class="muted-note">${m.locked?tr('Výplňový modul · zamčená poloha'):tr('Výplňový modul · volná poloha')}</p><div class="selected-actions"><button class="btn btn-light" data-action="lock">${icon(m.locked?'unlock':'lock')}${m.locked?tr('Odemknout'):tr('Zamknout')}</button><button class="btn btn-danger" data-action="delete">${icon('trash')}${tr('Smazat')}</button></div></div>`;
-return `<div class="panel-header"><h2 class="panel-title">${icon('wrench')} ${tr('Vybraný nástroj')}${unitBadge(t.unit)}</h2><button class="icon-btn" data-action="drawer-tab" aria-label="${tr('Rozměry šuplíku')}">${icon('ruler')}</button></div><div class="panel-body">${input(tr('Název'),t.name,'name',{type:'text',scope:'tool'})}<div class="fields-row">${input(tr('Šířka kontury'),bounds(t).width,'toolWidth',{unit:toolUnit(t),scope:'tool',min:2,max:2000})}${input(tr('Hloubka kapsy'),t.depth,'depth',{unit:toolUnit(t),scope:'tool',min:.5,max:project.insertHeight-project.base})}</div>${unitSelect(tr('Jednotky nástroje'),t.unit,'tool')}${selectedToolSetPanel(t)}${fingerGripPanel(t)}${m?moduleSizing(m):`<div class="issue-box">${tr('Nástroj čeká na umístění.')}</div>`}<div class="selected-actions"><button class="btn btn-light" data-action="rotate">${icon('rotate')}${tr('Otočit 90°')}</button><button class="btn btn-light" data-action="lock">${icon(m?.locked?'unlock':'lock')}${m?.locked?tr('Odemknout'):tr('Zamknout')}</button><button class="btn btn-light" data-action="duplicate">${icon('copy')}${tr('Kopie')}</button><button class="btn btn-danger" data-action="delete" aria-label="${tr('Smazat nástroj')}">${icon('trash')}</button></div><p class="muted-note">${m?.locked?tr('Zamčený modul automatické rozvržení nepřesune.'):tr('Na mobilu klepněte na Přesunout, potom přetáhněte modul. Zamknutím zachováte jeho polohu.')}</p></div>`;}
+return `<div class="panel-header"><h2 class="panel-title">${icon('wrench')} ${tr('Vybraný nástroj')}${unitBadge(t.unit)}</h2><button class="icon-btn" data-action="drawer-tab" aria-label="${tr('Rozměry šuplíku')}">${icon('ruler')}</button></div><div class="panel-body">${input(tr('Název'),t.name,'name',{type:'text',scope:'tool'})}<div class="fields-row">${input(tr('Šířka kontury'),bounds(t).width,'toolWidth',{unit:toolUnit(t),scope:'tool',min:2,max:2000})}${input(tr('Hloubka kapsy'),t.depth,'depth',{unit:toolUnit(t),scope:'tool',min:.5,max:project.insertHeight-project.base})}</div><div class="fields-row tool-scale-row"><label class="field"><span>${tr('Měřítko')}</span><div class="input-wrap"><input type="text" inputmode="decimal" autocomplete="off" spellcheck="false" value="100" data-field="toolScale" data-scope="tool" aria-label="${tr('Měřítko')} (%)"><em>%</em></div></label>${input(tr('Délka'),Math.max(bounds(t).width,bounds(t).height),'toolLength',{unit:toolUnit(t),scope:'tool',min:2,max:3000})}</div><p class="muted-note tool-scale-hint">${tr('Měřítko a délka (nejdelší strana) zvětší celý obrys rovnoměrně kolem středu. Výřezy pro prsty si zachovají poloměr.')}</p>${unitSelect(tr('Jednotky nástroje'),t.unit,'tool')}${selectedToolSetPanel(t)}${fingerGripPanel(t)}${m?moduleSizing(m):unplacedToolNote(t)}<div class="selected-actions"><button class="btn btn-light" data-action="rotate">${icon('rotate')}${tr('Otočit 90°')}</button><button class="btn btn-light" data-action="lock">${icon(m?.locked?'unlock':'lock')}${m?.locked?tr('Odemknout'):tr('Zamknout')}</button><button class="btn btn-light" data-action="duplicate">${icon('copy')}${tr('Kopie')}</button><button class="btn btn-danger" data-action="delete" aria-label="${tr('Smazat nástroj')}">${icon('trash')}</button></div><p class="muted-note">${m?.locked?tr('Zamčený modul automatické rozvržení nepřesune.'):tr('Na mobilu klepněte na Přesunout, potom přetáhněte modul. Zamknutím zachováte jeho polohu.')}</p></div>`;}
 function prefsControls(){
   const own=project.unit?tr('Tento šuplík používá vlastní jednotky: {unit}',{unit:project.unit}):tr('Výchozí jednotky aplikace');
   return `<div class="prefs"><div class="pref-switch" role="group" aria-label="${tr('Jazyk')}">${LANGS.map(l=>`<button data-action="set-lang" data-value="${l}" class="${getLang()===l?'active':''}" aria-pressed="${getLang()===l}" lang="${l}" title="${LANG_NAMES[l]}">${l.toUpperCase()}</button>`).join('')}</div><div class="pref-switch ${project.unit?'overridden':''}" role="group" aria-label="${tr('Výchozí jednotky aplikace')}" title="${own}">${UNITS.map(u=>`<button data-action="set-unit" data-value="${u}" class="${getAppUnit()===u?'active':''}" aria-pressed="${getAppUnit()===u}">${u}</button>`).join('')}</div></div>`;
@@ -295,13 +409,60 @@ function removeDrawer(id){
   if(!window.confirm(tr('Smazat šuplík „{name}“? Tuto akci nelze vrátit.',{name:p.name})))return;
   projects=projects.filter(p=>p.id!==id);writeLocal(storageKey,projects);render();toast(tr('Šuplík „{name}“ smazán.',{name:p.name}));
 }
+// ---- Why a tool has no module: shown in the issue list and in the selected-tool panel ----
+/**
+ * 'bed'     – even the smallest grid module (pocketOutline + autoArrange's wall padding, both tried rotations) exceeds the print bed while limitToBed is on;
+ * 'drawer'  – that module is larger than the drawer itself;
+ * 'space'   – it would fit, but there is no free room left; 'invalid' – the pocket cannot be computed.
+ */
+function unplacedReason(p,t){
+  const num=(v,d)=>Number.isFinite(Number(v))&&v!==null&&v!==''?Number(v):d;
+  const grid=Math.max(1,num(p.grid,42)),pad=Math.max(num(p.wall,2.4),num(p.gap,3)/2)+.25,bw=num(p.bedWidth,220),bh=num(p.bedHeight,220);
+  const sizes=[num(t.rotation,0),num(t.rotation,0)+90].flatMap(rotation=>{try{
+    const pts=pocketOutline({...t,x:0,y:0,rotation},num(p.clearance,.8));if(pts.length<3)return[];
+    const xs=pts.map(q=>q.x),ys=pts.map(q=>q.y);
+    return[{w:Math.ceil((Math.max(...xs)-Math.min(...xs)+2*pad)/grid)*grid,h:Math.ceil((Math.max(...ys)-Math.min(...ys)+2*pad)/grid)*grid}];
+  }catch{return[];}});
+  if(!sizes.length)return 'invalid';
+  const onBed=s=>(s.w-.5<=bw&&s.h-.5<=bh)||(s.h-.5<=bw&&s.w-.5<=bh);
+  if(p.limitToBed&&!sizes.some(onBed))return 'bed';
+  if(!sizes.some(s=>s.w<=num(p.width,0)&&s.h<=num(p.height,0)))return 'drawer';
+  return 'space';
+}
+function unplacedSummary(p,tools){const out={bed:[],drawer:[],space:[],invalid:[]};for(const t of tools)out[unplacedReason(p,t)].push(t.id);return out;}
+function unplacedLines(p,why){
+  const lines=[];
+  if(why.bed.length)lines.push(plural(why.bed.length,['{n} nástroj je delší než tisková plocha {bed}.','{n} nástroje jsou delší než tisková plocha {bed}.','{n} nástrojů je delších než tisková plocha {bed}.'],{bed:fmtSize(p.bedWidth||220,p.bedHeight||220)}));
+  if(why.drawer.length)lines.push(plural(why.drawer.length,['{n} nástroj je větší než šuplík {size}.','{n} nástroje jsou větší než šuplík {size}.','{n} nástrojů je větších než šuplík {size}.'],{size:fmtSize(p.width,p.height)}));
+  if(why.space.length)lines.push(plural(why.space.length,['{n} nástroj se nevešel do šuplíku.','{n} nástroje se nevešly do šuplíku.','{n} nástrojů se nevešlo do šuplíku.']));
+  return lines;
+}
+/** Explanation box for the selected tool when it has no module. */
+function unplacedToolNote(t){
+  const reason=unplacedReason(project,t),link=(action,label)=>`<button class="section-link" data-action="${action}">${label}</button>`;
+  if(reason==='bed')return `<div class="issue-box unplaced-why"><p>${tr('Nástroj čeká na umístění: je delší než tisková plocha {bed}, takže pro něj nejde vytvořit modul. Zvětšete tiskovou plochu nebo vypněte „Rozvrhovat podle tiskové plochy“.',{bed:fmtSize(project.bedWidth||220,project.bedHeight||220)})}</p>${link('print-bed',tr('Upravit tiskovou plochu'))}</div>`;
+  if(reason==='drawer')return `<div class="issue-box unplaced-why"><p>${tr('Nástroj čeká na umístění: jeho modul je větší než šuplík {size}.',{size:fmtSize(project.width,project.height)})}</p>${link('expand',tr('Zvětšit šuplík'))}</div>`;
+  if(reason==='space')return `<div class="issue-box unplaced-why"><p>${tr('Nástroj čeká na umístění: v šuplíku pro něj už není volné místo.')}</p>${link('auto',tr('Rozložit'))} ${link('expand',tr('Zvětšit šuplík'))}</div>`;
+  return `<div class="issue-box">${tr('Nástroj čeká na umístění.')}</div>`;
+}
+/** Opens the export dialog with "Tiskárna a další možnosti" expanded and the bed width focused. */
+function openPrintBedSettings(){
+  openExport();const details=document.querySelector('#modal-root details.advanced');if(!details)return;details.open=true;
+  const field=details.querySelector('[data-field=bedWidth]');try{field?.scrollIntoView?.({block:'center'});field?.focus();}catch{}
+}
 function render(){
   viewControls?.dispose();viewControls=null;
   setProjectUnit(project.unit);
   const issues=errors(),unplaced=project.tools.filter(t=>!project.modules.some(m=>m.id===t.moduleId));
+  // "Not placed yet" issues collapse into one line per cause (print bed / drawer size / no free room) with a direct way out.
+  const unplacedIds=new Set(unplaced.map(t=>t.id)),waitingIds=new Set(issues.filter(i=>i.type==='outside'&&i.ids.length===1&&unplacedIds.has(i.ids[0])).map(i=>i.ids[0]));
+  const why=unplacedSummary(project,unplaced.filter(t=>waitingIds.has(t.id))),explained=new Set([...why.bed,...why.drawer,...why.space]);
+  const waiting=issues.filter(i=>i.type==='outside'&&i.ids.length===1&&explained.has(i.ids[0]));
+  const issueLines=[...unplacedLines(project,why),...issues.filter(i=>!waiting.includes(i)).map(i=>errorText(i))];
+  const issueActions=`${why.bed.length?`<button class="section-link" data-action="print-bed">${tr('Upravit tiskovou plochu')}</button> `:''}<button class="section-link" data-action="auto">${waiting.length?tr('Rozložit'):tr('Přepočítat rozvržení')}</button>${why.space.length||why.drawer.length?` <button class="section-link" data-action="expand">${tr('Zvětšit šuplík')}</button>`:''}`;
   const occupied=project.modules.reduce((s,m)=>s+m.width*m.height,0),usage=Math.min(100,Math.round(occupied/(project.width*project.height)*100)),lockedCount=project.modules.filter(m=>m.locked).length;
   const drawerSize=fmtSize(project.width,project.height);
-  $('#app').innerHTML=`<div class="app-shell"><aside class="sidebar"><a class="brand" href="#" aria-label="Šuplík Studio" data-action="home"><span class="brand-mark"><i></i><i></i><i></i><i></i></span><span class="brand-name">šuplík<small>STUDIO</small></span></a><nav class="sidebar-nav" aria-label="${tr('Hlavní navigace')}"><button class="nav-item active" data-action="home">${icon('drawer')}<span>${tr('Můj šuplík')}</span></button><button class="nav-item" data-action="library">${icon('wrench')}<span>${tr('Knihovna nástrojů')}</span></button></nav><div class="sidebar-separator"></div>${drawerList()}<div class="sidebar-bottom"><button class="nav-item" data-action="help">${icon('help')}<span>${tr('Jak na to')}</span></button><div class="sidebar-separator" style="margin:18px 0"></div><div class="local-tag">${icon('shield')} ${tr('Všechno zůstává u vás')}</div><p>${tr('Fotky zpracovává váš prohlížeč.')}<br>${tr('Bez cloudu. Bez předplatného.')}</p></div></aside><main class="main"><header class="topbar"><div class="breadcrumb">${tr('Dílna')} <span>/</span> <b>${tr('Organizér nářadí')}</b></div><div class="top-actions">${prefsControls()}<span class="save-state">${icon(storageFailed?'info':'check')} <span class="save-text">${storageFailed?tr('Stáhněte zálohu'):tr('Uloženo v zařízení')}</span></span><button class="btn btn-light" data-action="save-project" aria-label="${tr('Uložit projekt')}">${icon('download')} <span class="btn-label">${tr('Uložit projekt')}</span></button><span class="avatar" title="${tr('Lokální dílna')}">JD</span></div></header><div class="page"><div class="page-heading"><div><p class="eyebrow">${tr('MÍSTO PRO KAŽDÝ NÁSTROJ')}</p><div class="name-edit"><h1>${esc(project.name)}</h1><button class="icon-btn" data-action="rename" aria-label="${tr('Přejmenovat šuplík')}">${icon('edit')}</button></div><p class="subtitle">${tr('Od fotky k pořádku. Přesně podle vaší dílny.')}</p><button class="drawer-dimensions" data-action="drawer-tab">${icon('ruler')}<span>${tr('Rozměry šuplíku')}</span><small>${drawerSize}</small></button></div><div class="heading-actions"><button class="btn btn-light" data-action="add-shape">${icon('plus')} ${tr('Prázdný modul')}</button><button class="btn btn-primary" data-action="capture">${icon('camera')} <span>${tr('Přidat nástroj')}</span></button></div></div><div class="steps" aria-label="${tr('Postup')}"><button class="step done" data-action="capture"><span class="step-num">01</span>${tr('Vyfotit nástroj')}</button><span class="step-chevron">›</span><button class="step done" data-action="capture"><span class="step-num">02</span>${tr('Rozpoznat obrys')}</button><span class="step-chevron">›</span><span class="step active"><span class="step-num">03</span>${tr('Rozvrhnout')}</span><span class="step-chevron">›</span><button class="step" data-action="export"><span class="step-num">04</span>${tr('Vyrobit')}</button></div><div class="workbench"><div class="workspace-col"><section class="workspace" aria-label="${tr('Editor sestavy')}"><div class="workspace-header"><div class="workspace-header-title">${icon('drawer')} ${tr('Náhled šuplíku')} <small>${drawerSize}</small></div><div class="segmented" aria-label="${tr('Režim náhledu')}"><button data-action="2d" class="${view==='2d'?'active':''}" aria-pressed="${view==='2d'}">${icon('grid')}2D</button><button data-action="3d" class="${view==='3d'?'active':''}" aria-pressed="${view==='3d'}">${icon('cube')}3D</button></div></div><div class="board-toolbar"><div class="tool-group"><button class="icon-btn" data-action="undo" aria-label="${tr('Zpět (Ctrl+Z)')}" ${undoStack.length?'':'disabled'}>${icon('undo')}</button><button class="icon-btn" data-action="redo" aria-label="${tr('Znovu (Ctrl+Shift+Z)')}" ${redoStack.length?'':'disabled'}>${icon('redo')}</button><span class="toolbar-sep"></span><button class="icon-btn ${showGrid?'active':''}" data-action="grid" aria-label="${tr('Zobrazit rastr')}" aria-pressed="${showGrid}">${icon('grid')}</button><button class="tiny-button" data-action="labels" aria-pressed="${showLabels}">${icon('eye')} ${tr('Popisky')}</button></div><div class="tool-group"><button class="tiny-button ${moveMode?'active':''}" data-action="move-mode" aria-pressed="${moveMode}">${icon('move')}${moveMode?tr('Hotovo'):tr('Přesunout')}</button><button class="tiny-button" data-action="auto">${icon('spark')} ${tr('Auto rozložení')}</button><button class="tiny-button smart-layout-button" data-action="smart-layout">${icon('spark')} ${tr('Chytré rozvržení')}</button></div></div><div class="board-area" id="board-area"><svg class="board-svg ${moveMode?'moving':''} ${view==='3d'?'view-3d':''}" id="board-svg" role="img" aria-label="${tr('Rozložení modulů a nástrojů v šuplíku')}"></svg>${!project.modules.length&&view==='2d'?`<div class="board-empty">${icon('drawer')}<h3>${tr('Začněte jedním nástrojem')}</h3><p>${tr('Vyfoťte ho na A4 papíru nebo vložte z uložené knihovny.')}</p><button class="btn btn-primary" data-action="capture">${icon('camera')} ${tr('Přidat nástroj')}</button></div>`:''}${view==='3d'?'<div class="view-3d-hint">'+esc(tr('Levé tlačítko: otáčet · Pravé: posouvat · Kolečko: přiblížit'))+'</div>':''}</div><div class="board-footer"><div class="legend"><span><i></i>${tr('Modul')}</span><span><i></i>${tr('Vybraný nástroj')}</span></div><div class="key-hint">${view==='2d'?tr('Tažením přesunete modul')+' <kbd>R</kbd> '+tr('otočit'):tr('Pohled kamerou')}</div><div class="tool-group"><button class="icon-btn" data-action="zoom-out" aria-label="${tr('Oddálit')}">${icon('zoomOut')}</button><span data-zoom-value>${Math.round((view==='3d'?camera3D.zoom:zoom)*100)} %</span><button class="icon-btn" data-action="zoom-in" aria-label="${tr('Přiblížit')}">${icon('zoomIn')}</button><button class="icon-btn" data-action="fit" aria-label="${tr('Zobrazit vše')}">${icon('fit')}</button></div></div></section><div class="metrics"><div class="metric"><div class="metric-icon">${icon('wrench')}</div><div><strong>${project.tools.length} <small>${plural(project.tools.length,['nástroj','nástroje','nástrojů'])}</small></strong><p>${unplaced.length?tr('{n} čeká na umístění',{n:unplaced.length}):tr('Každý má svoje místo')}</p></div></div><div class="metric"><div class="metric-icon">${icon('grid')}</div><div><strong>${project.modules.length} <small>${plural(project.modules.length,['modul','moduly','modulů'])}</small></strong><p>${tr('{n} zamčených · rozšiřitelné',{n:lockedCount})}</p></div></div><div class="metric"><div class="metric-icon">${icon('drawer')}</div><div><strong>${usage} <small>${tr('% plochy')}</small></strong><p>${tr('{n} % na další nástroje',{n:Math.max(0,100-usage)})}</p></div></div></div>${issues.length?`<div class="issue-box" role="status">${issues.slice(0,3).map(i=>`<p>${esc(errorText(i))}</p>`).join('')}${issues.length>3?`<p>${tr('A dalších {n} upozornění.',{n:issues.length-3})}</p>`:''}<button class="section-link" data-action="auto">${tr('Přepočítat rozvržení')}</button></div>`:''}${tipVisible?`<div class="tip">${icon('lightbulb')}<div><strong>${tr('Vaše dílna poroste. Sestava taky.')}</strong> ${tr('Zamkněte hotové moduly a přidejte další nástroje. Auto rozložení zachová jejich polohu.')}</div><button class="icon-btn" data-action="hide-tip" aria-label="${tr('Skrýt tip')}">${icon('close')}</button></div>`:''}</div><aside class="inspector" aria-label="${tr('Nastavení a nástroje')}"><section class="panel" id="drawer-settings">${inspectorTab==='tool'?selectedPanel():drawerPanel()}</section><section class="panel"><div class="panel-header"><h2 class="panel-title">${tr('Nástroje v sestavě')}</h2><span>${project.tools.length.toString().padStart(2,'0')}</span></div><button class="btn btn-light tool-sets-open" data-action="tool-sets">${tr('Sady nástrojů')}</button><div class="tool-list">${project.tools.map(t=>`<button class="tool-row ${selected===t.id?'selected':''}" data-select="${esc(t.id)}" aria-pressed="${selected===t.id}"><span class="tool-thumb">${thumb(t)}</span><span><strong>${esc(t.name)}${unitBadge(t.unit)}</strong><small>${sizeShort(bounds(t).width,bounds(t).height,toolUnit(t))}${!t.moduleId?' · '+tr('neumístěno'):''}</small></span>${icon(project.modules.find(m=>m.id===t.moduleId)?.locked?'lock':'chevron')}</button>`).join('')||`<div class="empty-note">${tr('Zatím žádné nástroje.')}</div>`}</div><button class="add-tool-row" data-action="capture">${icon('plus')} ${tr('Přidat další nástroj')}</button></section><div class="export-card"><div class="ready">${icon(issues.length?'info':'check')} ${issues.length?tr('Zkontrolujte sestavu'):tr('Sestava připravena')}</div><p>${issues.length?tr('Před výrobou opravte označené rozměry nebo překryvy.'):tr('STL pro 3D tisk, SVG a DXF pro výřez. Vše v reálných milimetrech.')}</p><button class="btn btn-dark block-button" data-action="export">${icon('download')} ${tr('Připravit export')} ${icon('arrow')}</button></div></aside></div><footer class="footer-line"><span>${tr('Navrženo ve skutečných rozměrech. Vyrobeno pro vaši dílnu.')}</span><button data-action="help">${tr('Návod a inspirace')}</button><span class="app-version">STUDIO / 1.2</span></footer></div></main></div><nav class="mobile-nav" aria-label="${tr('Mobilní navigace')}"><button class="active" data-action="home">${icon('drawer')}${tr('Šuplík')}</button><button data-action="library">${icon('wrench')}${tr('Knihovna')}</button><button class="camera-nav" data-action="capture" aria-label="${tr('Vyfotit nástroj')}">${icon('camera')}</button><button data-action="projects">${icon('folder')}${tr('Šuplíky')}</button><button data-action="export">${icon('download')}${tr('Export')}</button></nav>`;
+  $('#app').innerHTML=`<div class="app-shell"><aside class="sidebar"><a class="brand" href="#" aria-label="Šuplík Studio" data-action="home"><span class="brand-mark"><i></i><i></i><i></i><i></i></span><span class="brand-name">šuplík<small>STUDIO</small></span></a><nav class="sidebar-nav" aria-label="${tr('Hlavní navigace')}"><button class="nav-item active" data-action="home">${icon('drawer')}<span>${tr('Můj šuplík')}</span></button><button class="nav-item" data-action="library">${icon('wrench')}<span>${tr('Knihovna nástrojů')}</span></button></nav><div class="sidebar-separator"></div>${drawerList()}<div class="sidebar-bottom"><button class="nav-item" data-action="help">${icon('help')}<span>${tr('Jak na to')}</span></button><div class="sidebar-separator" style="margin:18px 0"></div><div class="local-tag">${icon('shield')} ${tr('Všechno zůstává u vás')}</div><p>${tr('Fotky zpracovává váš prohlížeč.')}<br>${tr('Bez cloudu. Bez předplatného.')}</p></div></aside><main class="main"><header class="topbar"><div class="breadcrumb">${tr('Dílna')} <span>/</span> <b>${tr('Organizér nářadí')}</b></div><div class="top-actions">${prefsControls()}<span class="save-state">${icon(storageFailed?'info':'check')} <span class="save-text">${storageFailed?tr('Stáhněte zálohu'):tr('Uloženo v zařízení')}</span></span><button class="btn btn-light" data-action="save-project" aria-label="${tr('Uložit projekt')}">${icon('download')} <span class="btn-label">${tr('Uložit projekt')}</span></button><span class="avatar" title="${tr('Lokální dílna')}">JD</span></div></header><div class="page"><div class="page-heading"><div><p class="eyebrow">${tr('MÍSTO PRO KAŽDÝ NÁSTROJ')}</p><div class="name-edit"><h1>${esc(project.name)}</h1><button class="icon-btn" data-action="rename" aria-label="${tr('Přejmenovat šuplík')}">${icon('edit')}</button></div><p class="subtitle">${tr('Od fotky k pořádku. Přesně podle vaší dílny.')}</p><button class="drawer-dimensions" data-action="drawer-tab">${icon('ruler')}<span>${tr('Rozměry šuplíku')}</span><small>${drawerSize}</small></button></div><div class="heading-actions"><button class="btn btn-light" data-action="add-shape">${icon('plus')} ${tr('Prázdný modul')}</button><button class="btn btn-primary" data-action="capture">${icon('camera')} <span>${tr('Přidat nástroj')}</span></button></div></div><div class="steps" aria-label="${tr('Postup')}"><button class="step done" data-action="capture"><span class="step-num">01</span>${tr('Vyfotit nástroj')}</button><span class="step-chevron">›</span><button class="step done" data-action="capture"><span class="step-num">02</span>${tr('Rozpoznat obrys')}</button><span class="step-chevron">›</span><span class="step active"><span class="step-num">03</span>${tr('Rozvrhnout')}</span><span class="step-chevron">›</span><button class="step" data-action="export"><span class="step-num">04</span>${tr('Vyrobit')}</button></div><div class="workbench"><div class="workspace-col"><section class="workspace" aria-label="${tr('Editor sestavy')}"><div class="workspace-header"><div class="workspace-header-title">${icon('drawer')} ${tr('Náhled šuplíku')} <small>${drawerSize}</small></div><div class="segmented" aria-label="${tr('Režim náhledu')}"><button data-action="2d" class="${view==='2d'?'active':''}" aria-pressed="${view==='2d'}">${icon('grid')}2D</button><button data-action="3d" class="${view==='3d'?'active':''}" aria-pressed="${view==='3d'}">${icon('cube')}3D</button></div></div><div class="board-toolbar"><div class="tool-group"><button class="icon-btn" data-action="undo" aria-label="${tr('Zpět (Ctrl+Z)')}" ${undoStack.length?'':'disabled'}>${icon('undo')}</button><button class="icon-btn" data-action="redo" aria-label="${tr('Znovu (Ctrl+Shift+Z)')}" ${redoStack.length?'':'disabled'}>${icon('redo')}</button><span class="toolbar-sep"></span><button class="icon-btn ${showGrid?'active':''}" data-action="grid" aria-label="${tr('Zobrazit rastr')}" aria-pressed="${showGrid}">${icon('grid')}</button><button class="tiny-button" data-action="labels" aria-pressed="${showLabels}">${icon('eye')} ${tr('Popisky')}</button></div><div class="tool-group"><button class="tiny-button ${moveMode?'active':''}" data-action="move-mode" aria-pressed="${moveMode}">${icon('move')}${moveMode?tr('Hotovo'):tr('Přesunout')}</button><button class="tiny-button" data-action="auto">${icon('spark')} ${tr('Auto rozložení')}</button><button class="tiny-button smart-layout-button" data-action="smart-layout">${icon('spark')} ${tr('Chytré rozvržení')}</button></div></div><div class="board-area" id="board-area"><svg class="board-svg ${moveMode?'moving':''} ${view==='3d'?'view-3d':''}" id="board-svg" role="img" aria-label="${tr('Rozložení modulů a nástrojů v šuplíku')}"></svg>${!project.modules.length&&view==='2d'?`<div class="board-empty">${icon('drawer')}<h3>${tr('Začněte jedním nástrojem')}</h3><p>${tr('Vyfoťte ho na A4 papíru nebo vložte z uložené knihovny.')}</p><button class="btn btn-primary" data-action="capture">${icon('camera')} ${tr('Přidat nástroj')}</button></div>`:''}${view==='3d'?'<div class="view-3d-hint">'+esc(tr('Levé tlačítko: otáčet · Pravé: posouvat · Kolečko: přiblížit'))+'</div>':''}</div><div class="board-footer"><div class="legend"><span><i></i>${tr('Modul')}</span><span><i></i>${tr('Vybraný nástroj')}</span></div><div class="key-hint">${view==='2d'?tr('Pravé tlačítko: posouvat · Kolečko: přiblížit')+' · '+tr('Tažením přesunete modul')+' <kbd>R</kbd> '+tr('otočit'):tr('Pohled kamerou')}</div><div class="tool-group"><button class="icon-btn" data-action="zoom-out" aria-label="${tr('Oddálit')}">${icon('zoomOut')}</button><span data-zoom-value>${Math.round((view==='3d'?camera3D.zoom:zoom)*100)} %</span><button class="icon-btn" data-action="zoom-in" aria-label="${tr('Přiblížit')}">${icon('zoomIn')}</button><button class="icon-btn" data-action="fit" aria-label="${tr('Zobrazit vše')}">${icon('fit')}</button></div></div></section><div class="metrics"><div class="metric"><div class="metric-icon">${icon('wrench')}</div><div><strong>${project.tools.length} <small>${plural(project.tools.length,['nástroj','nástroje','nástrojů'])}</small></strong><p>${unplaced.length?tr('{n} čeká na umístění',{n:unplaced.length}):tr('Každý má svoje místo')}</p></div></div><div class="metric"><div class="metric-icon">${icon('grid')}</div><div><strong>${project.modules.length} <small>${plural(project.modules.length,['modul','moduly','modulů'])}</small></strong><p>${tr('{n} zamčených · rozšiřitelné',{n:lockedCount})}</p></div></div><div class="metric"><div class="metric-icon">${icon('drawer')}</div><div><strong>${usage} <small>${tr('% plochy')}</small></strong><p>${tr('{n} % na další nástroje',{n:Math.max(0,100-usage)})}</p></div></div></div>${issues.length?`<div class="issue-box" role="status">${issueLines.slice(0,3).map(text=>`<p>${esc(text)}</p>`).join('')}${issueLines.length>3?`<p>${tr('A dalších {n} upozornění.',{n:issueLines.length-3})}</p>`:''}${issueActions}</div>`:''}${tipVisible?`<div class="tip">${icon('lightbulb')}<div><strong>${tr('Vaše dílna poroste. Sestava taky.')}</strong> ${tr('Zamkněte hotové moduly a přidejte další nástroje. Auto rozložení zachová jejich polohu.')}</div><button class="icon-btn" data-action="hide-tip" aria-label="${tr('Skrýt tip')}">${icon('close')}</button></div>`:''}</div><aside class="inspector" aria-label="${tr('Nastavení a nástroje')}"><section class="panel" id="drawer-settings">${inspectorTab==='tool'?selectedPanel():drawerPanel()}</section><section class="panel"><div class="panel-header"><h2 class="panel-title">${tr('Nástroje v sestavě')}</h2><span>${project.tools.length.toString().padStart(2,'0')}</span></div><button class="btn btn-light tool-sets-open" data-action="tool-sets">${tr('Sady nástrojů')}</button><div class="tool-list">${project.tools.map(t=>`<button class="tool-row ${selected===t.id?'selected':''}" data-select="${esc(t.id)}" aria-pressed="${selected===t.id}"><span class="tool-thumb">${thumb(t)}</span><span><strong>${esc(t.name)}${unitBadge(t.unit)}</strong><small>${sizeShort(bounds(t).width,bounds(t).height,toolUnit(t))}${!t.moduleId?' · '+tr('neumístěno'):''}</small></span>${icon(project.modules.find(m=>m.id===t.moduleId)?.locked?'lock':'chevron')}</button>`).join('')||`<div class="empty-note">${tr('Zatím žádné nástroje.')}</div>`}</div><button class="add-tool-row" data-action="capture">${icon('plus')} ${tr('Přidat další nástroj')}</button></section><div class="export-card"><div class="ready">${icon(issues.length?'info':'check')} ${issues.length?tr('Zkontrolujte sestavu'):tr('Sestava připravena')}</div><p>${issues.length?tr('Před výrobou opravte označené rozměry nebo překryvy.'):tr('STL pro 3D tisk, SVG a DXF pro výřez. Vše v reálných milimetrech.')}</p><button class="btn btn-dark block-button" data-action="export">${icon('download')} ${tr('Připravit export')} ${icon('arrow')}</button></div></aside></div><footer class="footer-line"><span>${tr('Navrženo ve skutečných rozměrech. Vyrobeno pro vaši dílnu.')}</span><button data-action="help">${tr('Návod a inspirace')}</button><span class="app-version">STUDIO / 1.2</span></footer></div></main></div><nav class="mobile-nav" aria-label="${tr('Mobilní navigace')}"><button class="active" data-action="home">${icon('drawer')}${tr('Šuplík')}</button><button data-action="library">${icon('wrench')}${tr('Knihovna')}</button><button class="camera-nav" data-action="capture" aria-label="${tr('Vyfotit nástroj')}">${icon('camera')}</button><button data-action="projects">${icon('folder')}${tr('Šuplíky')}</button><button data-action="export">${icon('download')}${tr('Export')}</button></nav>`;
   renderBoard();
 }
 
@@ -313,7 +474,7 @@ function renderBoard(){
     return;
   }
   const pad=34,w=project.width+pad*2,h=project.height+pad*2;
-  svg.setAttribute('viewBox',`${-pad+(w-w/zoom)/2} ${-pad+(h-h/zoom)/2} ${w/zoom} ${h/zoom}`);
+  svg.setAttribute('viewBox',`${-pad+(w-w/zoom)/2+pan2D.x} ${-pad+(h-h/zoom)/2+pan2D.y} ${w/zoom} ${h/zoom}`);
   const issues=errors(),bad=new Set(issues.flatMap(x=>x.ids));
   let html=`<defs><pattern id="module-grid" width="${project.grid}" height="${project.grid}" patternUnits="userSpaceOnUse"><path d="M ${project.grid} 0 L 0 0 0 ${project.grid}" fill="none" stroke="#dce4d2" stroke-width=".65"/></pattern><pattern id="empty-hatch" width="5" height="5" patternUnits="userSpaceOnUse"><path d="M0 5L5 0" stroke="#e4e9dc" stroke-width=".45"/></pattern><filter id="softshadow" x="-10%" y="-10%" width="125%" height="125%"><feDropShadow dx="0" dy="2" stdDeviation="2" flood-color="#5b6846" flood-opacity=".08"/></filter></defs><rect x="-2" y="-2" width="${project.width+4}" height="${project.height+4}" rx="5" fill="#eff2e9" stroke="#c5cfb9" stroke-width="1.1"/><rect x="0" y="0" width="${project.width}" height="${project.height}" rx="3" fill="${showGrid?'url(#module-grid)':'#f4f7ee'}"/>`;
   html+=`<g stroke="#a4af97" stroke-width=".6"><path d="M0 -17H${project.width} M0 -21v8 M${project.width} -21v8"/><path d="M-17 0V${project.height} M-21 0h8 M-21 ${project.height}h8"/></g><rect x="${project.width/2-29}" y="-24" width="58" height="14" fill="#fbfcf9"/><text x="${project.width/2}" y="-14" text-anchor="middle" fill="#93a083" font-size="8.5">${fmtLen(project.width)}</text><text transform="translate(-23 ${project.height/2}) rotate(-90)" text-anchor="middle" fill="#93a083" font-size="8.5">${fmtLen(project.height)}</text>`;
@@ -331,7 +492,29 @@ function renderBoard(){
   }
   if(!project.modules.length&&showGrid)html+=`<text x="${project.width/2}" y="${project.height-14}" text-anchor="middle" font-size="7" fill="#b2bca5">${tr('{cols} × {rows} polí · {grid}',{cols:Math.floor(project.width/project.grid),rows:Math.floor(project.height/project.grid),grid:fmtLen(project.grid)})}</text>`;
   else if(project.modules.length&&showLabels){const unusedY=Math.max(...project.modules.map(m=>m.y+m.height));if(project.height-unusedY>36)html+=`<text x="${project.width/2}" y="${unusedY+(project.height-unusedY)/2}" text-anchor="middle" font-size="8" fill="#b0bca1" letter-spacing=".8">${tr('PROSTOR PRO DALŠÍ NÁPADY')}</text>`;}
+  html+=resizeHandles(svg,w,h);
   svg.innerHTML=html;
+  if(!viewControls)viewControls=createViewControls2D(svg,{getCamera:()=>({zoom,panX:pan2D.x,panY:pan2D.y}),setCamera:value=>{zoom=value.zoom;pan2D={x:value.panX,y:value.panY};},getFrame:()=>({width:w/zoom,height:h/zoom}),render:renderCameraFrame});
+}
+/** Edge/corner resize handles for the selected module, sized in screen pixels (≥ 24 px hit area on touch). */
+function resizeHandles(svg,w,h){
+  const m=drag?null:project.modules.find(x=>x.id===(resizeDrag?.id||moduleFor()?.id));if(!m)return '';
+  const rect=svg.getBoundingClientRect?.()||{},px=rect.width>0&&rect.height>0?Math.max(w/zoom/rect.width,h/zoom/rect.height):.5;
+  const coarse=!!window.matchMedia?.('(pointer:coarse)')?.matches,hit=(coarse?28:14)*px,grip=(coarse?5:3.5)*px,len=Math.min(16*px,m.width*.4,m.height*.4);
+  const L=m.x,T=m.y,R=m.x+m.width,B=m.y+m.height,locked=!!m.locked,title=esc(locked?tr(LOCKED_RESIZE):tr('Táhněte pro změnu velikosti (Alt+Shift+šipky)'));
+  const one=(dir,hx,hy,hw,hh,gx,gy,gw,gh)=>`<g class="resize-handle resize-${dir}${locked?' disabled':''}" data-resize-of="${esc(m.id)}"${locked?' aria-disabled="true"':` data-resize="${dir}"`}><title>${title}</title><rect class="resize-hit" x="${hx}" y="${hy}" width="${Math.max(0,hw)}" height="${Math.max(0,hh)}"/><rect class="resize-grip" x="${gx}" y="${gy}" width="${gw}" height="${gh}" rx="${grip/2}"/></g>`;
+  let out=`<g class="resize-handles${locked?' locked':''}">`;
+  out+=one('w',L-hit/2,T+hit/2,hit,m.height-hit,L-grip/2,T+m.height/2-len/2,grip,len);
+  out+=one('n',L+hit/2,T-hit/2,m.width-hit,hit,L+m.width/2-len/2,T-grip/2,len,grip);
+  out+=one('e',R-hit/2,T+hit/2,hit,m.height-hit,R-grip/2,T+m.height/2-len/2,grip,len);
+  out+=one('s',L+hit/2,B-hit/2,m.width-hit,hit,L+m.width/2-len/2,B-grip/2,len,grip);
+  out+=one('se',R-hit/2,B-hit/2,hit,hit,R-grip*1.2,B-grip*1.2,grip*2.4,grip*2.4);
+  out+='</g>';
+  if(resizeDrag?.id===m.id){
+    const text=resizeDrag.label||'',fs=11*px,tw=Math.max(40*px,text.length*fs*.56+12*px),th=fs*1.8,lx=Math.max(0,Math.min(project.width-tw,L+m.width/2-tw/2)),ly=T>th+4*px?T-th-4*px:B+4*px;
+    out+=`<g class="resize-label${resizeDrag.limited?' limited':''}" aria-live="polite"><rect x="${lx}" y="${ly}" width="${tw}" height="${th}" rx="${th/3}"/><text x="${lx+tw/2}" y="${ly+th*.66}" text-anchor="middle" font-size="${fs}">${esc(text)}</text></g>`;
+  }
+  return out;
 }
 function render3D(svg){
   const rect=svg.getBoundingClientRect(),viewport={width:rect.width||svg.clientWidth||1000,height:rect.height||svg.clientHeight||600};
@@ -340,12 +523,12 @@ function render3D(svg){
   svg.setAttribute('viewBox',preview.viewBox);svg.innerHTML=preview.html;
 }
 function renderCameraFrame(){
-  const svg=$('#board-svg');if(view!=='3d'||!svg)return;render3D(svg);
-  const label=$('[data-zoom-value]');if(label)label.textContent=Math.round(camera3D.zoom*100)+' %';
+  const svg=$('#board-svg');if(!svg)return;if(view==='3d')render3D(svg);else renderBoard();
+  const label=$('[data-zoom-value]');if(label)label.textContent=Math.round((view==='3d'?camera3D.zoom:zoom)*100)+' %';
 }
 
-function switchProject(p){persist();project=clone(p);selected=project.tools[0]?.id||null;selectedModule=null;inspectorTab='drawer';undoStack=[];redoStack=[];zoom=1;camera3D=createCamera3D();persist();closeModal();render();}
-function addTools(tools){
+function switchProject(p){persist();project=clone(p);selected=project.tools[0]?.id||null;selectedModule=null;inspectorTab='drawer';undoStack=[];redoStack=[];zoom=1;pan2D={x:0,y:0};camera3D=createCamera3D();persist();closeModal();render();}
+function addTools(tools,opts={}){
   if(project.tools.length+tools.length>300)throw i18nError('V jednom projektu může být nejvýše 300 nástrojů. Založte další projekt.');
   if(project.insertHeight-project.base<.5)throw i18nError('Výška inzertu musí být alespoň o {gap} větší než tloušťka dna.',{gap:fmtLen(.5)});
   const prepared=tools.map(t=>{
@@ -353,10 +536,131 @@ function addTools(tools){
     if(!Object.prototype.hasOwnProperty.call(t,'fingerGrips'))item.fingerGrips=automaticFingerGrips(item,{radius:9});
     pocketOutline(item,project.clearance);return item;
   });
+  // opts.group={name,unit}: the whole set as ONE module (finger grips are already on the tools, so the packing includes them).
+  if(opts.group&&prepared.length)return addToolSet(prepared,opts.group);
+  if(opts.set&&prepared.length>1)return addToolSet(prepared,opts.set,'uniform');
+  if(opts.collections?.length)return addToolCollections(prepared,opts);
   let unplaced=0;
-  commit(()=>{for(const item of prepared){project.tools.push(item);if(!library.some(l=>l.name===item.name&&JSON.stringify(l.points)===JSON.stringify(item.points)&&JSON.stringify(l.fingerGrips)===JSON.stringify(item.fingerGrips)))library.push({...clone(item),x:0,y:0,moduleId:null});}writeLocal(libraryKey,library);selected=project.tools.at(-1)?.id;inspectorTab='tool';const added=new Set(prepared.map(x=>x.id));unplaced=arrange(false).unplaced.filter(id=>added.has(id)).length;});
+  commit(()=>{for(const item of prepared){project.tools.push(item);if(!library.some(l=>l.name===item.name&&JSON.stringify(l.points)===JSON.stringify(item.points)&&JSON.stringify(l.fingerGrips)===JSON.stringify(item.fingerGrips)))library.push({...clone(item),x:0,y:0,moduleId:null});}writeLocal(libraryKey,library);selected=project.tools.at(-1)?.id;inspectorTab='tool';const added=new Set(prepared.map(x=>x.id));unplaced=arrange(false).unplaced.filter(id=>added.has(id)).length;if(opts.set&&prepared.length>1)registerToolSet(prepared.map(x=>x.id),opts.set.name,'uniform');});
   // One toast for the whole addition (e.g. a catalogue tool set), including tools that did not fit.
   toast(plural(tools.length,['Přidán {n} nástroj. Kontura je také v knihovně.','Přidány {n} nástroje. Kontury jsou také v knihovně.','Přidáno {n} nástrojů. Kontury jsou také v knihovně.'])+(unplaced?' '+plural(unplaced,['{n} nástroj se nevešel. Zkontrolujte rozměry šuplíku a tiskové plochy nebo odemkněte moduly.','{n} nástroje se nevešly. Zkontrolujte rozměry šuplíku a tiskové plochy nebo odemkněte moduly.','{n} nástrojů se nevešlo. Zkontrolujte rozměry šuplíku a tiskové plochy nebo odemkněte moduly.']):''));
+  if(unplaced&&opts.offerFit)offerFit(new Set(prepared.map(x=>x.id)),{name:opts.name});
+}
+// A catalogue set also becomes an editable project.toolSets entry ("Sady nástrojů"); call inside a commit. Skipped when the tools already form a set.
+function registerToolSet(ids,name,layout){
+  const sets=project.toolSets??[];if(sets.some(s=>ids.some(id=>s.toolIds.includes(id))))return;
+  project.toolSets=[...sets,{id:'set-'+uid(),name:String(name||tr('Sada nástrojů')).slice(0,100),toolIds:[...ids],layout}];
+}
+// A catalogue set as ONE module (packed by set-module.js). One commit = one undo step.
+function addToolSet(prepared,{name,unit:u}={},layout='shared'){
+  const groupOpts={name:name||tr('Sada nástrojů'),...(UNITS.includes(u)?{unit:u}:{}),...(prepared.length>1?{toolSet:{name:name||tr('Sada nástrojů'),layout}}:{})};
+  const result=addToolGroup(project,prepared,groupOpts),before=clone(project);
+  orderAddedTools(result.project,prepared);
+  // Rebuild the whole addition from the state before it, with changed settings (print bed) or split into bed-sized modules.
+  const rebuild=(patch,split)=>{const p={...clone(before),...patch},r=split?splitToolGroup(p,prepared,groupOpts):addToolGroup(p,prepared,groupOpts);orderAddedTools(r.project,prepared);return r.project;};
+  commit(()=>{project=result.project;cacheAddedTools(prepared);selected=null;selectedModule=result.moduleId;inspectorTab='tool';});
+  if(result.placed)toast(layout==='shared'?tr('Sada přidána jako jeden modul.'):plural(prepared.length,['Přidán {n} nástroj. Kontura je také v knihovně.','Přidány {n} nástroje. Kontury jsou také v knihovně.','Přidáno {n} nástrojů. Kontury jsou také v knihovně.']));
+  else offerFit(new Set(prepared.map(x=>x.id)),{name,group:layout==='shared',split:layout==='shared'&&prepared.length>1,rebuild,reason:result.reason});
+}
+function orderAddedTools(p,tools){
+  const own=new Set(tools.map(t=>t.id)),byId=new Map(p.tools.map(t=>[t.id,t]));
+  p.tools=[...p.tools.filter(t=>!own.has(t.id)),...tools.map(t=>byId.get(t.id))];
+}
+function cacheAddedTools(tools){
+  for(const item of tools)if(!library.some(l=>l.name===item.name&&same(l.points)===same(item.points)&&same(l.fingerGrips)===same(item.fingerGrips)))library.push({...clone(item),x:0,y:0,moduleId:null});
+  writeLocal(libraryKey,library);
+}
+// Catalogue bulk addition: keep each set's layout and commit the whole selection atomically.
+function addToolCollections(prepared,{collections,offerFit:showFit,name}={}){
+  const covered=new Set(),groups=[];
+  for(const group of collections){
+    const {start,count,layout}=group;
+    if(!Number.isInteger(start)||!Number.isInteger(count)||start<0||count<2||start+count>prepared.length||!['shared','uniform'].includes(layout))throw Error('Invalid catalogue collection.');
+    for(let i=start;i<start+count;i++){if(covered.has(i))throw Error('Overlapping catalogue collections.');covered.add(i);}
+    groups.push(group);
+  }
+  // The whole selection from a base project (also used to rebuild it with another print bed, see offerFit).
+  const build=base=>{
+    let next=base;
+    next.tools.push(...clone(prepared.filter((_,i)=>!covered.has(i))));
+    if(covered.size<prepared.length){const arranged=autoArrange(next);next={...next,tools:arranged.tools,modules:arranged.modules};}
+    for(const group of groups.sort((a,b)=>a.start-b.start)){
+      next=addToolGroup(next,prepared.slice(group.start,group.start+group.count),{name:group.name,...(UNITS.includes(group.unit)?{unit:group.unit}:{}),toolSet:{name:group.name,layout:group.layout}}).project;
+    }
+    orderAddedTools(next,prepared);return next;
+  };
+  const before=clone(project),next=build(clone(project));
+  const added=new Set(prepared.map(t=>t.id)),placed=placedTools(next),missing=prepared.filter(t=>!placed.has(t.id)).length;
+  commit(()=>{project=next;cacheAddedTools(prepared);selected=prepared.at(-1)?.id||null;selectedModule=null;inspectorTab='tool';});
+  toast(plural(prepared.length,['Přidán {n} nástroj. Kontura je také v knihovně.','Přidány {n} nástroje. Kontury jsou také v knihovně.','Přidáno {n} nástrojů. Kontury jsou také v knihovně.']));
+  if(missing&&showFit)offerFit(added,{name,rebuild:patch=>build({...clone(before),...patch})});
+}
+// Smallest drawer (in grid steps, at most 3000 mm) in which the tools `ids` get placed; modules already placed stay where they are.
+// Turns the print-bed limit off only when the new modules cannot be printed on the bed at all. null = impossible.
+function fitPlan(base,ids){
+  const inside=(p,m)=>m.x>=-.001&&m.y>=-.001&&m.x+m.width<=p.width+.001&&m.y+m.height<=p.height+.001;
+  const allIn=p=>{const ok=new Set(p.modules.filter(m=>inside(p,m)).map(m=>m.id));return p.tools.every(t=>!ids.has(t.id)||ok.has(t.moduleId));};
+  const own=new Set(base.tools.filter(t=>ids.has(t.id)).map(t=>t.moduleId));
+  const arrangeIn=(width,height,limitToBed,src=base)=>{
+    const trial={...clone(src),width,height,limitToBed},locks=new Map(trial.modules.map(m=>[m.id,m.locked]));
+    for(const m of trial.modules)if(!own.has(m.id)&&inside(src,m))m.locked=true;
+    const r=autoArrange(trial),out={...trial,tools:r.tools,modules:r.modules.map(m=>locks.has(m.id)?{...m,locked:locks.get(m.id)}:m)};
+    return allIn(out)?out:null;
+  };
+  const alone={...base,tools:base.tools.filter(t=>ids.has(t.id)),modules:base.modules.filter(m=>own.has(m.id))};
+  const W=base.width,H=base.height,g=Math.max(1,base.grid||42),bw=base.bedWidth||220,bh=base.bedHeight||220;
+  // Print-bed check without arranging: a group module by its size, a single tool by its smallest grid module (as autoArrange sizes it).
+  const onBed=(w,h)=>(w-.5<=bw&&h-.5<=bh)||(h-.5<=bw&&w-.5<=bh),pad=Math.max(base.wall??2.4,(base.gap??3)/2)+.25;
+  const toolOnBed=t=>[0,90].some(r=>{try{const pts=pocketOutline({...t,x:0,y:0,rotation:(t.rotation||0)+r},base.clearance);const xs=pts.map(p=>p.x),ys=pts.map(p=>p.y);return onBed(Math.ceil((Math.max(...xs)-Math.min(...xs)+2*pad)/g)*g,Math.ceil((Math.max(...ys)-Math.min(...ys)+2*pad)/g)*g);}catch{return false;}});
+  const groups=alone.modules.filter(m=>m.grouped||m.setLayout==='uniform'||m.sizeMode==='manual');
+  const bedBlocked=!!base.limitToBed&&(groups.some(m=>!onBed(m.width,m.height))||alone.tools.some(t=>!groups.some(m=>m.id===t.moduleId)&&!toolOnBed(t))),bed=!!base.limitToBed&&!bedBlocked;
+  const same=arrangeIn(W,H,bed);if(same)return{project:same,bedBlocked};
+  // One group module: put it next to the drawer on its shorter side (always free).
+  const single=alone.modules.length===1&&alone.modules[0].grouped;
+  // Several modules: binary search on a common growth factor (few autoArrange runs), then trim each side back in grid steps.
+  if(!single){
+    const dims=k=>[Math.min(3000,Math.ceil(W*k/g-1e-9)*g),Math.min(3000,Math.ceil(H*k/g-1e-9)*g)];
+    let lo=1,hi=3000/Math.min(W,H),best=null;
+    const top=arrangeIn(...dims(hi),bed);if(!top)return null;best={out:top,d:dims(hi)};
+    for(let n=0;n<8;n++){const mid=(lo+hi)/2,d=dims(mid),out=arrangeIn(...d,bed);if(out){hi=mid;best={out,d};}else lo=mid;}
+    for(const axis of [0,1])for(let step=0;step<6&&best.d[axis]-g>=(axis?H:W);step++){const d=[...best.d];d[axis]-=g;const out=arrangeIn(...d,bed);if(!out)break;best={out,d};}
+    return{project:best.out,bedBlocked};
+  }
+  if(single){
+    const m=alone.modules[0],right={w:W+m.width,h:Math.max(H,m.height),x:W,y:0},below={w:Math.max(W,m.width),h:H+m.height,x:0,y:H},c=right.w*right.h<=below.w*below.h?right:below;
+    if(c.w>3000||c.h>3000)return null;
+    const out={...clone(base),width:c.w,height:c.h,limitToBed:bed},dx=c.x-m.x,dy=c.y-m.y;
+    for(const mod of out.modules)if(mod.id===m.id){mod.x=c.x;mod.y=c.y;}
+    for(const t of out.tools)if(t.moduleId===m.id){t.x+=dx;t.y+=dy;}
+    return{project:out,bedBlocked};
+  }
+  return null;
+}
+// Tools that did not fit: an explicit choice instead of a silent list of "no module" issues.
+function offerFit(ids,{name,group}={}){
+  const base=clone(project),stamp=JSON.stringify(base),title=String(name||tr('Nástroje z katalogu')).slice(0,100);
+  const missing=base.tools.filter(t=>ids.has(t.id)&&!base.modules.some(m=>m.id===t.moduleId&&m.x>=-.001&&m.y>=-.001&&m.x+m.width<=base.width+.001&&m.y+m.height<=base.height+.001)).length;
+  if(!missing)return;
+  const grow=fitPlan(base,ids);
+  const fresh=(()=>{const tools=clone(base.tools.filter(t=>ids.has(t.id))),keep=new Set(tools.map(t=>t.moduleId)),modules=clone(base.modules.filter(m=>keep.has(m.id)));for(const t of tools)if(!modules.some(m=>m.id===t.moduleId)){t.moduleId=null;t.x=0;t.y=0;}return{...clone(base),id:uid(),name:title,tools,modules,...(Array.isArray(base.toolSets)?{toolSets:base.toolSets.map(s=>({...s,toolIds:s.toolIds.filter(id=>ids.has(id))})).filter(s=>s.toolIds.length)}:{})};})();
+  const fresh2=fitPlan(fresh,ids);
+  const groupModule=group?base.modules.find(m=>base.tools.some(t=>ids.has(t.id)&&t.moduleId===m.id)):null;
+  const size=p=>fmtSize(p.width,p.height);
+  const intro=groupModule?tr('Modul sady „{name}“ ({size}) se do šuplíku {drawer} nevešel.',{name:title,size:size(groupModule),drawer:size(base)}):plural(missing,['{n} nástroj se do šuplíku {drawer} nevešel.','{n} nástroje se do šuplíku {drawer} nevešly.','{n} nástrojů se do šuplíku {drawer} nevešlo.'],{drawer:size(base)});
+  const bedNote=(grow||fresh2)?.bedBlocked?`<p class="fit-note">${icon('info')} ${esc(tr('Modul je větší než tisková plocha {bed}. Volba níže povolí větší moduly (nastavení „Rozvrhovat podle tiskové plochy“ u exportu).',{bed:fmtSize(base.bedWidth,base.bedHeight)}))}</p>`:'';
+  const option=(key,label,desc,primary,disabled)=>`<button type="button" class="fit-option ${primary?'primary':''}" data-fit="${key}" ${disabled?'disabled':''}><strong>${esc(label)}</strong><small>${esc(desc)}</small></button>`;
+  const m=openModal({title:tr('Sada se do šuplíku nevešla'),subtitle:tr('Vyberte, co s nástroji, které nemají místo.'),body:`<p class="help-intro">${esc(intro)}</p>${bedNote}<div class="fit-options">`
+    +option('grow',tr('Zvětšit šuplík'),grow?tr('Nový rozměr šuplíku: {size}. Jeden krok zpět vrátí celé přidání.',{size:size(grow.project)}):tr('Šuplík by musel být větší než {max}.',{max:fmtLen(3000)}),true,!grow)
+    +option('new',tr('Přidat do nového šuplíku'),fresh2?tr('Nový šuplík „{name}“ ({size}); tento šuplík zůstane beze změny.',{name:title,size:size(fresh2.project)}):tr('Šuplík by musel být větší než {max}.',{max:fmtLen(3000)}),false,!fresh2)
+    +option('keep',tr('Ponechat mimo šuplík'),tr('Nástroje zůstanou v projektu bez místa; umístíte je později.'),false,false)+`</div>`,footer:''});
+  m.el.querySelector(grow?'[data-fit="grow"]':'[data-fit="keep"]')?.focus();
+  m.el.addEventListener('click',e=>{
+    const choice=e.target.closest('[data-fit]')?.dataset.fit;if(!choice)return;
+    if(choice==='keep'){m.close();toast(tr('Nástroje zůstaly mimo šuplík. Umístíte je po zvětšení šuplíku nebo rozvržením.'));return;}
+    if(JSON.stringify(project)!==stamp){m.close();toast(tr('Sestava se mezitím změnila. Zkuste to prosím znovu.'));return;}
+    if(choice==='grow'&&grow){project=clone(grow.project);persist();render();m.close();toast(tr('Šuplík zvětšen na {size}.',{size:size(project)}));}
+    if(choice==='new'&&fresh2){try{const next=validateProject(clone(fresh2.project));project=undoStack.pop()||project;persist();switchProject(next);toast(tr('Nástroje přidány do nového šuplíku „{name}“.',{name:next.name}));}catch(error){toast(errorText(error));}}
+  });
 }
 function capture(){openCapture({onAdd:addTools,toast});}
 function undo(){if(!undoStack.length)return;redoStack.push(clone(project));project=undoStack.pop();persist();render();}
@@ -371,7 +675,7 @@ function addShape(){const m=openModal({title:tr('Přidat modul nebo jednoduchý 
     commit(()=>{const item={id:uid(),name,x:pos.x,y:pos.y,width,height,locked:true};project.modules.push(item);selected=null;selectedModule=item.id;inspectorTab='tool';},tr('Prázdný modul přidán a zamčen.'));m.close();};}
 
 function saveToLibrary(tools){let n=0;for(const x of tools){const item=validateProject({...blankProject(),tools:[{...x,id:uid()}]}).tools[0];if(!library.some(l=>l.name===item.name&&JSON.stringify(l.points)===JSON.stringify(item.points))){library.push(item);n++;}}if(n)writeLocal(libraryKey,library);return n;}
-function openLibrary(){const mine=()=>({body:`<div class="library-grid">${library.map((t,i)=>`<div class="library-item"><span class="tool-thumb">${thumb(t)}</span><div><strong>${esc(t.name)}${unitBadge(t.unit)}</strong><p>${fmtSize(bounds(t).width,bounds(t).height,{unit:toolUnit(t)})}</p></div><button class="btn btn-light" data-library-add="${i}" aria-label="${tr('Přidat {name} do sestavy',{name:esc(t.name)})}">${icon('plus')}</button><button class="icon-btn" data-library-remove="${i}" aria-label="${tr('Odstranit {name} z knihovny',{name:esc(t.name)})}">${icon('trash')}</button></div>`).join('')||`<p class="empty-note">${tr('Vyfoťte první nástroj nebo vyberte obrys z Katalogu.')}</p>`}</div>`,footer:`<span class="footnote">${tr('Knihovna je uložená v tomto prohlížeči.')}</span><button class="btn btn-primary" data-capture>${icon('camera')}${tr('Vyfotit nástroj')}</button>`});const m=openModal({title:tr('Vaše knihovna nástrojů'),subtitle:tr('Jednou načtený obrys můžete použít v každém dalším šuplíku.'),wide:true});mountLibraryFolders(m,{mine,onAdd:tools=>{addTools(tools);m.close();},onSave:saveToLibrary});m.el.onclick=e=>{const add=e.target.closest('[data-library-add]'),remove=e.target.closest('[data-library-remove]');if(add){try{addTools([clone(library[Number(add.dataset.libraryAdd)])]);m.close();}catch(error){toast(errorText(error));}}if(remove){library.splice(Number(remove.dataset.libraryRemove),1);writeLocal(libraryKey,library);openLibrary();}if(e.target.closest('[data-capture]'))capture();};}
+function openLibrary(){const mine=()=>({body:`<div class="library-grid">${library.map((t,i)=>`<div class="library-item"><span class="tool-thumb">${thumb(t)}</span><div><strong>${esc(t.name)}${unitBadge(t.unit)}</strong><p>${fmtSize(bounds(t).width,bounds(t).height,{unit:toolUnit(t)})}</p></div><button class="btn btn-light" data-library-add="${i}" aria-label="${tr('Přidat {name} do sestavy',{name:esc(t.name)})}">${icon('plus')}</button><button class="icon-btn" data-library-remove="${i}" aria-label="${tr('Odstranit {name} z knihovny',{name:esc(t.name)})}">${icon('trash')}</button></div>`).join('')||`<p class="empty-note">${tr('Vyfoťte první nástroj nebo vyberte obrys z Katalogu.')}</p>`}</div>`,footer:`<span class="footnote">${tr('Knihovna je uložená v tomto prohlížeči.')}</span><button class="btn btn-primary" data-capture>${icon('camera')}${tr('Vyfotit nástroj')}</button>`});const m=openModal({title:tr('Vaše knihovna nástrojů'),subtitle:tr('Jednou načtený obrys můžete použít v každém dalším šuplíku.'),wide:true});mountLibraryFolders(m,{mine,onAdd:(tools,opts={})=>{addTools(tools,{...opts,offerFit:true,name:opts.set?.name||opts.group?.name});m.close();},onSave:saveToLibrary});m.el.onclick=e=>{const add=e.target.closest('[data-library-add]'),remove=e.target.closest('[data-library-remove]');if(add){try{addTools([clone(library[Number(add.dataset.libraryAdd)])]);m.close();}catch(error){toast(errorText(error));}}if(remove){library.splice(Number(remove.dataset.libraryRemove),1);writeLocal(libraryKey,library);openLibrary();}if(e.target.closest('[data-capture]'))capture();};}
 function createDrawer(){
   const draft=blankProject(),u=getAppUnit();
   const modal=openModal({title:tr('Nový šuplík'),subtitle:tr('Zadejte název a skutečné vnitřní rozměry šuplíku.'),body:`${input(tr('Název šuplíku'),'','drawerName',{type:'text'})}<div class="fields-row">${input(tr('Vnitřní šířka'),draft.width,'drawerWidth',{unit:u,min:42,max:3000})}${input(tr('Vnitřní hloubka'),draft.height,'drawerHeight',{unit:u,min:42,max:3000})}</div><p class="muted-note unit-hint">${tr('Lze zadat i jiné jednotky: 12 in, 3 1/2" nebo 30 cm.')}</p>`,footer:`<span class="footnote">${tr('Každý šuplík má vlastní rozměry a sestavu.')}</span><button class="btn btn-primary" data-create-drawer>${tr('Vytvořit šuplík')}</button>`});
@@ -460,9 +764,10 @@ const actions={
  undo,redo,
  snap:()=>{snap=!snap;render();},grid:()=>{showGrid=!showGrid;render();},labels:()=>{showLabels=!showLabels;render();},
  '2d':()=>{view='2d';render();},'3d':()=>{view='3d';render();},
- 'zoom-in':()=>{if(view==='3d')camera3D=normalizeCamera3D({...camera3D,zoom:camera3D.zoom*1.25});else zoom=Math.min(3,zoom+.25);render();},'zoom-out':()=>{if(view==='3d')camera3D=normalizeCamera3D({...camera3D,zoom:camera3D.zoom/1.25});else zoom=Math.max(.5,zoom-.25);render();},fit:()=>{if(view==='3d')camera3D=createCamera3D();else zoom=1;render();},
+ 'zoom-in':()=>{if(view==='3d')camera3D=normalizeCamera3D({...camera3D,zoom:camera3D.zoom*1.25});else zoom=Math.min(3,zoom+.25);render();},'zoom-out':()=>{if(view==='3d')camera3D=normalizeCamera3D({...camera3D,zoom:camera3D.zoom/1.25});else zoom=Math.max(.5,zoom-.25);render();},fit:()=>{if(view==='3d')camera3D=createCamera3D();else{zoom=1;pan2D={x:0,y:0};}render();},
  'hide-tip':()=>{tipVisible=false;writeLocal('suplik-hide-tip',true);render();},
  rotate:()=>{const t=tool(),m=moduleFor();if(!t)return;if(m?.locked)return toast(tr('Nejprve odemkněte polohu modulu.'));commit(()=>{const b=bounds(t);t.rotation=(t.rotation+90)%360;const next=bounds(t);t.x=b.x+(b.width-next.width)/2;t.y=b.y+(b.height-next.height)/2;},tr('Nástroj otočen. Pokud přesahuje modul, spusťte Auto rozložení.'));},
+ 'module-step':stepModule,'print-bed':openPrintBedSettings,
  lock:()=>{const m=moduleFor();if(!m)return;commit(()=>{m.locked=!m.locked;project.tools.filter(t=>t.moduleId===m.id).forEach(t=>t.locked=m.locked);},m.locked?tr('Poloha modulu je odemčená.'):tr('Poloha modulu je zamčená.'));},
  duplicate:()=>{const t=tool();if(t)addTools([{...clone(t),name:t.name+' · '+tr('kopie')}]);},
  delete:()=>{const t=tool(),m=moduleFor();if(!t&&!m)return;commit(()=>{if(t){removeToolSetMember(t.id);project.tools=project.tools.filter(x=>x.id!==t.id);project.modules=project.modules.filter(x=>x.id!==t.moduleId||project.tools.some(o=>o.moduleId===x.id));selected=project.tools[0]?.id||null;}else project.modules=project.modules.filter(x=>x.id!==m.id);selectedModule=null;},tr('Odstraněno ze sestavy. Akci můžete vrátit tlačítkem Zpět.'));}
@@ -475,19 +780,38 @@ $('#app').addEventListener('change',e=>{
     const t=tool();if(!t)return;
     if(field==='unit'){commit(()=>{if(value)t.unit=value;else delete t.unit;});return;}
     if(field==='name'&&!value){render();return;}
-    if(field==='toolWidth'){const ratio=value/bounds(t).width;if(t.points.some(p=>p.x*ratio>3000||p.y*ratio>3000)){toast(tr('Kontura nesmí v žádném směru přesáhnout {max}.',{max:fmtLen(3000)}));render();return;}}if(field==='toolWidth'&&moduleFor()?.locked){toast(tr('Pro změnu rozměru nejdřív odemkněte modul.'));render();return;}
+    // Šířka kontury, Měřítko and Délka all scale the outline uniformly through one path.
+    const ratio=toolScaleRatio(t,field,value);if(ratio===false){render();return;}
     let scaled=null;
-    if(field==='toolWidth'){
-      const ratio=value/bounds(t).width;scaled={...t,points:t.points.map(p=>({x:p.x*ratio,y:p.y*ratio}))};
-      try{if(Object.prototype.hasOwnProperty.call(t,'fingerGrips'))scaled.fingerGrips=validateFingerGrips(t.fingerGrips.map(g=>({...g,x:g.x*ratio,y:g.y*ratio})));pocketOutline(scaled,project.clearance);}
+    if(ratio!==null){
+      if(Math.abs(ratio-1)<1e-9){render();return;}
+      const b=bounds(t);if(b.width*ratio>3000+1e-6||b.height*ratio>3000+1e-6){toast(tr('Kontura nesmí v žádném směru přesáhnout {max}.',{max:fmtLen(3000)}));render();return;}
+      if(moduleFor()?.locked){toast(tr('Pro změnu rozměru nejdřív odemkněte modul.'));render();return;}
+      if(ratio<.2||ratio>5){toast(tr('Měřítko nástroje musí být mezi {min}× a {max}×.',{min:.2,max:5}));render();return;}
+      try{scaled=scaleToolCentred(t,ratio);if(Object.prototype.hasOwnProperty.call(t,'fingerGrips'))scaled.fingerGrips=validateFingerGrips(scaled.fingerGrips);pocketOutline(scaled,project.clearance);}
       catch(error){toast(tr('Velikost kontury nelze změnit. U výřezů použijte „Automaticky umístit“ a zkuste to znovu. {error}',{error:errorText(error)}));render();return;}
     }
-    commit(()=>{if(scaled){t.points=scaled.points;if(Object.prototype.hasOwnProperty.call(scaled,'fingerGrips'))t.fingerGrips=scaled.fingerGrips;}else t[field]=typeof value==='string'?value.slice(0,100):value;});
+    let note='';commit(()=>{if(scaled){t.points=scaled.points;t.x=scaled.x;t.y=scaled.y;if(Object.prototype.hasOwnProperty.call(scaled,'fingerGrips'))t.fingerGrips=scaled.fingerGrips;
+      // Automatic modules follow the new outline; manual ones keep their nominal size (layout issues are reported).
+      const m=project.modules.find(x=>x.id===t.moduleId);if(m&&m.sizeMode!=='manual')try{project=resizeModule(project,m.id,{mode:'auto'});}catch{}
+      if(m)note=releaseUniformSet(m.id,{ifUnsatisfied:true});
+    }else t[field]=typeof value==='string'?value.slice(0,100):value;});
+    if(note)toast(note.trim());
   }else if(scope==='module'){const m=moduleFor();if(!m||field!=='unit')return;commit(()=>{if(value)m.unit=value;else delete m.unit;});}
   else commit(()=>project[field]=value);
 });
 $('#app').addEventListener('pointerdown',e=>{
-  if(view==='3d'||e.button!==0)return;
+  // A second finger cannot start anything while a drag or resize is running (one active pointer at a time).
+  if(view==='3d'||e.button!==0||resizeDrag||drag)return;
+  // Resize handles work for mouse, pen and touch (no Move mode needed): they are explicit targets.
+  const handle=e.target.closest('[data-resize-of]');
+  if(handle){
+    const svg=$('#board-svg'),m=project.modules.find(x=>x.id===handle.dataset.resizeOf);if(!svg||!m)return;e.preventDefault();
+    if(m.locked||!handle.dataset.resize){toast(tr(LOCKED_RESIZE));return;}
+    const point=svg.createSVGPoint();point.x=e.clientX;point.y=e.clientY;
+    resizeDrag={pointer:e.pointerId,id:m.id,dir:handle.dataset.resize,start:point.matrixTransform(svg.getScreenCTM().inverse()),snapshot:clone(project),moved:false,label:resizeLabel(m)};
+    try{svg.setPointerCapture(e.pointerId);}catch{}renderBoard();return;
+  }
   if(e.pointerType==='touch'&&!moveMode)return;
   const group=e.target.closest('[data-module]'),svg=$('#board-svg');if(!group||!svg)return;
   const m=project.modules.find(m=>m.id===group.dataset.module);if(!m)return;
@@ -497,15 +821,37 @@ $('#app').addEventListener('pointerdown',e=>{
   drag={pointer:e.pointerId,id:m.id,start:p,x:m.x,y:m.y,snapshot:clone(project),moved:false};svg.setPointerCapture(e.pointerId);renderBoard();
 });
 $('#app').addEventListener('pointermove',e=>{
-  if(view==='3d'||!drag)return;const svg=$('#board-svg'),p=svg.createSVGPoint();p.x=e.clientX;p.y=e.clientY;const q=p.matrixTransform(svg.getScreenCTM().inverse());const m=project.modules.find(m=>m.id===drag.id);if(!m)return;
+  if(view!=='3d'&&resizeDrag&&e.pointerId===resizeDrag.pointer){
+    const svg=$('#board-svg'),p=svg.createSVGPoint();p.x=e.clientX;p.y=e.clientY;const q=p.matrixTransform(svg.getScreenCTM().inverse()),dx=q.x-resizeDrag.start.x,dy=q.y-resizeDrag.start.y;
+    if(!resizeDrag.moved&&Math.hypot(dx,dy)<1)return;resizeDrag.moved=true;
+    // Live preview from the original snapshot; an invalid size keeps the last valid one and shows why.
+    const c=resizeCandidate(resizeDrag.snapshot,resizeDrag.id,resizeDrag.dir,dx,dy);if(!c)return;
+    if(c.project)project=c.project;
+    resizeDrag.label=resizeLabel(project.modules.find(x=>x.id===resizeDrag.id),c);resizeDrag.limited=!!(c.error||c.limit);renderBoard();return;
+  }
+  if(view==='3d'||!drag||e.pointerId!==drag.pointer)return;const svg=$('#board-svg'),p=svg.createSVGPoint();p.x=e.clientX;p.y=e.clientY;const q=p.matrixTransform(svg.getScreenCTM().inverse());const m=project.modules.find(m=>m.id===drag.id);if(!m)return;
   const dx=q.x-drag.start.x,dy=q.y-drag.start.y;if(Math.hypot(dx,dy)<2&&!drag.moved)return;drag.moved=true;
   let x=drag.x+dx,y=drag.y+dy;if(snap){x=Math.round(x/project.grid)*project.grid;y=Math.round(y/project.grid)*project.grid;}x=Math.max(0,Math.min(project.width-m.width,x));y=Math.max(0,Math.min(project.height-m.height,y));
   const sx=x-m.x,sy=y-m.y;m.x=x;m.y=y;project.tools.filter(t=>t.moduleId===m.id).forEach(t=>{t.x+=sx;t.y+=sy;});renderBoard();
 });
-function endDrag(){if(!drag)return;if(drag.moved){const invalid=errors().some(i=>i.ids.includes(drag.id)&&i.type==='overlap');if(invalid){project=drag.snapshot;toast(tr('Tady už je jiný modul. Zkuste volné místo.'));}else{undoStack.push(drag.snapshot);redoStack=[];persist();}}drag=null;render();}
-$('#app').addEventListener('pointerup',endDrag);$('#app').addEventListener('pointercancel',()=>{if(drag){project=drag.snapshot;drag=null;render();}});
+function endResize(){
+  const r=resizeDrag;resizeDrag=null;
+  const before=r.snapshot.modules.find(x=>x.id===r.id),after=project.modules.find(x=>x.id===r.id);
+  if(r.moved&&before&&after&&same([before.x,before.y,before.width,before.height])!==same([after.x,after.y,after.width,after.height])){undoStack.push(r.snapshot);if(undoStack.length>40)undoStack.shift();redoStack=[];const note=releaseUniformSet(r.id);persist();render();toast(tr('Velikost modulu: {size}',{size:fmtSize(after.width,after.height,{unit:moduleUnit(after)})})+note);}
+  else{project=r.snapshot;render();}
+}
+function endDrag(e){const active=resizeDrag||drag;if(!active||e.pointerId!==active.pointer)return;if(resizeDrag)return endResize();if(drag.moved){const invalid=errors().some(i=>i.ids.includes(drag.id)&&i.type==='overlap');if(invalid){project=drag.snapshot;toast(tr('Tady už je jiný modul. Zkuste volné místo.'));}else{undoStack.push(drag.snapshot);redoStack=[];persist();}}drag=null;render();}
+// Unfinished edits are previews only. Losing capture/focus restores them without saving or adding history.
+function cancelEditGesture(e){
+  const active=resizeDrag||drag;if(!active||(e?.pointerId!==undefined&&e.pointerId!==active.pointer))return;
+  project=active.snapshot;resizeDrag=null;drag=null;
+  // Clear the state before releasing capture: the resulting lostpointercapture must not cancel twice.
+  try{$('#board-svg')?.releasePointerCapture?.(active.pointer);}catch{}
+  render();
+}
+$('#app').addEventListener('pointerup',endDrag);$('#app').addEventListener('pointercancel',cancelEditGesture);$('#app').addEventListener('lostpointercapture',cancelEditGesture);window.addEventListener('blur',cancelEditGesture);
 $('#app').addEventListener('keydown',e=>{const group=e.target.closest('[data-module]');if(group&&(e.key==='Enter'||e.key===' ')){e.preventDefault();const m=project.modules.find(m=>m.id===group.dataset.module),t=project.tools.find(t=>t.moduleId===m.id);selected=t?.id||null;selectedModule=t?null:m.id;inspectorTab='tool';render();}});
-document.addEventListener('keydown',e=>{if(e.target.matches('input,textarea,select')||$('#modal-root').children.length)return;if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='z'){e.preventDefault();e.shiftKey?redo():undo();}else if(!e.ctrlKey&&!e.metaKey&&!e.altKey&&e.key.toLowerCase()==='r')actions.rotate();else if(e.key==='Delete'||e.key==='Backspace'){e.preventDefault();actions.delete();}else if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='s'){e.preventDefault();actions['save-project']();}});
+document.addEventListener('keydown',e=>{if(e.target.matches('input,textarea,select')||$('#modal-root').children.length)return;if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='z'){e.preventDefault();e.shiftKey?redo():undo();}else if(e.altKey&&e.shiftKey&&!e.ctrlKey&&!e.metaKey&&{ArrowRight:1,ArrowLeft:1,ArrowDown:1,ArrowUp:1}[e.key]){if(moduleFor()){e.preventDefault();stepModule({ArrowRight:'w+',ArrowLeft:'w-',ArrowDown:'h+',ArrowUp:'h-'}[e.key]);}}else if(!e.ctrlKey&&!e.metaKey&&!e.altKey&&e.key.toLowerCase()==='r')actions.rotate();else if(e.key==='Delete'||e.key==='Backspace'){e.preventDefault();actions.delete();}else if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='s'){e.preventDefault();actions['save-project']();}});
 $('#project-file').addEventListener('change',async e=>{const file=e.target.files[0];e.target.value='';if(!file)return;if(file.size>12*1024*1024)return toast(tr('Projekt je příliš velký. Maximum je 12 MB.'));try{const data=JSON.parse(await file.text());if(data.schemaVersion&&data.schemaVersion!==1)throw i18nError('Tato verze projektu zatím není podporovaná.');const imported=validateProject(data);imported.id=uid();switchProject(imported);toast(tr('Projekt otevřen. Původní projekty zůstaly uložené.'));}catch(error){toast(tr('Projekt nelze otevřít: {error}',{error:errorText(error)}));}});
 onLangChange(()=>{applyDocumentText();render();});
 applyDocumentText();persist();render();

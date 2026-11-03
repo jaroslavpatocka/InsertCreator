@@ -19,6 +19,7 @@ globalThis.setTimeout=(callback,delay,...args)=>{const timer=nativeSetTimeout(ca
 const {setCatalogSource,filterSets,setSizeRange,setThumb}=await import('../dist/catalog-ui.js');
 const {setLang}=await import('../dist/i18n.js');
 const {setAppUnit}=await import('../dist/units.js');
+const {validateLayout}=await import('../dist/geometry.js');
 
 const rect=(w,h)=>[{x:0,y:0},{x:w,y:0},{x:w,y:h},{x:0,y:h}];
 const CATEGORIES=[{id:'wrenches',cs:'Klíče',en:'Wrenches'},{id:'hex-keys',cs:'Imbusy a torxy',en:'Hex & Torx keys'},{id:'sockets',cs:'Nástrčné hlavice a bity',en:'Sockets & bits'},{id:'pliers',cs:'Kleště',en:'Pliers'}];
@@ -61,6 +62,7 @@ async function search(text){const input=$('[data-catalog-search]');input.value=t
 const chooseCategory=id=>click(`.catalog-chip[data-catalog-category="${id}"]`);
 const untick=(setId,index)=>{const box=$(`[data-set-member="${setId}"][data-index="${index}"]`);box.checked=false;box.dispatchEvent(new win.Event('change',{bubbles:true}));};
 const undoCount=()=>{let n=0;const undo=()=>$('#app [data-action="undo"]');while(undo()&&!undo().disabled&&n<100){undo().click();n++;}return n;};
+const placedInDrawer=(p,t)=>{const m=p.modules.find(m=>m.id===t.moduleId);return !!m&&m.x>=-.001&&m.y>=-.001&&m.x+m.width<=p.width+.001&&m.y+m.height<=p.height+.001;};
 
 after(()=>{setLang('cs');setAppUnit('mm');setCatalogSource(null);});
 
@@ -122,23 +124,38 @@ test('search and measurement filter apply to sets; matching sets are surfaced ab
   assert.deepEqual(setIds(),['hex-set']);assert.deepEqual(itemIds(),['hex-2','hex-3','hex-4']);
   // Sets exist although no single outline matches.
   chooseCategory('all');await search('sada');
-  assert.equal(itemIds().length,0);assert.ok(setIds().length>0);assert.equal($('.catalog-results > .catalog-empty'),null);
+  assert.equal(itemIds().length,0);assert.ok(setIds().length>0);assert.ok($('.catalog-results > .catalog-empty')===null);
   await search('');
   click('[data-modal-close]');
 });
 
 test('"Přidat sadu" adds every tool of the set in one step (one undo, one arrangement)',async()=>{
-  const before=saved().tools.length;
+  const previous=saved(),before=previous.tools.length;
   await openCatalog();chooseCategory('sets');
   click('[data-set-add="wrench-set-8-17"]');
-  assert.equal($('.modal'),null,'modal closes after adding');
+  const needsFit=!!$('.modal');
+  if(needsFit){
+    assert.equal($('#modal-title').textContent,'Sada se do šuplíku nevešla');
+    assert.ok($('[data-fit="grow"]')&&$('[data-fit="new"]')&&$('[data-fit="keep"]'),'oversize set offers an explicit choice');
+    assert.equal($('[data-fit="grow"]').disabled,false,'the proposed enlargement is available');
+    click('[data-fit="grow"]');
+  }
+  assert.ok($('.modal')===null,'modal closes after adding');
   const tools=saved().tools;assert.equal(tools.length,before+4);
-  const added=tools.slice(-4);
-  assert.deepEqual(added.map(t=>[t.name,t.unit,t.depth]),[8,10,13,17].map(s=>[`Očkoplochý klíč ${s} mm`,'mm',6+s/4]));
+  const added=tools.slice(-4),byName=(a,b)=>a[0].localeCompare(b[0],'cs',{numeric:true});
+  assert.deepEqual(added.map(t=>[t.name,t.unit,t.depth]).sort(byName),[8,10,13,17].map(s=>[`Očkoplochý klíč ${s} mm`,'mm',6+s/4]));
+  // Default layout: the whole set is ONE grouped module.
+  const mods=new Set(added.map(t=>t.moduleId));assert.equal(mods.size,1,'one module for the whole set');
+  assert.equal(saved().modules.find(m=>m.id===[...mods][0])?.grouped,true);
   assert.equal(new Set(added.map(t=>t.id)).size,4);assert.ok(added.every(t=>!items.some(i=>i.id===t.id)));
-  assert.match($('#toast').textContent,/Přidány 4 nástroje/);
+  assert.ok(added.every(t=>placedInDrawer(saved(),t)),'all four members have a module inside the drawer');
+  assert.deepEqual(validateLayout(saved()),[],'the accepted placement is ready for manufacturing');
+  assert.match($('#toast').textContent,needsFit?/Šuplík zvětšen na/:/jeden modul/);
+  const accepted=saved();
   click('#app [data-action="undo"]');assert.equal(saved().tools.length,before,'one undo removes the whole set');
+  assert.deepEqual(saved().modules,previous.modules);assert.deepEqual([saved().width,saved().height,saved().limitToBed],[previous.width,previous.height,previous.limitToBed],'undo includes the accepted enlargement');
   click('#app [data-action="redo"]');assert.equal(saved().tools.length,before+4);
+  assert.deepEqual(saved().modules,accepted.modules);assert.deepEqual([saved().width,saved().height,saved().limitToBed],[accepted.width,accepted.height,accepted.limitToBed]);
 });
 
 test('unticked members are left out; the add button counts the selection',async()=>{
@@ -168,7 +185,7 @@ test('unticked members are left out; the add button counts the selection',async(
   click('[data-catalog-system="all"]');
   click('[data-set-add="wrench-set-8-17"]');
   const tools=saved().tools;assert.equal(tools.length,before+2);
-  assert.deepEqual(tools.slice(-2).map(t=>t.name),['Očkoplochý klíč 10 mm','Očkoplochý klíč 17 mm']);
+  assert.deepEqual(tools.slice(-2).map(t=>t.name).sort(),['Očkoplochý klíč 10 mm','Očkoplochý klíč 17 mm']);
   click('#app [data-action="undo"]');assert.equal(saved().tools.length,before);
 });
 
@@ -206,11 +223,20 @@ test('a large set that does not fit keeps every tool and the app reports what is
     await openCatalog();chooseCategory('sets');
     click('[data-set-add="big-set"]');
     const p=saved();assert.equal(p.tools.length,before+30,'nothing is dropped');
-    const unplaced=p.tools.filter(t=>!oldIds.has(t.id)&&!p.modules.some(m=>m.id===t.moduleId)).length;
+    const added=p.tools.filter(t=>!oldIds.has(t.id)),unplaced=added.filter(t=>!placedInDrawer(p,t)).length;
     assert.ok(unplaced>0,'the default drawer cannot hold 30 large bars');
-    assert.match($('#toast').textContent,/Přidáno 30 nástrojů/);
-    assert.match($('#toast').textContent,new RegExp('(^|\\D)'+unplaced+' nástroj'),'toast counts only unplaced tools from this set');
+    const own=p.modules.filter(m=>added.some(t=>t.moduleId===m.id));
+    assert.equal(own.length,1,'the full set remains together in a parked module');
+    assert.equal(own[0].grouped,true);assert.ok(added.every(t=>t.moduleId===own[0].id));
+    assert.deepEqual(validateLayout({...p,tools:added,modules:own,width:Math.max(p.width,own[0].x+own[0].width),height:Math.max(p.height,own[0].y+own[0].height),limitToBed:false}),[],'the parked module retains valid pockets and walls');
+    assert.equal($('#modal-title').textContent,'Sada se do šuplíku nevešla');
+    assert.ok($('[data-fit="grow"]')&&$('[data-fit="new"]')&&$('[data-fit="keep"]'),'app reports missing space with an explicit choice');
+    assert.match($('.modal-body').textContent,/Velká sada/);
+    click('[data-fit="keep"]');
+    assert.equal($('.modal'),null);assert.match($('#toast').textContent,/zůstaly mimo šuplík/);
+    assert.equal(saved().tools.filter(t=>!oldIds.has(t.id)).length,30,'keeping the parked module preserves every tool');
     click('#app [data-action="undo"]');assert.equal(saved().tools.length,before);
+    assert.ok(!saved().modules.some(m=>m.id===own[0].id),'one undo removes the parked group');
   }finally{setCatalogSource(source);}
 });
 
@@ -268,7 +294,7 @@ test('real set data loads through catalogSets() and the default source without e
   setCatalogSource(null);
   try{
     await openCatalog();
-    assert.equal($('[role=alert]'),null,'loading the real catalogue must not fail');
+    assert.ok($('[role=alert]')===null,'loading the real catalogue must not fail');
     if(real.length){
       assert.match(chipText()[0],/^Sady nářadí \d+/);
       chooseCategory('sets');assert.equal(setIds().length,real.length);

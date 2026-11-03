@@ -162,3 +162,52 @@
   .catalog-set-members input{width:18px;height:18px}
   .catalog-set-toggle{min-height:40px}
 }
+/* Module resize handles (2D board), quick step buttons and tool scale */
+.resize-handle .resize-hit{fill:transparent;stroke:none;pointer-events:all;touch-action:none}
+.resize-handle .resize-grip{fill:#fff;stroke:#c99a4e;stroke-width:.7;opacity:.85;pointer-events:none;vector-effect:non-scaling-stroke}
+.resize-handle:hover .resize-grip,.resize-handle:active .resize-grip{fill:var(--amber);stroke:#a7792c;opacity:1}
+.resize-e,.resize-w{cursor:ew-resize}.resize-n,.resize-s{cursor:ns-resize}.resize-se{cursor:nwse-resize}
+.resize-handle.disabled{cursor:not-allowed}.resize-handle.disabled .resize-grip{fill:#eef1ea;stroke:#b8c2ad;opacity:.7}
+.resize-label rect{fill:#2f3833;opacity:.88}.resize-label text{fill:#fff;font-weight:600;pointer-events:none}
+.resize-label.limited rect{fill:#a4553f}
+.module-steps{display:grid;grid-template-columns:auto 32px 32px auto 32px 32px;align-items:center;gap:6px;margin:10px 0 4px}
+.module-step-label{font-size:11px;color:var(--muted)}.module-steps .module-step-label:not(:first-child){margin-left:8px}
+.module-step-btn{width:32px;height:32px;font-size:16px;font-weight:600;line-height:1}.module-step-btn:disabled{opacity:.45;cursor:not-allowed}
+.module-resize-hint,.tool-scale-hint{margin:4px 0 0}
+.module-resize-button{font-weight:600}
+@media (pointer:coarse){
+  .module-step-btn{width:44px;height:44px}
+  .module-steps{grid-template-columns:auto 44px 44px auto 44px 44px}
+  .resize-handle .resize-grip{stroke-width:1}
+}
+/* Catalogue set options: layout choice, scale disclosure, "does not fit" choice */
+.catalog-set-options{display:flex;flex-direction:column;gap:4px}
+.catalog-set-layout{display:flex;align-items:center;gap:6px;font-size:11px;color:var(--muted);min-width:0}
+.catalog-set-layout select{flex:1;min-width:0;font:inherit;font-size:11px;color:var(--ink);background:#fff;border:1px solid var(--line);border-radius:6px;padding:4px 6px;min-height:30px}
+.catalog-scale{font-size:11px}
+.catalog-scale>summary{cursor:pointer;color:#6c7d5e;font-weight:600;padding:3px 0;min-height:26px;display:flex;align-items:center;gap:6px;list-style-position:inside}
+.catalog-scale>summary b{font-weight:700;color:var(--ink);background:var(--amber-soft);border-radius:4px;padding:0 5px}
+.catalog-scale>summary b:empty{display:none}
+.catalog-scale-body{display:grid;grid-template-columns:1fr 1fr;gap:6px;padding:4px 0 2px}
+.catalog-scale-body label{display:flex;flex-direction:column;gap:2px;color:var(--muted);min-width:0}
+.catalog-scale-input{display:flex;align-items:center;border:1px solid var(--line);border-radius:6px;background:#fff;padding:0 6px}
+.catalog-scale-input input{flex:1;min-width:0;width:100%;border:0;background:none;font:inherit;font-size:12px;color:var(--ink);padding:5px 0;outline:none}
+.catalog-scale-input:focus-within{border-color:var(--green)}
+.catalog-scale-input em{font-style:normal;color:var(--muted)}
+.catalog-scale-preview{grid-column:1/-1;color:var(--muted)}
+.catalog-scale-preview.invalid{color:var(--red)}
+.fit-note{font-size:12px;color:var(--ink);background:var(--amber-soft);border-radius:8px;padding:8px 10px;display:flex;gap:6px;align-items:flex-start}
+.fit-options{display:grid;gap:8px;margin-top:10px}
+.fit-option{display:flex;flex-direction:column;align-items:flex-start;gap:2px;text-align:left;font:inherit;color:var(--ink);background:#fff;border:1px solid var(--line);border-radius:8px;padding:10px 12px;cursor:pointer;min-height:44px}
+.fit-option strong{font-size:13px}
+.fit-option small{font-size:11px;color:var(--muted)}
+.fit-option.primary{border-color:var(--green);background:var(--green-soft)}
+.fit-option:hover:not(:disabled),.fit-option:focus-visible{border-color:var(--green)}
+.fit-option:disabled{opacity:.5;cursor:not-allowed}
+@media(max-width:700px){
+  .catalog-set-layout select,.catalog-scale-input input{min-height:40px;font-size:14px}
+  .catalog-scale>summary{min-height:40px}
+  .catalog-scale-body{grid-template-columns:1fr}
+}
+/* Why an unplaced tool has no module (selected-tool panel) */
+.unplaced-why p{margin:0 0 4px}.unplaced-why .section-link{min-height:32px;margin-right:6px}

@@ -23,6 +23,10 @@ Podrobné kroky před nasazením a kontrolu po něm najdete v [DEPLOY.md](./DEPL
 5. Spusťte automatické rozvržení. Velikost nového modulu se přizpůsobí nástroji včetně vůle a stěn. U vybraného modulu můžete zadat vlastní šířku a hloubku nebo znovu použít automatickou velikost podle nástroje. Změna modulu neškáluje obrys nástroje. Ručně zadané rozměry zůstávají zachované při uložení i dalším rozvržení. Moduly lze přesouvat a nástroje otáčet; zamknuté polohy zůstanou při dalším rozvržení na místě.
 6. Vyřešte hlášené kolize, přesahy a neplatné hloubky. Potom exportujte podklady.
 
+Velikost vybraného odemčeného modulu můžete ve **2D** měnit také tažením úchytů na jeho okraji. Tlačítka **− / +** v nastavení a klávesy **Alt+Shift+šipky** mění šířku nebo hloubku o jeden krok rastru. Tažení hlídá prostor pro kapsy a stěny, sousední moduly, okraj šuplíku a tiskovou plochu. Celé tažení lze vrátit jedním krokem **Zpět**. Pro přesné zadání použijte **Změnit velikost**; tlačítko **Podle nástroje** obnoví automatickou velikost.
+
+U vybraného nástroje lze upravit **Měřítko** v procentech nebo zadat jeho **Délku** (delší stranu aktuálního obrysu). Obě volby mění obrys rovnoměrně v obou osách. Hloubka kapsy a průměr výřezů pro prsty se nemění. Automatický modul se přizpůsobí; ručně nastavený modul si ponechá rozměry a případné přesahy se zobrazí jako upozornění.
+
 ## Jazyk a jednotky / Language and units
 
 Přepínač **CS / EN** a přepínač jednotek **mm / in** jsou v horní liště aplikace. Volba se ukládá v prohlížeči. Bez uložené volby se jazyk řídí nastavením prohlížeče: čeština nebo slovenština zobrazí češtinu, jiné jazyky angličtinu. Palce se jako výchozí jednotka použijí pro `en-US`.
@@ -45,7 +49,9 @@ Pro sadu zvolte **Stejné moduly**, **Společný modul** nebo **Automaticky**. S
 
 Režim rozvržení **Sady nástrojů** dává přednost sjednocení sad. Volba **Nejmenší plocha** zachovává původní konturní párování. Sjednocení může zabrat více místa; výsledek tuto změnu ukazuje a lze jej celý vrátit přes **Zpět**. Ručně zadané sady se ukládají s projektem a do JSON.
 
-## Ovládání 3D náhledu
+## Ovládání 2D a 3D náhledu
+
+V režimu **2D** posouváte pohled tažením pravým tlačítkem myši a kolečkem přibližujete či oddalujete kolem kurzoru. Levé tlačítko slouží k výběru, přesunu modulů a změně jejich velikosti přes úchyty. **Zobrazit vše** obnoví výchozí pohled.
 
 V režimu **3D** otáčíte pohledem tažením levým tlačítkem myši, posouváte jej tažením pravým tlačítkem a kolečkem přibližujete či oddalujete. Funguje to nad modelem i nad prázdnou částí plochy. Tlačítka přiblížení ovládají aktuální pohled; **Zobrazit vše** vrátí výchozí kameru. Přepnutí do 2D a zpět zachová 3D pohled, otevření jiného šuplíku jej obnoví.
 
@@ -56,6 +62,10 @@ Navigace mění pouze kameru. Nepřesouvá moduly, neotáčí nástroje a nepři
 Inzert lze navrhnout i bez fotografování. **Knihovna nástrojů** má složky **Moje nástroje** a **Katalog**. Katalog obsahuje 247 hotových obrysů ve skupinách klíče, imbusy a torxy, nástrčné hlavice a bity, šroubováky, kleště, měření, řezání a kladiva. Lze v něm hledat česky i anglicky a filtrovat metrické a palcové velikosti. Většina obrysů je vygenerovaná podle rozměrů norem DIN/ISO (štítek *podle normy*) nebo představuje typický tvar (*typický tvar*). 17 obrysů pochází z modelů skutečných nástrojů z otevřených knihoven Poly Haven (CC0) a FreeCAD-library (CC-BY-3.0, autor hasecilu). Originály a licence jsou v `dist/catalog/sources/`.
 
 Kategorie **Sady nářadí** nabízí 38 sad podle složení běžně prodávaných sad, například sadu očkoplochých klíčů 6–32 mm (26 ks), imbusy 1,5–10 mm nebo sadu nástrčných hlavic 1/2" 10–32 mm. **Přidat sadu** vloží celou sadu jedním krokem, který jde vrátit přes Zpět. V obsahu sady lze odškrtnout velikosti, které nemáte. Nástroje, které se do šuplíku nevejdou, zůstanou v projektu a aplikace je ohlásí.
+
+Před přidáním sady zvolte **Jeden modul pro celou sadu** (výchozí) nebo **Samostatný modul pro každý nástroj**. Samostatné moduly mají stejné vnější rozměry a nástroje míří stejným směrem. Přidaná sada se objeví i v nabídce **Sady nástrojů**, kde ji lze dále upravovat. Při hromadném přidání zůstanou jednotlivé sady zachované a celé vložení vrátíte jedním krokem **Zpět**. Pokud se nevejdou, aplikace nabídne rozšíření nebo nový šuplík se zachováním skupin a sad; změnu tiskového omezení ukáže zvlášť.
+
+V rozbalovací nabídce **Upravit měřítko** u katalogového nástroje nebo sady můžete zadat **20–500 %** nebo požadovanou délku. U sady se délka vztahuje k nejdelšímu vybranému nástroji a všechny vybrané obrysy se zvětší či zmenší stejným poměrem. Náhled ukazuje výslednou délku ještě před přidáním nebo uložením do knihovny.
 
 Obrysy z katalogu jsou jmenovité. Konkrétní nástroj se může lišit, proto ho před tiskem porovnejte se zkušebním PDF 1:1.
 
