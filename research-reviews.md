@@ -56,7 +56,7 @@ V hlavním autorském příspěvku je rozsáhlá skutečná uživatelská zpětn
 Primární diskuse obsahuje několik skutečných neúspěšných pokusů. [Veřejný test a komentáře, březen–květen 2026](https://www.reddit.com/r/gridfinity/comments/1s0ne46/i_built_a_web_tool_to_carve_bins_from_a_photo/)
 
 - Uživatel se třemi snímky nenalezl referenční čtverec; vytiskl jej bílý, zatímco autor do té doby zkoušel pouze černý na bílém podkladu. Později další uživatel hlásil neúspěch i s černou referencí. **Nevidět měřítko není důvod přinutit uživatele ručně kreslit nástroj; potřebuje jasnou podporu podmínek snímku a možnost použít běžné měřítko.**
-- Autor sám přiznal, že stín někdy vstupuje do kontury nástroje; uvažoval o dalším posuvníku. Pro Šuplík Studio dává větší smysl automatická volba a kontrola než další ruční ladění.
+- Autor sám přiznal, že stín někdy vstupuje do kontury nástroje; uvažoval o dalším posuvníku. Pro InsertCreator dává větší smysl automatická volba a kontrola než další ruční ladění.
 - Uživatel chtěl velmi tenkou kontrastní vložku; tehdejší minimum výšky bylo 5 mm. Další se ptal na více různých nástrojů v jednom výsledku.
 - Uživatel výslovně řešil obavu, že se po období zdarma změní služba na předplatné. Autor slíbil zachování bezplatného provozu. Jde o obavu z cenového modelu, nikoli doklad, že taková změna nastala.
 

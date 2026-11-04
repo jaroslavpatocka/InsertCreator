@@ -350,7 +350,7 @@ function cancelOppositeFaces(triangles,{canonical=false}={}){
 }
 
 export function trianglesVolume(triangles){return Math.abs(triangles.reduce((s,[a,b,c])=>s+(a[0]*(b[1]*c[2]-b[2]*c[1])-a[1]*(b[0]*c[2]-b[2]*c[0])+a[2]*(b[0]*c[1]-b[1]*c[0]))/6,0));}
-export function encodeSTL(triangles,label='Suplik Studio | mm'){
+export function encodeSTL(triangles,label='InsertCreator | mm'){
   if(!triangles.length)throw i18nError('Pro tento export nejsou k dispozici žádné kontury.');
   const bytes=new Uint8Array(84+triangles.length*50),view=new DataView(bytes.buffer);bytes.set(new TextEncoder().encode(label).slice(0,80));view.setUint32(80,triangles.length,true);let offset=84;
   for(const [a,b,c] of triangles){const u=b.map((v,i)=>v-a[i]),v=c.map((v,i)=>v-a[i]);let normal=[u[1]*v[2]-u[2]*v[1],u[2]*v[0]-u[0]*v[2],u[0]*v[1]-u[1]*v[0]],length=Math.hypot(...normal);normal=normal.map(v=>length?v/length:0);for(const xyz of [normal,a,b,c])for(const value of xyz){view.setFloat32(offset,value,true);offset+=4;}view.setUint16(offset,0,true);offset+=2;}

@@ -312,7 +312,7 @@ const path=points=>points.map((p,i)=>`${i?'L':'M'}${fmt(p.x)},${fmt(p.y)}`).join
 export function exportSVG(project,{moduleId=null}={}) {
   const {modules,tools,origin,width,height}=selected(project,moduleId);
   const shift=p=>({x:p.x-origin.x,y:p.y-origin.y});
-  return `<?xml version="1.0" encoding="UTF-8"?>\n<svg xmlns="http://www.w3.org/2000/svg" width="${fmt(width)}mm" height="${fmt(height)}mm" viewBox="0 0 ${fmt(width)} ${fmt(height)}"><title>${xml(project.name||'Šuplík Studio')}</title><desc>${xml(tr('Rozměry v mm. Černá = modul; červená = kapsa včetně vůle {clearance} mm. Ploché dno, rozteč modulů {grid} mm.',{clearance:n(project.clearance,.8),grid:n(project.grid,42)}))}</desc><g id="modules" fill="none" stroke="black" stroke-width="0.15">${modules.map(m=>m.cells?`<path d="${path(moduleOutline(m,project.grid,{inset:.25}).map(shift))}"/>`:`<rect x="${fmt(m.x-origin.x+.25)}" y="${fmt(m.y-origin.y+.25)}" width="${fmt(m.width-.5)}" height="${fmt(m.height-.5)}"/>`).join('')}</g><g id="pockets" fill="none" stroke="red" stroke-width="0.15">${tools.map(t=>`<path id="${xml(t.id)}" data-depth-mm="${n(t.depth,10)}" d="${path(pocketOutline(t,n(project.clearance,.8)).map(shift))}"><title>${xml(t.name)}</title></path>`).join('')}</g></svg>`;
+  return `<?xml version="1.0" encoding="UTF-8"?>\n<svg xmlns="http://www.w3.org/2000/svg" width="${fmt(width)}mm" height="${fmt(height)}mm" viewBox="0 0 ${fmt(width)} ${fmt(height)}"><title>${xml(project.name||'InsertCreator')}</title><desc>${xml(tr('Rozměry v mm. Černá = modul; červená = kapsa včetně vůle {clearance} mm. Ploché dno, rozteč modulů {grid} mm.',{clearance:n(project.clearance,.8),grid:n(project.grid,42)}))}</desc><g id="modules" fill="none" stroke="black" stroke-width="0.15">${modules.map(m=>m.cells?`<path d="${path(moduleOutline(m,project.grid,{inset:.25}).map(shift))}"/>`:`<rect x="${fmt(m.x-origin.x+.25)}" y="${fmt(m.y-origin.y+.25)}" width="${fmt(m.width-.5)}" height="${fmt(m.height-.5)}"/>`).join('')}</g><g id="pockets" fill="none" stroke="red" stroke-width="0.15">${tools.map(t=>`<path id="${xml(t.id)}" data-depth-mm="${n(t.depth,10)}" d="${path(pocketOutline(t,n(project.clearance,.8)).map(shift))}"><title>${xml(t.name)}</title></path>`).join('')}</g></svg>`;
 }
 export function exportDXF(project,{moduleId=null}={}) {
   const {modules,tools,origin,height}=selected(project,moduleId),lines=[];
@@ -328,14 +328,14 @@ const printTools=(project,tools)=>tools.map(t=>({...t,poly:clean(pocketOutline(t
 /** Binary STL in mm: solid or open contour walls, with the selected real underside. */
 export function exportSTL(project,{moduleId=null,checkBed=true}={}){
   const {modules,tools,origin}=selected(project,moduleId);if(checkBed)validatePrintBed(project,modules);
-  return encodeSTL(buildPrintTriangles(project,modules,printTools(project,tools),origin),'Suplik Studio | mm | '+(project.printMode||'solid')+' | '+(project.bottomMode||'plain'));
+  return encodeSTL(buildPrintTriangles(project,modules,printTools(project,tools),origin),'InsertCreator | mm | '+(project.printMode||'solid')+' | '+(project.bottomMode||'plain'));
 }
 /** One millimetre high contour ring: same pocket clearance, no full block or base. */
 export function exportFitSTL(project,{moduleId=null}={}){
   const {modules,tools,origin}=selected(project,moduleId);
   const triangles=buildPrintTriangles(project,modules,printTools(project,tools),origin,{fit:true});
   if(project.limitToBed&&triangles.length){let minX=Infinity,minY=Infinity,maxX=-Infinity,maxY=-Infinity;for(const triangle of triangles)for(const p of triangle){minX=Math.min(minX,p[0]);minY=Math.min(minY,p[1]);maxX=Math.max(maxX,p[0]);maxY=Math.max(maxY,p[1]);}const width=maxX-minX,height=maxY-minY,bw=n(project.bedWidth,220),bh=n(project.bedHeight,220);if(!((width<=bw&&height<=bh)||(width<=bh&&height<=bw)))throw i18nError('Testovací obrys se nevejde na tiskovou plochu. Vyberte jeden menší modul.');}
-  return encodeSTL(triangles,'Suplik Studio | mm | 1mm contour fit test');
+  return encodeSTL(triangles,'InsertCreator | mm | 1mm contour fit test');
 }
 /** Geometric volume only; does not pretend to predict slicer infill or print duration. */
 export function printStats(project,{moduleId=null,checkBed=true}={}){

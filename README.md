@@ -1,4 +1,6 @@
-# Šuplík Studio
+# InsertCreator
+
+Zdrojový repozitář: [InsertCreator](https://github.com/jaroslavpatocka/InsertCreator).
 
 Česká aplikace pro návrh modulárních inzertů do šuplíku. Fotografie se zpracovávají lokálně v prohlížeči. Aplikace nepotřebuje účet, placené API ani server pro výpočty.
 

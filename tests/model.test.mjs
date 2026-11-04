@@ -58,7 +58,7 @@ test('model validation errors are translated and show length ranges in the displ
   assert.throws(()=>validateProject({...blankProject(),width:10}),/Neplatná hodnota: šířka \(42–3\s000 mm\)/);
   setLang('en',{save:false});
   try{
-    assert.throws(()=>validateProject({}),/does not contain a Šuplík Studio project/);
+    assert.throws(()=>validateProject({}),/does not contain an InsertCreator project/);
     assert.throws(()=>validateProject({...blankProject(),width:10}),/Invalid value: width \(42–3,000 mm\)/);
     setAppUnit('in',{save:false});
     assert.throws(()=>validateProject({...blankProject(),width:10}),/Invalid value: width \(1\.654–118\.11 in\)/);

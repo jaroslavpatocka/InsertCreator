@@ -68,7 +68,7 @@ export default {
   '{n} nástroje se nevešly do šuplíku.':'{n} tools did not fit in the drawer.',
   '{n} nástrojů se nevešlo do šuplíku.':'{n} tools did not fit in the drawer.',
   // Document, header and navigation
-  'Šuplík Studio — místo pro každý nástroj':'Šuplík Studio — a place for every tool',
+  'InsertCreator — místo pro každý nástroj':'InsertCreator — a place for every tool',
   'Z fotky nástroje k přesnému inzertu. Český editor modulárních organizérů do šuplíku s lokálním zpracováním a exportem STL, SVG a DXF.':'From a photo of a tool to a precise drawer insert. A modular drawer organizer editor with on-device processing and STL, SVG and DXF export.',
   'Jazyk':'Language',
   'Výchozí jednotky aplikace':'Default app units',
@@ -342,7 +342,7 @@ export default {
   'Fotografie se nikam neodesílají. Detekce kombinuje lokální model U²-Net a hrany v původní fotce. Pokud snímek nedává dost jistoty, vyžádá novou fotku. U zcela neviditelné hrany nelze skutečný tvar spolehlivě dopočítat.':'Photos are never uploaded. Detection combines an on-device U²-Net model with edges in the original photo. If a shot is not reliable enough, it asks for a new one. A completely invisible edge cannot be reconstructed reliably.',
   'Jednotky: rozměry lze zadávat v mm i palcích (např. 12 in, 3 1/2" nebo 30 cm). Výchozí jednotky přepnete v horní liště, vlastní jednotky šuplíku v Rozměrech šuplíku. Exportované soubory jsou vždy v milimetrech.':'Units: sizes can be entered in mm or inches (e.g. 12 in, 3 1/2" or 30 cm). Switch the default units in the top bar and a drawer’s own units in Drawer dimensions. Exported files are always in millimetres.',
   'Na mobilu: přidejte stránku na plochu přes nabídku prohlížeče. Po prvním načtení může editor díky uloženým souborům pracovat i offline. Projekty mezi zařízeními přenesete přes JSON.':'On mobile: add the page to your home screen from the browser menu. After the first load the editor can also work offline thanks to cached files. Move projects between devices with JSON.',
-  'Šuplík Studio 1.2 · vlastní editor bez účtu a předplatného.':'Šuplík Studio 1.2 · an independent editor with no account or subscription.',
+  'InsertCreator 1.2 · vlastní editor bez účtu a předplatného.':'InsertCreator 1.2 · an independent editor with no account or subscription.',
   'Rozumím, jdeme tvořit':'Got it, let’s build',
 
   // Export

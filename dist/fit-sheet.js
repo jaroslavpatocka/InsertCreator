@@ -27,7 +27,7 @@ export function exportFitPDF(project,options={}){
   const inches=unit()==='in',pages=fitSheetPages(project,options),objects=['','<< /Type /Catalog /Pages 2 0 R /ViewerPreferences << /PrintScaling /None >> >>','', '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>'],pageIds=[];
   for(const [index,p] of pages.entries()){
     const m=p.module;
-    let content='0.15 0.18 0.16 rg\n'+text(tr('ŠUPLÍK STUDIO / ZKOUŠKA VELIKOSTI 1:1'),10,13,13);
+    let content='0.15 0.18 0.16 rg\n'+text(tr('InsertCreator / ZKOUŠKA VELIKOSTI 1:1'),10,13,13);
     content+=text(tr('{name} | {size} | vůle {clearance}',{name:String(m.name).slice(0,42),size:fmtSize(m.width-.5,m.height-.5),clearance:fmtLen(project.clearance)}),10,21,9);
     content+=text(tr('Tisk: A4, skutečná velikost 100 %. Vypnout přizpůsobení stránce.'),10,28,9);
     content+=`q ${num(PT)} 0 0 ${num(-PT)} ${num(10*PT)} ${num((pageHeight-35)*PT)} cm\n0 0 190 240 re W n\n`;

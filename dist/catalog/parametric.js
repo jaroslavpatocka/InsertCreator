@@ -34,7 +34,7 @@
 //   chisels 18/26 mm, pin punch 7 mm) exist because common commercial tool sets contain them.
 import Clipper from '../vendor/clipper.js';
 
-const SRC={name:'Šuplík Studio parametric (DIN/ISO dimensions)',license:'CC0-1.0',url:''};
+const SRC={name:'InsertCreator parametric (DIN/ISO dimensions)',license:'CC0-1.0',url:''};
 const S=100,PI=Math.PI,D2R=PI/180;
 const P=(x,y)=>({x,y});
 const nseg=r=>Math.max(12,Math.min(48,Math.ceil(2*PI*r/2)));

@@ -14,7 +14,7 @@ s=s.replace('<button class="tiny-button" data-action="auto">','<div class="tool-
 s=s.replace("Auto rozložení</button></div><div class=\"board-area\"", "Auto rozložení</button></div></div><div class=\"board-area\"");
 s=s.replace("home:()=>{closeModal();", "'move-mode':()=>{moveMode=!moveMode;render();if(moveMode)toast('Přetáhněte modul. Tlačítkem Hotovo obnovíte posouvání stránky.');},\n home:()=>{closeModal();");
 s=s.replace("if(view==='3d'||m.locked)","if((e.pointerType==='touch'&&!moveMode)||view==='3d'||m.locked)");
-s=s.replace("STUDIO / 1.1","STUDIO / 1.2").replaceAll('Šuplík Studio 1.1','Šuplík Studio 1.2');
+s=s.replace("InsertCreator / 1.1","InsertCreator / 1.2").replaceAll('InsertCreator 1.1','InsertCreator 1.2');
 s=s.replace('Moduly mají ploché dno.','Uchycení zvolte podle svého šuplíku.');
 s=s.replace('STL obsahuje plné moduly s kapsami a plochým dnem. SVG/DXF jsou obrysy pro pěnu nebo CNC. Rastr 42 mm umožňuje sestavu rozšiřovat; nejde o plný profil Gridfinity s patkami. Nejdřív ověřte rozměr známého nástroje a vytiskněte zkušební modul.','Zvolte úspornou otevřenou konstrukci nebo plný blok. Dno může být hladké, s patkami Gridfinity, kapsami pro magnety nebo připravené k lepení. Nejdřív přiložte nástroj na PDF v měřítku 1:1 nebo vytiskněte tenkou zkoušku vůle. SVG/DXF slouží pro pěnu či CNC.');
 replaceFunction("let exportFormat='stl'",'function saveJSON()',`const bottomNames={plain:'Hladké dno',grid:'Gridfinity · patky 42 mm',magnet:'Magnety',adhesive:'Lepidlo / oboustranná páska'};
@@ -54,7 +54,7 @@ function openExport(){
       else if(exportScope==='selected')download(slug(m.name)+'.stl',exportSTL(project,opts),'model/stl');
       else{
         const files=entries.map((m,i)=>({name:\`\${String(i+1).padStart(2,'0')}-\${slug(m.name)}.stl\`,data:exportSTL(project,{moduleId:m.id})}));
-        files.push({name:'sestava.svg',data:exportSVG(project)},{name:'projekt.json',data:JSON.stringify({schemaVersion:1,app:'Suplik Studio',project},null,2)},{name:'CTETE-ME.txt',data:\`Šuplík Studio\n\${project.name}\n\${project.printMode==='light'?'Úsporná otevřená konstrukce':'Plný blok s kapsami'} · \${bottomNames[project.bottomMode]}\nRastr \${project.grid} mm · vůle \${project.clearance} mm\nVšechny STL jsou v milimetrech. Vložte dnem na tiskovou podložku.\n\${(stats?.notes||[]).join('\\n')}\nNejprve ověřte vůli pomocí PDF 1:1 nebo tenké zkoušky STL v aplikaci.\n\n\${entries.map((m,i)=>\`\${i+1}. \${m.name}: \${m.width-.5} × \${m.height-.5} mm, poloha \${m.x},\${m.y} mm\${m.locked?' (zamčeno)':''}\`).join('\\n')}\`});
+        files.push({name:'sestava.svg',data:exportSVG(project)},{name:'projekt.json',data:JSON.stringify({schemaVersion:1,app:'InsertCreator',project},null,2)},{name:'CTETE-ME.txt',data:\`InsertCreator\n\${project.name}\n\${project.printMode==='light'?'Úsporná otevřená konstrukce':'Plný blok s kapsami'} · \${bottomNames[project.bottomMode]}\nRastr \${project.grid} mm · vůle \${project.clearance} mm\nVšechny STL jsou v milimetrech. Vložte dnem na tiskovou podložku.\n\${(stats?.notes||[]).join('\\n')}\nNejprve ověřte vůli pomocí PDF 1:1 nebo tenké zkoušky STL v aplikaci.\n\n\${entries.map((m,i)=>\`\${i+1}. \${m.name}: \${m.width-.5} × \${m.height-.5} mm, poloha \${m.x},\${m.y} mm\${m.locked?' (zamčeno)':''}\`).join('\\n')}\`});
         download(name+'-moduly.zip',zipFiles(files),'application/zip');
       }
       modal.close();toast('Soubor je připravený ve stažených souborech.');

@@ -1,10 +1,10 @@
-# Architektura Šuplík Studia
+# Architektura InsertCreator
 
 Mapa projektu aktualizovaná 4. 11. 2026. Dokument popisuje hranice editoru, fotografie, rozvržení a skutečné výrobní geometrie.
 
 ## Základ aplikace
 
-Šuplík Studio je český editor modulárních organizérů. Běží na zařízení uživatele jako statická webová aplikace v čistém JavaScriptu s ES moduly. Nemá aplikační backend, databázový server, framework ani build krok. Adresář `dist/` obsahuje přímo editované zdrojové soubory i soubory určené k nasazení.
+InsertCreator je český editor modulárních organizérů. Běží na zařízení uživatele jako statická webová aplikace v čistém JavaScriptu s ES moduly. Nemá aplikační backend, databázový server, framework ani build krok. Adresář `dist/` obsahuje přímo editované zdrojové soubory i soubory určené k nasazení.
 
 Aktivní projekt je v tomto adresáři. ZIP se zdroji a dva deployment archivy v nadřazeném adresáři jsou samostatné balíčky; nejsou vstupem pro běh nebo testování pracovního stromu.
 

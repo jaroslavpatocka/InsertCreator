@@ -1,6 +1,6 @@
 # Nasazení na web
 
-Šuplík Studio je statická aplikace. Nepotřebuje backend ani databázi; projekt se
+InsertCreator je statická aplikace. Nepotřebuje backend ani databázi; projekt se
 nasazuje z adresáře `dist`. Konfigurace `.openai/hosting.json` už tento adresář
 nastavuje jako statický webroot.
 

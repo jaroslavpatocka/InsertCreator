@@ -86,5 +86,5 @@ export function baseplateTriangles(project,{tile}={}){
 }
 
 export function exportBaseplateSTL(project,options={}){
-  return encodeSTL(baseplateTriangles(project,options),'Suplik Studio | Gridfinity baseplate | mm');
+  return encodeSTL(baseplateTriangles(project,options),'InsertCreator | Gridfinity baseplate | mm');
 }

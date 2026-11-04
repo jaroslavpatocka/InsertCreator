@@ -6,7 +6,7 @@ export default {
   // model.js — import/validation
   'Neplatná hodnota: {label} ({range}).':'Invalid value: {label} ({range}).',
   'Neplatná hodnota: {label}.':'Invalid value: {label}.',
-  'Soubor neobsahuje projekt Šuplík Studia.':'The file does not contain a Šuplík Studio project.',
+  'Soubor neobsahuje projekt InsertCreator.':'The file does not contain an InsertCreator project.',
   'Projekt je příliš velký. Limit je 300 nástrojů a 400 modulů.':'The project is too large. The limit is 300 tools and 400 modules.',
   'Duplicitní identifikátor modulu.':'Duplicate module identifier.',
   'Duplicitní identifikátor nástroje.':'Duplicate tool identifier.',
@@ -105,7 +105,7 @@ export default {
   'Pro tento export nejsou k dispozici žádné kontury.':'No contours are available for this export.',
   // fit-sheet.js (PDF text is transliterated to ASCII)
   'Šablona by měla více než 250 stran. Exportujte vybraný modul.':'The template would have more than 250 pages. Export the selected module.',
-  'ŠUPLÍK STUDIO / ZKOUŠKA VELIKOSTI 1:1':'SUPLIK STUDIO / 1:1 SIZE CHECK',
+  'InsertCreator / ZKOUŠKA VELIKOSTI 1:1':'InsertCreator / 1:1 SIZE CHECK',
   '{name} | {size} | vůle {clearance}':'{name} | {size} | clearance {clearance}',
   'Tisk: A4, skutečná velikost 100 %. Vypnout přizpůsobení stránce.':'Print: A4, actual size 100 %. Turn off fit to page.',
   'Tato úsečka musí mít přesně 100 mm.':'This line must measure exactly 100 mm.',

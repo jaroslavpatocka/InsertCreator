@@ -281,7 +281,7 @@ test('language switch in the top bar translates the interface, persists and upda
     assert.match(win.document.title,/a place for every tool/);assert.match($('meta[name=description]').getAttribute('content'),/drawer insert/);
     for(const selector of ['.topbar','.page-heading .subtitle','.steps','.board-toolbar','.board-footer','.metrics','#drawer-settings','.export-card','.footer-line','.mobile-nav','.sidebar-nav'])
       assert.doesNotMatch($(selector).textContent,czech,selector+' must be fully translated');
-    action('help');assert.doesNotMatch($('.modal').textContent.replace(/Šuplík Studio/g,''),czech,'Help must be fully translated');click('[data-modal-close-extra]');
+    action('help');assert.doesNotMatch($('.modal').textContent,czech,'Help must be fully translated');click('[data-modal-close-extra]');
     action('export');assert.match($('.modal-head h2').textContent,/Ready to make/);click('[data-modal-close]');
     action('projects');assert.match($('.modal-head h2').textContent,/My drawers/);click('[data-modal-close]');
   }finally{click('#app [data-action=set-lang][data-value=cs]');}

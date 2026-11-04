@@ -53,7 +53,7 @@ export async function preparePrintBatch(project,{moduleIds,signal,onProgress}={}
   const progress=event=>{abort();try{onProgress?.(event);}catch{}abort();};
   const pause=async()=>{await new Promise(resolve=>setTimeout(resolve,0));abort();};
   abort();
-  if(!project||!Array.isArray(project.modules)||!Array.isArray(project.tools))throw i18nError('Soubor neobsahuje projekt Šuplík Studia.');
+  if(!project||!Array.isArray(project.modules)||!Array.isArray(project.tools))throw i18nError('Soubor neobsahuje projekt InsertCreator.');
   const snapshot=clone(project),ids=moduleIds===undefined?snapshot.modules.map(module=>module.id):moduleIds;
   if(!Array.isArray(ids)||!ids.length||ids.some(id=>typeof id!=='string'||!id)||new Set(ids).size!==ids.length)throw i18nError('Vyberte alespoň jeden platný modul pro tisk.');
   if(snapshot.tools.length>300||snapshot.modules.length>400)throw i18nError('Projekt je příliš velký. Limit je 300 nástrojů a 400 modulů.');
@@ -81,7 +81,7 @@ export async function preparePrintBatch(project,{moduleIds,signal,onProgress}={}
       if(rotation===null)throw i18nError('Tiskový díl se nevejde na zadanou tiskovou plochu.');
       const local=mesh.map(triangle=>triangle.map(point=>rotation?[box.height-(point[1]-box.min[1]),point[0]-box.min[0],point[2]]:[point[0]-box.min[0],point[1]-box.min[1],point[2]]));
       validatePrintMesh(local);
-      const index=moduleParts.length+1,file=`${String(moduleIndex+1).padStart(3,'0')}-${slug(module.name||module.id)}-${String(index).padStart(3,'0')}.stl`,data=encodeSTL(local,'Suplik Studio | mm | cut '+module.id+' '+index);
+      const index=moduleParts.length+1,file=`${String(moduleIndex+1).padStart(3,'0')}-${slug(module.name||module.id)}-${String(index).padStart(3,'0')}.stl`,data=encodeSTL(local,'InsertCreator | mm | cut '+module.id+' '+index);
       bytes+=data.byteLength;if(bytes>MAX_BYTES)throw i18nError('Tiskové díly přesahují limit 128 MB. Vyberte méně modulů a export zopakujte.');
       const offset={x:round(meshOrigin.x+box.min[0]),y:round(meshOrigin.y+box.min[1]),z:0},assemblyTransform=rotation?[0,1,0,offset.x,-1,0,0,round(offset.y+box.height),0,0,1,0,0,0,0,1]:[1,0,0,offset.x,0,1,0,offset.y,0,0,1,0,0,0,0,1];
       const part={moduleId:module.id,file,index,count:0,row:tile.row,column:tile.column,offset,rotationForPrinting:rotation,assemblyTransform,clip:tile.clip||{x:module.x,y:module.y,width:module.width,height:module.height},bounds:{width:rotation?box.height:box.width,height:rotation?box.width:box.height,heightMm:box.heightMm},sourceBounds:{width:box.width,height:box.height,heightMm:box.heightMm},triangles:local.length,volumeMm3:trianglesVolume(local)};
