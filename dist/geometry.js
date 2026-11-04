@@ -1,6 +1,7 @@
 import {moduleOutline,modulePadding} from './module-footprint.js';
 import Clipper from './vendor/clipper.js';
-import {buildPrintTriangles,encodeSTL,trianglesVolume,printConfig,validatePrintBed} from './print-geometry.js';
+import {buildColorZones,buildPrintTriangles,encodeSTL,trianglesVolume,printConfig,validatePrintBed} from './print-geometry.js';
+import {materialConfig} from './print-material.js';
 import {pocketOutline} from './finger-grip.js';
 export {pocketOutline} from './finger-grip.js';
 import {t as tr,i18nError} from './i18n.js';
@@ -341,7 +342,8 @@ export function exportFitSTL(project,{moduleId=null}={}){
 export function printStats(project,{moduleId=null,checkBed=true}={}){
   const {modules,tools,origin}=selected(project,moduleId),prepared=printTools(project,tools),cfg=printConfig(project);
   if(checkBed)validatePrintBed(project,modules);
-  const triangles=buildPrintTriangles(project,modules,prepared,origin),volumeMm3=trianglesVolume(triangles);
+  const zones=materialConfig(project).enabled?buildColorZones(project,modules,prepared,origin):null;
+  const triangles=zones?zones.flatMap(zone=>zone.mesh):buildPrintTriangles(project,modules,prepared,origin),volumeMm3=zones?zones.reduce((sum,zone)=>sum+trianglesVolume(zone.mesh),0):trianglesVolume(triangles);
   const solidVolumeMm3=cfg.printMode==='solid'?volumeMm3:trianglesVolume(buildPrintTriangles({...project,printMode:'solid'},modules,prepared,origin));
   let heightMm=0;for(const triangle of triangles)for(const p of triangle)heightMm=Math.max(heightMm,p[2]);
   const notes=[];

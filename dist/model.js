@@ -1,3 +1,4 @@
+import {materialConfig} from './print-material.js';
 import {validateFingerGrips} from './finger-grip.js';
 import {validateToolSets} from './tool-sets.js';
 import {validateModuleFootprint} from './module-footprint.js';
@@ -23,6 +24,7 @@ export function validateProject(input){
   out.bedHeight=finite(p.bedHeight??220,50,2000,'hloubka tiskové plochy');
   out.limitToBed=p.limitToBed!==false;
   out.connectors=p.connectors===true;
+  if(p.multiMaterial&&typeof p.multiMaterial==='object')out.multiMaterial=materialConfig(p);
   out.jointClearance=finite(p.jointClearance??.2,0,1,'vůle spojky');
   out.unit=['mm','in'].includes(p.unit)?p.unit:'';
   out.sizeLabels=p.sizeLabels===true;

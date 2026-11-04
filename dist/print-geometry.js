@@ -4,6 +4,7 @@ import {i18nError} from './i18n.js';
 import {fmtLen,fmtSize} from './units.js';
 import {planSizeLabels} from './size-labels.js';
 import {moduleOutline,validateModuleFootprint,containsPocketWalls} from './module-footprint.js';
+import {FLOOR_RESERVE,materialConfig} from './print-material.js';
 
 const SCALE=10000,EPS=1e-7;
 const number=(value,fallback)=>Number.isFinite(+value)?+value:fallback;
@@ -98,7 +99,7 @@ export function validatePrintBed(project,modules){
 }
 
 /** Build non-overlapping material slabs, then expose only their actual boundary faces. */
-export function buildPrintTriangles(project,modules,tools,origin={x:0,y:0},{fit=false,clip=null,labelPlan:providedLabelPlan=null,joints=null}={}){
+export function buildPrintTriangles(project,modules,tools,origin={x:0,y:0},{fit=false,clip=null,labelPlan:providedLabelPlan=null,joints=null,inlay=null}={}){
   const kernel=clip?cutKernel:defaultKernel,{round,toInt,fromInt,boolean,union,subtract,offset,rect,roundedRect,circle}=kernel;
   const cfg=printConfig(fit?{...project,bottomMode:'plain'}:project),triangles=[];
   if(clip&&(!['x','y','width','height'].every(key=>typeof clip[key]==='number'&&Number.isFinite(clip[key]))||clip.width<=0||clip.height<=0))throw i18nError('Řez modelu musí mít platnou polohu a kladné rozměry.');
@@ -207,7 +208,7 @@ export function buildPrintTriangles(project,modules,tools,origin={x:0,y:0},{fit=
     const rings=union(pockets.flatMap(t=>subtract(offset(t.poly,Math.max(1.2,cfg.wall)),[t.poly])));
     if(fit){if(rings.length)slabs([0,1],[rings]);continue;}
     let feet=[];
-    if(cfg.bottomMode==='grid'){
+    if(cfg.bottomMode==='grid'&&!inlay){
       const occupied=footprint.cells?new Set(footprint.cells.map(cell=>`${cell.x},${cell.y}`)):null;
       for(let y=0;y<m.height-1;y+=42)for(let x=0;x<m.width-1;x+=42){
         if(occupied&&!occupied.has(`${Math.round(x/42)},${Math.round(y/42)}`))continue;
@@ -238,6 +239,23 @@ export function buildPrintTriangles(project,modules,tools,origin={x:0,y:0},{fit=
       }
     }
     const labels=labelPlan.labels.filter(label=>label.moduleId===m.id&&touchesClip(label.plate)),joint=joints?.get(m.id);
+    if(inlay){
+      // Separate closed solids that fill what the body leaves open. They share the cut of the body.
+      const solid=(paths,z0,z1)=>{let cut=clip?clipped(union(paths)):paths;if(clip)cut=cut.map(poly=>cleanCapBacktracks(poly,kernel.scale));if(!cut.length)return;face(cut,round(z0),false);face(cut,round(z1),true);sides(cut,round(z0),round(z1));};
+      if(inlay==='text')for(const label of labels)solid(label.polygons,label.top-label.depth,label.top);
+      else{
+        const thickness=materialConfig(project).floorThickness;
+        for(const tool of pockets){
+          // Only a pocket above a magnet must stay clear of it.
+          const keep=magnets.length&&boolean([tool.poly],magnets,Clipper.ClipType.ctIntersection).length?cfg.magnetDepth+FLOOR_RESERVE:FLOOR_RESERVE;
+          const depth=number(tool.depth,10),light=cfg.printMode==='light',top=light?baseTop+thickness:H-depth;
+          if(light?baseTop+depth+thickness>H+EPS:top-thickness<bottom+keep-EPS)throw i18nError('Kapsa „{name}“ je pro vložku dna příliš hluboká. Zmenšete hloubku kapsy nebo tloušťku vložky.',{name:tool.name});
+          solid([tool.poly],top-thickness,top);
+        }
+      }
+      const closed=stitchBoundaryEdges(triangles.splice(start),{canonical:!!clip});for(const triangle of closed)triangles.push(triangle);
+      continue;
+    }
     if(joint||(clip&&cfg.printMode!=='light')||!disjointComponents(outer,pockets,labels,bottom,baseTop,H,magnets,feet)){
     const levels=[bottom,baseTop,...pockets.map(t=>cfg.printMode==='light'?baseTop+number(t.depth,10):H-number(t.depth,10)),cfg.printMode==='solid'?H:baseTop];
     if(magnets.length)levels.push(cfg.magnetDepth);
@@ -268,6 +286,17 @@ export function buildPrintTriangles(project,modules,tools,origin={x:0,y:0},{fit=
   const result=fit?stitchBoundaryEdges(triangles,{canonical:!!clip}):triangles;
   validatePrintMesh(result);
   return result;
+}
+
+/** The colour zones of one print part. Pockets go deeper by the inlay, so a tool still sits at its set depth. */
+export function buildColorZones(project,modules,tools,origin,options={}){
+  const config=materialConfig(project),zones=[];
+  const floor=config.floor?buildPrintTriangles(project,modules,tools,origin,{...options,inlay:'floor'}):[];
+  const carved=config.floor?tools.map(tool=>({...tool,depth:number(tool.depth,10)+config.floorThickness})):tools;
+  zones.push({zone:'body',mesh:buildPrintTriangles(project,modules,carved,origin,options)});
+  if(floor.length)zones.push({zone:'floor',mesh:floor});
+  if(config.text){const mesh=buildPrintTriangles(project,modules,tools,origin,{...options,inlay:'text'});if(mesh.length)zones.push({zone:'text',mesh});}
+  return zones;
 }
 
 /** Validate the exact float32 surface sent to STL, at the same 0.00001 mm edge precision as QA. */

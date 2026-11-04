@@ -45,6 +45,10 @@ Jednotky lze kombinovat. Výchozí jednotka platí pro celou aplikaci a každý 
 
 The **CS / EN** language switch and the **mm / in** unit switch are in the app's top bar. The app-wide unit can be overridden per drawer, and any length field accepts values with an explicit unit (`12 in`, `3 1/2"`, `30 cm`, `15 mm`). Data and manufacturing exports are always stored in millimetres.
 
+## Vícebarevný tisk
+
+V exportu zapněte **Vícebarevný tisk** a nastavte barvy těla, dna kapes a textu. Tloušťka vložky dna je 0,2–2 mm; hloubka pro nástroj se nemění. ZIP obsahuje pro každý díl soubor 3MF s pojmenovanými částmi a čísly filamentů a ve složce `barvy` samostatné STL se stejnými souřadnicemi. Bambu Studio načte části i čísla filamentů, samotné barvy si nastavíte ve sliceru podle čísel z `README.txt`.
+
 ## Rozložení nástrojů
 
 Před výpočtem se aplikace zeptá, co je důležitější. **Co nejvíc šetřit místem** přesune nástroje do volného místa větších modulů, i když spolu nesouvisí, a sady se mohou rozdělit. **Udržet co největší logiku** nechá každou sadu pohromadě; aby se vešla do šuplíku, může otočit celý modul nebo změnit uspořádání sady. Zamčené a ručně nastavené moduly se v obou režimech nemění.

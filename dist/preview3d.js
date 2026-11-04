@@ -1,4 +1,5 @@
-import {exportSTL} from './geometry.js';
+import {exportSTL,pocketOutline} from './geometry.js';
+import {materialConfig} from './print-material.js';
 import {esc} from './ui.js';
 import {t} from './i18n.js';
 import {planSizeLabels,SIZE_LABEL_REASONS} from './size-labels.js';
@@ -7,6 +8,25 @@ import {gridfinityLayout,GRIDFINITY_BASEPLATE,BASEPLATE_SOCKET_LEVELS} from './g
 import earcut from './vendor/earcut.js';
 
 const TAU=Math.PI*2,PITCH_LIMIT=Math.PI/2-.01;
+const shade=(hex,light)=>{const factor=light/62,[r,g,b]=[1,3,5].map(i=>Math.min(255,Math.round(parseInt(hex.slice(i,i+2),16)*factor)));return`rgb(${r} ${g} ${b})`;};
+const within=(p,poly)=>{let yes=false;for(let i=0,j=poly.length-1;i<poly.length;j=i++){const a=poly[i],b=poly[j];if((a.y>p.y)!==(b.y>p.y)&&p.x<(b.x-a.x)*(p.y-a.y)/(b.y-a.y)+a.x)yes=!yes;}return yes;};
+/** A light print raises its walls by the floor inlay, a solid one keeps the floor where the tool stands. */
+function previewBody(project){
+  const colors=materialConfig(project);
+  return colors.enabled&&colors.floor&&project.printMode==='light'?{...project,tools:(project.tools||[]).map(tool=>({...tool,depth:finite(tool.depth,10)+colors.floorThickness}))}:project;
+}
+/** Colour zone of an upward face: lettering floors and pocket floors. Everything else is the body. */
+function zoneFinder(project,config){
+  const clearance=finite(project.clearance,.8),pockets=config.floor?(project.tools||[]).filter(tool=>tool.moduleId).flatMap(tool=>{try{return[pocketOutline(tool,clearance)];}catch{return[];}}):[];
+  let letters=[];if(config.text&&project.sizeLabels){try{letters=planSizeLabels(project).labels.map(label=>label.polygons);}catch{}}
+  const zones=new Map();
+  return(face,points)=>{
+    if(zones.has(face))return zones.get(face);
+    let zone='body';
+    if(face.normal[2]>.99){const p={x:points.reduce((sum,q)=>sum+q[0],0)/points.length,y:points.reduce((sum,q)=>sum+q[1],0)/points.length};if(letters.some(paths=>paths.filter(poly=>within(p,poly)).length%2))zone='text';else if(pockets.some(poly=>within(p,poly)))zone='floor';}
+    zones.set(face,zone);return zone;
+  };
+}
 const clamp=(value,min,max)=>Math.max(min,Math.min(max,value));
 const finite=(value,fallback)=>value!==null&&value!==''&&Number.isFinite(Number(value))?Number(value):fallback;
 let cacheKey='',cached=null,meshRevision=0;
@@ -153,7 +173,7 @@ function sceneFor(project){
     const entry={id:module.id,name:module.name||'Modul',faces:[],wire:null};
     try{
       // Cache every facet, including bottom and walls hidden in the initial view.
-      const bytes=exportSTL(project,{moduleId:module.id,checkBed:false}),view=new DataView(bytes.buffer,bytes.byteOffset,bytes.byteLength);
+      const bytes=exportSTL(previewBody(project),{moduleId:module.id,checkBed:false}),view=new DataView(bytes.buffer,bytes.byteOffset,bytes.byteLength);
       for(let i=0;i<view.getUint32(80,true);i++){
         const offset=84+i*50,normal=[0,1,2].map(c=>view.getFloat32(offset+c*4,true));
         const points=[0,1,2].map(j=>[view.getFloat32(offset+12+j*12,true)+module.x,view.getFloat32(offset+16+j*12,true)+module.y,view.getFloat32(offset+20+j*12,true)]);
@@ -236,10 +256,11 @@ export function printPreview(project,selected,selectedModule,camera={},viewport=
   };
   // A wire reference belongs below the opaque tool modules, so socket lines do not show through their tops.
   for(const module of scene.modules.filter(module=>module.wire&&module.baseplate))html+=`<g data-baseplate="true" aria-label="${esc(module.name)}"><path d="${wireLines(module)}" fill="none" stroke="#718d91" stroke-width="1.2" stroke-dasharray="5 3" vector-effect="non-scaling-stroke"/></g>`;
-  const sun=[-.35,-.45,.82];
+  const sun=[-.35,-.45,.82],colors=materialConfig(project),zoneColor={body:colors.bodyColor,floor:colors.floorColor,text:colors.textColor};
+  if(colors.enabled&&!scene.zoneOf)scene.zoneOf=zoneFinder(project,colors);
   // Same-color subpixel overlap seals antialias cracks between render fragments.
   for(const {face,module,facing,points} of faces){
-    const light=clamp(42+Math.max(0,dot(face.normal,sun))*22+facing*15,40,82),color=module.baseplate?`hsl(185 13% ${light.toFixed(1)}%)`:activeIds.has(module.id)?`hsl(39 47% ${light.toFixed(1)}%)`:`hsl(88 23% ${light.toFixed(1)}%)`;
+    const light=clamp(42+Math.max(0,dot(face.normal,sun))*22+facing*15,40,82),zone=colors.enabled&&!module.baseplate?scene.zoneOf(face,points):null,color=module.baseplate?`hsl(185 13% ${light.toFixed(1)}%)`:zone&&(zone!=='body'||!activeIds.has(module.id))?shade(zoneColor[zone],light):activeIds.has(module.id)?`hsl(39 47% ${light.toFixed(1)}%)`:`hsl(88 23% ${light.toFixed(1)}%)`;
     const attributes=module.baseplate?'data-baseplate="true"':`data-module="${esc(module.id)}"`;
     html+=`<polygon ${attributes} data-face-index="${face.index}" points="${polygon(points)}" fill="${color}" stroke="${color}" stroke-width=".6" vector-effect="non-scaling-stroke" aria-label="${esc(module.name)}"${module.baseplate?'':` data-module-selected="${activeIds.has(module.id)}"`}/>`;
   }
