@@ -19,8 +19,9 @@ proměnná `DEPLOY_ENABLED=true`, nic na hosting nezapisuje.
    pokud jej hosting pro SFTP podporuje. Heslo nevkládejte do chatu,
    zdrojových souborů ani Git historie. Klíč SSH serveru ověřte podle údaje
    z administrace, podpory hostingu nebo již ověřeného SFTP klienta.
-2. Otevřete [GitHub → Settings → Secrets and variables → Actions → Secrets](https://github.com/jaroslavpatocka/InsertCreator/settings/secrets/actions).
-   Přes **New repository secret** přidejte:
+2. Otevřete [GitHub → Settings → Environments → ftp](https://github.com/jaroslavpatocka/InsertCreator/settings/environments).
+   Uživatel má přístupové údaje uložené v prostředí **`ftp`**; oba připojovací
+   workflow toto prostředí používají. Přes **Add environment secret** přidejte:
 
    | Název | Hodnota |
    | --- | --- |
@@ -41,7 +42,14 @@ proměnná `DEPLOY_ENABLED=true`, nic na hosting nezapisuje.
    - účet prokazatelně omezený přímo na `public_html`: `DEPLOY_REMOTE_DIR=.`
      a navíc `DEPLOY_ALLOW_SCOPED_ROOT=true`. Toto povolení nepoužívejte pro
      neomezený účet, jehož kořenem je celý hosting.
-4. Po ověření cílové složky přidejte `DEPLOY_ENABLED=true`. Poté v
+4. V **Actions → Check SFTP connection → Run workflow** spusťte test z `main`.
+   Ověří klíč serveru, přihlášení a existující `index.html` a `sw.js` ve webrootu.
+   Nevytváří adresáře ani nenahrává, nepřejmenovává nebo nemaže soubory.
+   Lze jej spustit i při vypnutém produkčním nasazování. Požadované schválení,
+   čekací doba nebo omezení větví prostředí `ftp` platí i pro tento test.
+5. Po úspěšném testu a ověření cílové složky přidejte do **repository Variables**
+   `DEPLOY_ENABLED=true`. Tato přepínací proměnná se vyhodnocuje před vstupem
+   do prostředí `ftp`. Poté v
    **Actions → Check and deploy InsertCreator → Run workflow** spusťte první
    nasazení z `main`. Další integrované změny na `main` se nasadí automaticky.
    Samotné doplnění Secrets nebo Variables workflow nespouští.
@@ -90,6 +98,8 @@ uživatelů nahrávání souborů na server nepřepisuje.
 ```sh
 python -m unittest discover -s tests -p '*_test.py'
 python scripts/deploy_static.py --source dist --revision <40znakovy-commit-SHA> --dry-run
+# S nastavenými údaji v prostředí, bez zápisu na hosting:
+python scripts/deploy_static.py --source dist --revision <40znakovy-commit-SHA> --check-connection
 ```
 
 Podklady: [GitHub Secrets](https://docs.github.com/en/actions/how-tos/write-workflows/choose-what-workflows-do/use-secrets),

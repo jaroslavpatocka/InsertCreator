@@ -50,6 +50,7 @@ jobs:
       github.event_name != 'pull_request' &&
       vars.DEPLOY_ENABLED == 'true'
     runs-on: ubuntu-latest
+    environment: ftp
     timeout-minutes: 20
     concurrency:
       group: insertcreator-production

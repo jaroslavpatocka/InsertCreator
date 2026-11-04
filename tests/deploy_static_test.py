@@ -9,6 +9,7 @@ import io
 import json
 from pathlib import Path
 import posixpath
+import stat
 import sys
 import tempfile
 from types import SimpleNamespace
@@ -33,6 +34,7 @@ class FakeSSH:
         self.current = root
         self.dirs = {"/", "/account", "/account/public_html"}
         self.storage = {"/account/public_html/.htaccess": b"hosting config", "/account/public_html/unknown.txt": b"leave me"}
+        self.file_modes = {}
         self.failure = failure
         self.tamper_size = tamper_size
         self.unsupported_rename = unsupported_rename
@@ -99,7 +101,9 @@ class FakeSSH:
 
     def stat(self, path):
         self.record("stat", path)
-        return SimpleNamespace(st_size=len(self.storage[path]) + int(self.tamper_size))
+        if path not in self.storage:
+            raise FileNotFoundError(errno.ENOENT, "missing")
+        return SimpleNamespace(st_size=len(self.storage[path]) + int(self.tamper_size), st_mode=self.file_modes.get(path, stat.S_IFREG | 0o644))
 
     def posix_rename(self, temporary, target):
         self.record("posix_rename", temporary, target)
@@ -142,6 +146,96 @@ class DeploymentTests(unittest.TestCase):
         with redirect_stdout(out), redirect_stderr(err):
             code = DEPLOY.main(["--source", str(self.source), "--revision", REVISION, *extra], environ=self.environment if environment is None else environment, ssh_backend=fake.backend, socket_factory=fake.socket_factory)
         return code, out.getvalue(), err.getvalue(), fake
+
+    def hosting_fake(self, **kwargs):
+        fake = FakeSSH(**kwargs)
+        for name in ("index.html", "sw.js"):
+            fake.storage[f"/account/public_html/{name}"] = b"existing production file"
+        return fake
+
+    def assert_read_only(self, fake):
+        writes = {"mkdir", "putfo", "posix_rename", "rename", "remove", "unlink", "rmdir"}
+        self.assertFalse(any(event[0] in writes for event in fake.events))
+
+    def test_check_connection_inspects_existing_regular_files_without_any_write(self):
+        fake = self.hosting_fake()
+        old_storage, old_directories = dict(fake.storage), set(fake.dirs)
+        code, out, err, _ = self.main(fake=fake, extra=("--check-connection",))
+        self.assertEqual(code, 0)
+        self.assertIn("read-only connection check OK", out)
+        self.assertEqual(err, "")
+        self.assertEqual([event[1] for event in fake.events if event[0] == "stat"], ["/account/public_html/index.html", "/account/public_html/sw.js"])
+        self.assertEqual(fake.storage, old_storage)
+        self.assertEqual(fake.dirs, old_directories)
+        self.assert_read_only(fake)
+
+    def test_check_connection_missing_required_file_fails_without_any_write(self):
+        for name in ("index.html", "sw.js"):
+            with self.subTest(name=name):
+                fake = self.hosting_fake()
+                del fake.storage[f"/account/public_html/{name}"]
+                code, out, err, _ = self.main(fake=fake, extra=("--check-connection",))
+                self.assertEqual(code, 1)
+                self.assertEqual(out, "")
+                self.assertIn("missing index.html or sw.js", err)
+                self.assert_read_only(fake)
+
+    def test_check_connection_rejects_nonregular_files_without_any_write(self):
+        for name in ("index.html", "sw.js"):
+            with self.subTest(name=name):
+                fake = self.hosting_fake()
+                fake.file_modes[f"/account/public_html/{name}"] = stat.S_IFDIR | 0o755
+                code, _, err, _ = self.main(fake=fake, extra=("--check-connection",))
+                self.assertEqual(code, 1)
+                self.assertIn("must be regular files", err)
+                self.assert_read_only(fake)
+
+    def test_check_connection_rejects_file_resolving_outside_webroot(self):
+        fake = self.hosting_fake()
+        original_normalize = fake.normalize
+        fake.normalize = lambda path: "/private/index.html" if path.endswith("/index.html") else original_normalize(path)
+        code, _, err, _ = self.main(fake=fake, extra=("--check-connection",))
+        self.assertEqual(code, 1)
+        self.assertIn("outside its expected path", err)
+        self.assert_read_only(fake)
+
+    def test_check_connection_never_creates_missing_webroot(self):
+        fake = self.hosting_fake()
+        fake.dirs.remove("/account/public_html")
+        code, _, _, _ = self.main(fake=fake, extra=("--check-connection",))
+        self.assertEqual(code, 1)
+        self.assert_read_only(fake)
+
+    def test_check_connection_root_still_requires_explicit_scoped_account(self):
+        fake = self.hosting_fake(root="/")
+        code, _, _, _ = self.main(fake=fake, environment={**self.environment, "DEPLOY_REMOTE_DIR": "/"}, extra=("--check-connection",))
+        self.assertEqual(code, 1)
+        self.assertEqual(fake.events, [])
+        fake = self.hosting_fake(root="/")
+        fake.storage["/index.html"], fake.storage["/sw.js"] = b"index", b"sw"
+        code, _, err, _ = self.main(fake=fake, environment={**self.environment, "DEPLOY_REMOTE_DIR": "/", "DEPLOY_ALLOW_SCOPED_ROOT": "true"}, extra=("--check-connection",))
+        self.assertEqual(code, 0, err)
+        self.assert_read_only(fake)
+
+    def test_check_connection_requires_matching_host_key_before_password(self):
+        fake = self.hosting_fake()
+        fake.server_wire = KEY_WIRE + b"changed"
+        code, _, err, _ = self.main(fake=fake, extra=("--check-connection",))
+        self.assertEqual(code, 1)
+        self.assertIn("host key does not match", err)
+        self.assertFalse(any(event[0] == "auth_password" for event in fake.events))
+        self.assert_read_only(fake)
+        environment = {**self.environment, "FTP_KNOWN_HOSTS": ""}
+        code, _, _, fake = self.main(environment=environment, extra=("--check-connection",))
+        self.assertEqual(code, 1)
+        self.assertEqual(fake.events, [])
+
+    def test_check_connection_and_dry_run_are_mutually_exclusive(self):
+        fake = self.hosting_fake()
+        with self.assertRaises(SystemExit) as raised:
+            self.main(fake=fake, extra=("--check-connection", "--dry-run"))
+        self.assertEqual(raised.exception.code, 2)
+        self.assertEqual(fake.events, [])
 
     def test_sftp_222_verifies_host_key_before_password_and_opens_channel_after_authentication(self):
         fake = FakeSSH()

@@ -11,6 +11,7 @@ from __future__ import annotations
 import argparse
 import base64
 import binascii
+from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import datetime, timezone
 import errno
@@ -24,6 +25,7 @@ from pathlib import Path, PurePosixPath
 import posixpath
 import re
 import socket
+import stat
 import sys
 from typing import Mapping
 
@@ -43,6 +45,13 @@ class DeploymentPlan:
     revision: str
     files: tuple[UploadFile, ...]
     manifest: UploadFile
+
+
+@dataclass
+class _SftpSession:
+    sftp: object = None
+    root: str = ""
+    stage: str = "connection"
 
 
 def validate_relative_path(value: str) -> str:
@@ -181,8 +190,8 @@ def _activate_file(sftp, temporary: str, final_path: str) -> None:
         sftp.rename(temporary, final_path)
 
 
-def deploy(
-    plan: DeploymentPlan,
+@contextmanager
+def _sftp_connection(
     *,
     host: str,
     username: str,
@@ -192,7 +201,7 @@ def deploy(
     allow_scoped_root: bool = False,
     ssh_backend=None,
     socket_factory=socket.create_connection,
-) -> None:
+):
     """Verify the SSH server identity before sending the password."""
     remote_dir = validate_remote_dir(remote_dir, allow_scoped_root)
     if not host or not re.fullmatch(r"[a-zA-Z0-9](?:[a-zA-Z0-9.-]*[a-zA-Z0-9])?", host):
@@ -203,7 +212,7 @@ def deploy(
         raise DeploymentError("FTP credentials must not contain control delimiters.")
     pins = _host_key_pins(host, known_hosts)
     connection = transport = sftp = None
-    stage = "connection"
+    session = _SftpSession()
     try:
         if ssh_backend is None:
             try:
@@ -232,47 +241,31 @@ def deploy(
         if not key_types:
             raise DeploymentError("No supported secure SSH host-key algorithm matches FTP_KNOWN_HOSTS.")
         security.key_types = key_types
-        stage = "SSH handshake"
+        session.stage = "SSH handshake"
         transport.start_client(timeout=30)
-        stage = "SSH host key verification"
+        session.stage = "SSH host key verification"
         server_key = transport.get_remote_server_key()
         if not any(kind == server_key.get_name() and hmac.compare_digest(wire, server_key.asbytes()) for kind, wire in pins):
             raise DeploymentError("SSH host key does not match FTP_KNOWN_HOSTS; no credentials were sent.")
-        stage = "authentication"
+        session.stage = "authentication"
         transport.auth_password(username, password, fallback=False)
         if not transport.is_authenticated():
             raise DeploymentError("SFTP authentication did not complete.")
-        stage = "SFTP channel"
+        session.stage = "SFTP channel"
         sftp = ssh_backend.SFTPClient.from_transport(transport)
         sftp.get_channel().settimeout(30)
-        stage = "target directory validation"
+        session.stage = "target directory validation"
         sftp.chdir(remote_dir)
         root = _safe_pwd(sftp)
         if root == "/" and not allow_scoped_root:
             raise DeploymentError("Refusing to upload to the server root without DEPLOY_ALLOW_SCOPED_ROOT=true.")
-        all_files = plan.files + (plan.manifest,)
-        _ensure_directories(sftp, root, all_files)
-        staged = []
-        stage = "staging files"
-        for file in all_files:
-            final_path = posixpath.join(root, file.path)
-            parent, basename = posixpath.split(final_path)
-            temporary = posixpath.join(parent, f".{basename}.insertcreator-{plan.revision}.upload")
-            sftp.putfo(io.BytesIO(file.data), temporary, file_size=len(file.data), confirm=True)
-            if sftp.stat(temporary).st_size != len(file.data):
-                raise DeploymentError("A staged file has an unexpected size; activation was stopped.")
-            staged.append((temporary, final_path))
-        stage = "activating files"
-        # All uploads and size checks finish before the first rename.
-        # An interrupted activation can expose a mixed release; retry the tested
-        # revision to finish. The marker is always promoted last.
-        for temporary, final_path in staged:
-            _activate_file(sftp, temporary, final_path)
+        session.sftp, session.root = sftp, root
+        yield session
     except DeploymentError:
         raise
     except Exception as error:
         # Server responses can echo credentials. Never print or chain them.
-        raise DeploymentError(f"SFTP failed during {stage} ({type(error).__name__}). Server details were suppressed to protect credentials.") from None
+        raise DeploymentError(f"SFTP failed during {session.stage} ({type(error).__name__}). Server details were suppressed to protect credentials.") from None
     finally:
         for resource in (sftp, transport, connection):
             if resource is None:
@@ -283,12 +276,54 @@ def deploy(
                 pass
 
 
+def deploy(plan: DeploymentPlan, **connection_options) -> None:
+    with _sftp_connection(**connection_options) as session:
+        sftp, root = session.sftp, session.root
+        all_files = plan.files + (plan.manifest,)
+        session.stage = "target subdirectory validation"
+        _ensure_directories(sftp, root, all_files)
+        staged = []
+        session.stage = "staging files"
+        for file in all_files:
+            final_path = posixpath.join(root, file.path)
+            parent, basename = posixpath.split(final_path)
+            temporary = posixpath.join(parent, f".{basename}.insertcreator-{plan.revision}.upload")
+            sftp.putfo(io.BytesIO(file.data), temporary, file_size=len(file.data), confirm=True)
+            if sftp.stat(temporary).st_size != len(file.data):
+                raise DeploymentError("A staged file has an unexpected size; activation was stopped.")
+            staged.append((temporary, final_path))
+        session.stage = "activating files"
+        # All uploads and size checks finish before the first rename.
+        # An interrupted activation can expose a mixed release; retry the tested
+        # revision to finish. The marker is always promoted last.
+        for temporary, final_path in staged:
+            _activate_file(sftp, temporary, final_path)
+
+
+def check_connection(**connection_options) -> None:
+    """Authenticate and inspect the existing webroot without any remote write."""
+    with _sftp_connection(**connection_options) as session:
+        session.stage = "read-only webroot file check"
+        for name in ("index.html", "sw.js"):
+            path = posixpath.join(session.root, name)
+            if session.sftp.normalize(path) != path:
+                raise DeploymentError("A required webroot file resolves outside its expected path.")
+            try:
+                info = session.sftp.stat(path)
+            except FileNotFoundError:
+                raise DeploymentError("The selected webroot is missing index.html or sw.js; no server changes were made.") from None
+            if not stat.S_ISREG(info.st_mode or 0):
+                raise DeploymentError("Webroot index.html and sw.js must be regular files; no server changes were made.")
+
+
 def main(argv=None, *, environ: Mapping[str, str] | None = None, ssh_backend=None, socket_factory=socket.create_connection) -> int:
     environ = os.environ if environ is None else environ
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--source", type=Path, default=Path(__file__).resolve().parent.parent / "dist")
     parser.add_argument("--revision", default=environ.get("GITHUB_SHA", ""))
-    parser.add_argument("--dry-run", action="store_true", help="Validate the local package without credentials or network access.")
+    modes = parser.add_mutually_exclusive_group()
+    modes.add_argument("--dry-run", action="store_true", help="Validate the local package without credentials or network access.")
+    modes.add_argument("--check-connection", action="store_true", help="Authenticate and inspect the webroot without writing any remote file.")
     args = parser.parse_args(argv)
     try:
         plan = build_plan(args.source, args.revision)
@@ -298,17 +333,21 @@ def main(argv=None, *, environ: Mapping[str, str] | None = None, ssh_backend=Non
         if args.dry_run:
             print(f"Dry run OK: {len(plan.files)} static files, {total} bytes; revision {plan.revision}; no server connection.")
             return 0
-        deploy(
-            plan,
-            host=environ.get("FTP_HOST", ""),
-            username=environ.get("FTP_USERNAME", ""),
-            password=environ.get("FTP_PASSWORD", ""),
-            known_hosts=environ.get("FTP_KNOWN_HOSTS", ""),
-            remote_dir=remote_dir,
-            allow_scoped_root=allow_scoped_root,
-            ssh_backend=ssh_backend,
-            socket_factory=socket_factory,
-        )
+        connection_options = {
+            "host": environ.get("FTP_HOST", ""),
+            "username": environ.get("FTP_USERNAME", ""),
+            "password": environ.get("FTP_PASSWORD", ""),
+            "known_hosts": environ.get("FTP_KNOWN_HOSTS", ""),
+            "remote_dir": remote_dir,
+            "allow_scoped_root": allow_scoped_root,
+            "ssh_backend": ssh_backend,
+            "socket_factory": socket_factory,
+        }
+        if args.check_connection:
+            check_connection(**connection_options)
+            print("SFTP read-only connection check OK: authenticated, webroot index.html and sw.js are regular files; no server changes.")
+            return 0
+        deploy(plan, **connection_options)
         print(f"SFTP upload complete: {len(plan.files)} static files; revision {plan.revision}. Verify the public HTTPS deployment marker.")
         return 0
     except DeploymentError as error:
