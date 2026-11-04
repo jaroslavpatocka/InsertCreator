@@ -42,7 +42,7 @@ function open(id){if($('[data-smart-close]'))click('[data-smart-close]');if($('[
 function fillSet(name,ids,layout){change('[data-field=setName]',name);change('[data-set-layout]',layout);for(const el of win.document.querySelectorAll('[data-set-tool]')){el.checked=ids.includes(el.dataset.setTool);el.dispatchEvent(new win.Event('change',{bubbles:true}));}click('[data-set-save]');assert.ok($('[data-tool-sets-close]'),'The set must save without a validation error');}
 function createSet(name,ids,layout='auto'){action('tool-sets');click('[data-new-set]');fillSet(name,ids,layout);const set=saved().toolSets.find(s=>s.name===name);click('[data-tool-sets-close]');return set;}
 function assertGeometry(before,after){assert.deepEqual(after.tools.map(t=>({id:t.id,points:t.points,depth:t.depth,fingerGrips:t.fingerGrips})),before.tools.map(t=>({id:t.id,points:t.points,depth:t.depth,fingerGrips:t.fingerGrips})));}
-async function optimize(){action('smart-layout');assert.ok($('[data-smart-progress]'),'Progress must appear before work starts');await waitFor(()=>$('[data-smart-close]'),'The real set worker must finish');}
+async function optimize(){action('smart-layout');click('[data-smart-default]');assert.ok($('[data-smart-progress]'),'Progress must appear before work starts');await waitFor(()=>$('[data-smart-close]'),'The real set worker must finish');}
 localStorage.setItem('suplik-studio-lang',JSON.stringify('cs'));
 localStorage.setItem('suplik-studio-unit',JSON.stringify('mm'));
 await import('../dist/app.js');
@@ -90,8 +90,8 @@ test('project tool sets are editable, reversible and respected by real worker la
     action('undo');assert.deepEqual(logical(saved()),before);assert.equal(history().undo,undo.undo);
   });
   await t.test('cancellation and a real stale sets response cannot overwrite user edits',async()=>{
-    open('sets-cancel');let snapshot=serialized(),undo=history(),count=created.length;action('smart-layout');assert.ok($('[data-smart-progress]'));await waitFor(()=>created.length>count,'Start a real sets worker');click('[data-smart-cancel]');assert.ok(created.at(-1).terminated);assert.equal(serialized(),snapshot);assert.deepEqual(history(),undo);
-    open('sets-stale');holdNext=true;const heldCount=held.length;action('smart-layout');await waitFor(()=>held.length>heldCount,'Hold a real sets optimization result');
+    open('sets-cancel');let snapshot=serialized(),undo=history(),count=created.length;action('smart-layout');click('[data-smart-default]');assert.ok($('[data-smart-progress]'));await waitFor(()=>created.length>count,'Start a real sets worker');click('[data-smart-cancel]');assert.ok(created.at(-1).terminated);assert.equal(serialized(),snapshot);assert.deepEqual(history(),undo);
+    open('sets-stale');holdNext=true;const heldCount=held.length;action('smart-layout');click('[data-smart-default]');await waitFor(()=>held.length>heldCount,'Hold a real sets optimization result');
     const originalWidth=saved().width;change('#app [data-field=width]',originalWidth+42);snapshot=serialized();undo=history();held.pop()();await waitFor(()=>$('[data-smart-close]'),'Reject stale set result');assert.match($('.smart-layout-result').textContent,/během výpočtu změnila/);assert.equal(serialized(),snapshot);assert.deepEqual(history(),undo);click('[data-smart-close]');action('undo');assert.equal(saved().width,originalWidth);
   });
   await t.test('English set controls keep user names intact and report aligned layouts in square inches',async()=>{

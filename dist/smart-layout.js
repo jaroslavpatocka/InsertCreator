@@ -6,8 +6,9 @@ import {analyzeToolShape,findToolSets,setCoherence} from './tool-sets.js';
 import {orderTools} from './tool-size.js';
 import {addToolGroup} from './set-module.js';
 import {moduleOutline,moduleIntersects,modulePadding,steppedModuleFootprint} from './module-footprint.js';
+import {tightenLayout} from './space-layout.js';
 
-const EPS=.001,SCALE=10000,CELL=2,MAX_CANDIDATES=32000;
+const EPS=.001,SCALE=10000,CELL=2,MAX_CANDIDATES=32000,footprints=new WeakMap();
 const copy=value=>typeof structuredClone==='function'?structuredClone(value):JSON.parse(JSON.stringify(value));
 const number=(value,fallback=0)=>Number.isFinite(+value)?+value:fallback;
 const compareId=(a,b)=>String(a)<String(b)?-1:String(a)>String(b)?1:0;
@@ -117,20 +118,25 @@ function pack(project,fixed,atoms,order,{moduleShape='rectangular',maxPositions=
     const type=tool?.category||tool?.type||tool?.catalog?.category;if(type)return`type:${type}`;
     try{const shape=analyzeToolShape(tool);return`shape:${Math.round(Math.log2(shape.aspect)*2)}:${Math.round(shape.fill*5)}:${Math.round(shape.endRatio*3)}`;}catch{return atom.id;}
   };
-  const ranked=[...atoms].sort((a,b)=>{
+  const ranked=typeof order==='function'?order([...atoms]):[...atoms].sort((a,b)=>{
     if(order===3){const grouped=compareId(family(a),family(b));if(grouped)return grouped;return(ranks.get(a.options[0].items[0]?.tool.id)||0)-(ranks.get(b.options[0].items[0]?.tool.id)||0)||compareId(a.id,b.id);}
     const aa=a.options[0],bb=b.options[0];const score=option=>order===1?Math.max(option.width,option.height):order===2?option.width:option.width*option.height;
     return score(bb)-score(aa)||compareId(a.id,b.id);
   });
-  let outsideY=0,positions=0,searchLimited=false;
+  // Tools that stay parked must not land on modules already parked outside the drawer.
+  let outsideY=fixed.filter(module=>!inside(module,project)).reduce((bottom,module)=>Math.max(bottom,module.y+module.height+grid),0),positions=0,searchLimited=false;
   for(const atom of ranked){
     const protectedShape=atom.preserveFootprint||atom.module.sizeMode==='manual'||atom.module.setLayout==='uniform'&&(project.toolSets||[]).some(set=>set.layout==='uniform'&&set.id===atom.module.setId);
     const options=atom.options.map(option=>{
+      // The same option comes back in every packing order, and its cut is the slow part.
+      const known=moduleShape==='stepped'&&!protectedShape&&footprints.get(option);if(known)return{...option,...known};
       const module={...atom.module,x:0,y:0,width:option.width,height:option.height};
       if(!protectedShape){delete module.cells;delete module.shape;}
       const own=option.items.map(item=>({...item.tool,moduleId:module.id,x:item.x,y:item.y,rotation:item.rotation}));
       const footprint=moduleShape==='stepped'&&!protectedShape?steppedModuleFootprint({...project,tools:own},module):module;
-      return{...option,width:footprint.width,height:footprint.height,...(footprint.cells?{shape:'stepped',cells:footprint.cells}:{shape:'rectangular'})};
+      const fields={width:footprint.width,height:footprint.height,...(footprint.cells?{shape:'stepped',cells:footprint.cells}:{shape:'rectangular'})};
+      if(moduleShape==='stepped'&&!protectedShape)footprints.set(option,fields);
+      return{...option,...fields};
     });
     let chosen=null;
     search:for(const option of options){
@@ -357,18 +363,29 @@ async function compactArrange(project,{onProgress,signal,moduleShape='rectangula
   return finish(best===original?'Úspornější bezpečné rozvržení nebylo nalezeno.':'Chytré rozvržení je připravené.');
 }
 
-export async function smartArrange(project,{mode='compact',moduleShape='rectangular',onProgress,signal}={}){
+export async function smartArrange(project,{mode='compact',moduleShape='rectangular',merge=false,onProgress,signal}={}){
   if(!['compact','sets'].includes(mode))throw Error('Neznámý režim chytrého rozvržení.');
   if(!['rectangular','stepped'].includes(moduleShape))throw Error('Neznámý tvar modulů pro chytré rozvržení.');
   const run=source=>mode==='sets'?arrangeToolSets(source,{onProgress:progress,signal,compactArrange,moduleShape}):compactArrange(source,{onProgress:progress,signal,moduleShape});
-  let lastProgress=0;
-  const progress=event=>{lastProgress=Math.max(lastProgress,event.progress||0);onProgress?.({...event,progress:lastProgress});};
+  let lastProgress=0,share=1;
+  const progress=event=>{const value=event.stage==='tighten'?event.progress:(event.progress||0)*share;lastProgress=Math.max(lastProgress,value);onProgress?.({...event,progress:lastProgress});};
   // Validate identifiers and fixed geometry before an automatic refit can mask bad input.
   if(!project||!Array.isArray(project.tools)||!Array.isArray(project.modules))return run(project);
   const source=copy(project),before=metric(source,source),original={tools:source.tools,modules:source.modules};
+  // The last stage can take longest, so the earlier ones must not fill the bar.
+  share=.95;
+  // Every layout ends here: steps are cut, tools left outside are retried and, when allowed, modules are merged.
+  const tighten=async found=>{
+    const pause=async()=>{await new Promise(resolve=>setTimeout(resolve,0));if(signal?.aborted)throw new DOMException('Chytré rozvržení bylo zrušeno.','AbortError');};
+    const tight=await tightenLayout(source,found,{moduleShape,mode,merge,pack,better,metric,pause,report:(value,message)=>progress({stage:'tighten',progress:value,message})});
+    const after=metric(tight,source),unplaced=tight.tools.filter(tool=>!after.placed.has(tool.id)).map(tool=>tool.id);
+    const fresh=mode==='sets'?setCoherence({...source,...tight},findToolSets(source).sets):null,setStats=fresh&&found.stats?.setSummary?{setScoreAfter:fresh.score,setsApplied:fresh.satisfied,setSummary:found.stats.setSummary.map(({reason,...set})=>{const satisfied=fresh.satisfied.includes(set.id);return{...set,status:satisfied?(set.status==='preserved'?'preserved':'applied'):'unavailable',applied:satisfied?set.applied||'shared':null,...(satisfied?{}:{reason:'Celou sadu se nepodařilo bezpečně umístit podle zvolené volby.'})};})}:{};
+    const resizedModules=(found.stats?.resizedModules||[]).flatMap(item=>{const module=tight.modules.find(module=>module.id===item.id);return module?[{...item,after:{width:module.width,height:module.height}}]:[];});
+    return{...found,tools:tight.tools,modules:tight.modules,unplaced,stats:{...found.stats,...setStats,resizedModules,afterArea:after.area,savedPercent:before.area?Math.max(0,(1-after.area/before.area)*100):0,afterModules:after.modules,sharedModules:tight.modules.filter(module=>tight.tools.filter(tool=>tool.moduleId===module.id).length>1).length,changed:JSON.stringify({tools:tight.tools,modules:tight.modules})!==JSON.stringify(original),mergedModules:tight.merged,reason:unplaced.length?(found.stats?.reason==='limit'||tight.searchLimited?'limit':'drawer'):'ok',...(tight.searchLimited?{searchLimited:true}:{})}};
+  };
   for(const items of [source.tools,source.modules]){const ids=new Set();for(const item of items){if(!item||typeof item.id!=='string'||!item.id||ids.has(item.id))return run(source);ids.add(item.id);}}
   if(source.modules.some(m=>!['x','y','width','height'].every(key=>Number.isFinite(Number(m[key])))||m.x<0||m.y<0||m.width<=0||m.height<=0)||![source.width,source.height,source.grid,source.wall].every(value=>Number.isFinite(Number(value))&&Number(value)>0))return run(source);
-  if(source.tools.length>24||source.tools.reduce((sum,tool)=>sum+(tool.points?.length||0),0)>12000||Math.ceil(source.width/source.grid)*Math.ceil(source.height/source.grid)>20000)return largeArrange(source,{mode,moduleShape,onProgress,signal});
+  if(source.tools.length>24||source.tools.reduce((sum,tool)=>sum+(tool.points?.length||0),0)>12000||Math.ceil(source.width/source.grid)*Math.ceil(source.height/source.grid)>20000)return tighten(await largeArrange(source,{mode,moduleShape,onProgress:progress,signal}));
   const placedModules=source.modules.filter(module=>inside(module,source)),placedModuleIds=new Set(placedModules.map(module=>module.id));
   if(validateLayout({...source,modules:placedModules,tools:source.tools.filter(tool=>placedModuleIds.has(tool.moduleId))}).length)return run(source);
   const safe=(candidate,required)=>{
@@ -400,9 +417,10 @@ export async function smartArrange(project,{mode='compact',moduleShape='rectangu
       result=await run(reclaimed);resultMetric=metric(result,source);
     }
   }
+  result=await tighten(result);resultMetric=metric(result,source);
   const after=metric(result,source),resizedModules=[];
   for(const old of source.modules){const current=result.modules.find(module=>module.id===old.id);if(current&&current.width<=old.width+EPS&&current.height<=old.height+EPS&&(current.width<old.width-EPS||current.height<old.height-EPS))resizedModules.push({id:old.id,name:old.name||old.id,before:{width:old.width,height:old.height},after:{width:current.width,height:current.height}});}
-  const unplaced=result.tools.filter(tool=>!after.placed.has(tool.id)).map(tool=>tool.id),stats={...result.stats,beforeArea:before.area,afterArea:after.area,savedPercent:before.area?Math.max(0,(1-after.area/before.area)*100):0,beforeModules:before.modules,afterModules:after.modules,changed:JSON.stringify({tools:result.tools,modules:result.modules})!==JSON.stringify(original),resizedModules,reason:unplaced.length?'drawer':'ok'};
+  const unplaced=result.tools.filter(tool=>!after.placed.has(tool.id)).map(tool=>tool.id),stats={...result.stats,beforeArea:before.area,afterArea:after.area,savedPercent:before.area?Math.max(0,(1-after.area/before.area)*100):0,beforeModules:before.modules,afterModules:after.modules,changed:JSON.stringify({tools:result.tools,modules:result.modules})!==JSON.stringify(original),resizedModules,reason:unplaced.length?(result.stats?.reason==='limit'?'limit':'drawer'):'ok'};
   if(mode==='sets'){const sets=findToolSets(source).sets;stats.setScoreBefore=setCoherence(source,sets).score;}
   return{...result,unplaced,stats};
 }

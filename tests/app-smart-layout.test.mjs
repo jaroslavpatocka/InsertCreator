@@ -71,7 +71,7 @@ const pause=ms=>new Promise(resolve=>setTimeout(resolve,ms));
 async function waitFor(predicate,label,timeout=20000){const started=performance.now();while(!predicate()){if(performance.now()-started>timeout)throw Error(label+'; '+($('#modal-root').textContent||$('#toast').textContent));await pause(5);}}
 function open(id){if($('[data-smart-close]'))click('[data-smart-close]');action('projects');click(`[data-open="${id}"]`);}
 function start(){
-  const snapshot=serialized(),undo=history();action('smart-layout');
+  const snapshot=serialized(),undo=history();action('smart-layout');click('[data-smart-default]');
   assert.ok($('[data-smart-progress]'),'progress must be visible immediately');assert.ok($('[data-smart-cancel]'));
   assert.equal(serialized(),snapshot,'starting a computation must not save anything');assert.deepEqual(history(),undo);
   return{snapshot,undo};

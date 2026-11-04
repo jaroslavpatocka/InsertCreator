@@ -148,8 +148,17 @@ function checkedSmartResult(before,result,mode='compact'){
   }
   checkLayoutTransition(before,next);return next;
 }
-async function smartArrangeProject(){
-  const before=clone(project),mode=smartMode,definitions=mode==='sets'?findToolSets(before).sets:[],controller=new AbortController(),job={controller,key:same(project),done:false};
+// Every automatic layout starts with this choice; the last answer stays preselected.
+function smartArrangeProject(){
+  const card=(choice,title,text)=>`<button class="smart-choice" data-smart-choice="${choice}" ${(smartMode==='compact')===(choice==='space')?'data-smart-default':''}><strong>${tr(title)}</strong><span>${tr(text)}</span></button>`;
+  const modal=openModal({title:tr('Rozložit nástroje'),subtitle:tr('Co je pro vás důležitější?'),body:`<div class="smart-choices">${card('space','Co nejvíc šetřit místem','Nástroje z různých sad mohou sdílet modul a sady se mohou rozdělit. Výpočet trvá déle.')}${card('logic','Udržet co největší logiku','Každá sada zůstane pohromadě ve svém modulu. Moduly zaberou víc místa.')}</div>`,footer:`<span></span><button class="btn btn-light" data-modal-close>${tr('Zrušit')}</button>`});
+  modal.el.querySelectorAll('[data-smart-choice]').forEach(button=>button.onclick=()=>{
+    const space=button.dataset.smartChoice==='space';smartMode=space?'compact':'sets';writeLocal(smartModeKey,smartMode);modal.close();runSmartArrange(smartMode,space);
+  });
+  modal.el.querySelector('[data-smart-default]')?.focus();
+}
+async function runSmartArrange(mode,merge){
+  const before=clone(project),definitions=mode==='sets'?findToolSets(before).sets:[],controller=new AbortController(),job={controller,key:same(project),done:false};
   const modal=openModal({title:tr('Rozložit nástroje'),subtitle:mode==='sets'?tr('Sady nástrojů: společný směr a sjednocené moduly.'):tr('Nejmenší plocha: porovnám bezpečné varianty a společné moduly.'),body:tr('<div class="smart-layout-progress" role="status" aria-live="polite"><p data-smart-message>Připravuji výpočet…</p><progress data-smart-progress max="1" value="0" aria-label="Průběh chytrého rozvržení"></progress><small data-smart-percent>0 %</small></div>'),footer:tr('<span class="footnote">Sestavu můžete během výpočtu ponechat beze změny.</span><button class="btn btn-light" data-smart-cancel>Zrušit</button>'),onClose:()=>{if(!job.done)controller.abort();}});
   smartLayoutRun=job;
   const finishUI=(title,body)=>{modal.body.innerHTML=`<div class="smart-layout-result"><h3>${esc(title)}</h3>${body}</div>`;modal.footer.innerHTML=`<span></span><button class="btn btn-primary" data-smart-close>${tr('Hotovo')}</button>`;modal.footer.querySelector('[data-smart-close]').onclick=modal.close;};
@@ -162,7 +171,7 @@ async function smartArrangeProject(){
     let baseline=before;
     try{baseline=checkedSmartResult(before,autoArrange(before),'compact');}catch{}
     let result,optimizerError=null;
-    try{result=await runSmartLayout(baseline,{mode,moduleShape:smartShape,signal:controller.signal,onProgress:event=>{
+    try{result=await runSmartLayout(baseline,{mode,moduleShape:smartShape,merge,signal:controller.signal,onProgress:event=>{
       if(smartLayoutRun!==job||controller.signal.aborted||!modal.el.isConnected)return;
       const value=Math.max(0,Math.min(1,Number(event?.progress)||0));job.lastMessage=event?.message?smartMessage(event.message):job.lastMessage;modal.body.querySelector('[data-smart-progress]').value=value;modal.body.querySelector('[data-smart-percent]').textContent=Math.round(value*100)+' %';modal.body.querySelector('[data-smart-message]').textContent=smartMessage(event?.message);
     }});}catch(error){if(controller.signal.aborted)throw error;optimizerError=error;result={tools:baseline.tools,modules:baseline.modules};}
@@ -181,7 +190,7 @@ async function smartArrangeProject(){
       checkLayoutTransition(before,candidate);
       const unitsKept=before.tools.every(original=>{
         const previous=before.modules.find(module=>module.id===original.moduleId),tool=candidate.tools.find(tool=>tool.id===original.id),module=candidate.modules.find(module=>module.id===tool.moduleId);
-        return !previous?.unit||module?.unit===previous.unit;
+        return merge||!previous?.unit||module?.unit===previous.unit;
       });
       if(unitsKept&&betterLayout(metric(candidate),metric(baseline),mode))next=candidate;
     }
@@ -193,7 +202,8 @@ async function smartArrangeProject(){
     const resized=next.modules.flatMap(module=>{const old=before.modules.find(m=>m.id===module.id);return old&&(module.width<old.width-1e-6||module.height<old.height-1e-6)?[{old,module}]:[];});
     const resizeSummary=resized.length?`<details><summary>${tr('Zmenšené moduly: {n}',{n:resized.length})}</summary><ul>${resized.map(({old,module})=>`<li>${esc(module.name)}: ${fmtSize(old.width,old.height)} → ${fmtSize(module.width,module.height)}</li>`).join('')}</ul></details>`:'';
     const searchSummary=result.stats?.searchLimited?`<p>${tr('Výpočet dosáhl limitu hledání. Další prostor může být využitelný jiným rozvržením.')}</p>`:'';
-    const setSummary=(mode==='sets'?toolSetResultSummary(definitions,before,next,result):'')+resizeSummary+searchSummary;
+    const mergedSummary=next!==baseline&&result.stats?.mergedModules?`<p>${tr('Sloučené moduly: {n}. Do volného místa se přesunuly nástroje, které spolu nesouvisí.',{n:result.stats.mergedModules})}</p>`:'';
+    const setSummary=(mode==='sets'?toolSetResultSummary(definitions,before,next,result):'')+resizeSummary+searchSummary+mergedSummary;
     if(same(next)===same(before)){job.done=true;finishUI(job.lastMessage||tr('Lepší bezpečné rozvržení nebylo nalezeno.'),tr('<p>Stávající sestava zůstala beze změny.</p>')+setSummary);return;}
     const shared=next.modules.filter(m=>next.tools.filter(t=>t.moduleId===m.id).length>1).length;
     job.done=true;commit(()=>project=next);

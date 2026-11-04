@@ -42,7 +42,7 @@ const action=name=>click(`#app [data-action="${name}"]`);
 const saved=()=>JSON.parse(localStorage.getItem('suplik-studio-projects-v1')).find(p=>p.id===JSON.parse(localStorage.getItem('suplik-studio-current')));
 const logical=p=>{const copy=structuredClone(p);delete copy.updatedAt;return copy;};
 async function arrange(){
-  const before=logical(saved());action('smart-layout');assert.ok($('[data-smart-progress]'));
+  const before=logical(saved());action('smart-layout');click('[data-smart-default]');assert.ok($('[data-smart-progress]'));
   await waitFor(()=>$('[data-smart-close]'),60000);assert.doesNotMatch($('.smart-layout-result h3').textContent,/nepodařilo|failed|couldn.t/i,$('.smart-layout-result').textContent);
   click('[data-smart-close]');return JSON.stringify(logical(saved()))!==JSON.stringify(before);
 }

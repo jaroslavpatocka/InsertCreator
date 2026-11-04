@@ -52,6 +52,7 @@ function boundary(cells){
 /** Model fields only. Legacy rectangular modules remain rectangles without allocating cells. */
 // Depth a joint socket takes from the module edge, so that it keeps clear of the wall around every pocket.
 export const JOINT_RESERVE=11;
+export const offsetOutline=offset;
 /** Free margin between a module edge and its tools. With joints switched on it also leaves room for a socket on every side. */
 export function modulePadding(project,edge=.25){
   const wall=Number(project.wall),base=(Number.isFinite(wall)?wall:2.4)+edge;
@@ -92,10 +93,20 @@ export function moduleOutline(module,grid=42,{world=true,inset=0}={}){
 export const localModuleOutline=(module,grid=42,options={})=>moduleOutline(module,grid,{...options,world:false});
 export const worldModuleOutline=(module,grid=42,options={})=>moduleOutline(module,grid,{...options,world:true});
 export function moduleArea(module,grid=42){const fields=validateModuleFootprint(module,grid);return fields.cells?fields.cells.length*grid*grid:Number(module.width)*Number(module.height);}
+// Raster-aligned modules need no polygons: comparing cells is exact and far cheaper in the packing loop.
+const cellSets=new WeakMap();
+const cellSet=cells=>{let known=cellSets.get(cells);if(!known){known=new Set(cells.map(cell=>cell.x+','+cell.y));cellSets.set(cells,known);}return known;};
+const onGrid=(module,grid)=>[module.x,module.y].every(value=>Math.abs(value/grid-Math.round(value/grid))<1e-9)&&(module.cells?Array.isArray(module.cells):[module.width,module.height].every(value=>Math.abs(value/grid-Math.round(value/grid))<1e-9));
+function cellsOverlap(a,b,grid){
+  const [stepped,other]=a.cells?[a,b]:[b,a],dx=Math.round((stepped.x-other.x)/grid),dy=Math.round((stepped.y-other.y)/grid),cols=Math.round(other.width/grid),rows=Math.round(other.height/grid),known=other.cells?cellSet(other.cells):null;
+  for(const cell of stepped.cells){const x=cell.x+dx,y=cell.y+dy;if(known?known.has(x+','+y):x>=0&&y>=0&&x<cols&&y<rows)return true;}
+  return false;
+}
 export function moduleIntersects(a,b,grid=42,{gap=0}={}){
   if(typeof gap!=='number'||!Number.isFinite(gap)||gap<0)throw invalid();
   if(a.x+a.width+gap<=b.x+EPS||b.x+b.width+gap<=a.x+EPS||a.y+a.height+gap<=b.y+EPS||b.y+b.height+gap<=a.y+EPS)return false;
   if(!a.cells&&!b.cells)return true;
+  if(!gap&&onGrid(a,grid)&&onGrid(b,grid))return cellsOverlap(a,b,grid);
   const grown=offset(moduleOutline(a,grid),gap);
   return boolean(grown,[moduleOutline(b,grid)]).some(poly=>Math.abs(area(poly))>EPS);
 }
