@@ -2,6 +2,7 @@ import earcut from './vendor/earcut.js';
 import {encodeSTL,validatePrintMesh} from './print-geometry.js';
 import {i18nError} from './i18n.js';
 import {fmtSize} from './units.js';
+import {layoutMeshToPhysical} from './manufacturing-coordinates.js';
 
 // Reference geometry, independently implemented:
 // https://github.com/kennetek/gridfinity-rebuilt-openscad/blob/main/src/core/gridfinity-baseplate.scad
@@ -60,7 +61,8 @@ function resolveTile(project,tile){
   return result;
 }
 
-/** One connected, open-bottom socket plate. Tile x/y use cell indices; STL coordinates are local.
+/** One connected, open-bottom socket plate in local editor (Y-down) coordinates.
+ * Tile x/y use cell indices; exportBaseplateSTL converts the mesh to physical Y-up coordinates.
  * Shared vertex arrays in the returned mesh should be treated as read-only. */
 export function baseplateTriangles(project,{tile}={}){
   const {columns,rows}=resolveTile(project,tile),width=columns*42,height=rows*42,triangles=[];
@@ -86,5 +88,8 @@ export function baseplateTriangles(project,{tile}={}){
 }
 
 export function exportBaseplateSTL(project,options={}){
-  return encodeSTL(baseplateTriangles(project,options),'InsertCreator | Gridfinity baseplate | mm');
+  const {rows}=resolveTile(project,options.tile);
+  const triangles=layoutMeshToPhysical(baseplateTriangles(project,options),rows*42);
+  validatePrintMesh(triangles);
+  return encodeSTL(triangles,'InsertCreator | Gridfinity baseplate | mm');
 }

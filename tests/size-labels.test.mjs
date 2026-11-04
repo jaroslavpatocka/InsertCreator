@@ -75,7 +75,7 @@ test('engraved STL remains closed, oriented and separate from pockets for both c
     const actual=mesh(exportSTL(p,{moduleId:'m'})),plain=mesh(exportSTL({...p,sizeLabels:false},{moduleId:'m'})),glyphArea=label.polygons.reduce((s,poly)=>s+area(poly),0);
     const added=printMode==='light'?label.width*label.height*(label.top-label.baseTop):0;
     assert.ok(Math.abs(actual.volume-plain.volume-(added-glyphArea*label.depth))<.03,`${printMode}/${bottomMode}: only the planned text/plaque volume changes`);
-    const pixel=glyphPoint(label),x=pixel.x-origin.x,y=pixel.y-origin.y;
+    const pixel=glyphPoint(label),x=pixel.x-origin.x,y=origin.height-(pixel.y-origin.y);
     assert.equal(materialAt(actual,x,y,label.top-.15),false,'text is a real recessed cavity');
     assert.equal(materialAt(actual,x,y,label.top-label.depth-.15),true,'engraving retains solid support underneath');
     assert.equal(materialAt(actual,x,y,label.baseTop-.1),true,'the original base thickness is preserved');
@@ -83,7 +83,7 @@ test('engraved STL remains closed, oriented and separate from pockets for both c
     for(const pt of [{x:100,y:100},{x:84,y:105},{x:116,y:105}]){
       if(!inside(pt,pocket))continue;
       const z=printMode==='light'?label.baseTop+5:cfg.footHeight+cfg.height+cfg.extraBase-5;
-      assert.equal(materialAt(actual,pt.x-origin.x,pt.y-origin.y,z),false,'original pocket and finger bays stay open');
+      assert.equal(materialAt(actual,pt.x-origin.x,origin.height-(pt.y-origin.y),z),false,'original pocket and finger bays stay open');
     }
   }
 });
@@ -130,10 +130,10 @@ test('actual upper STL cavities read FR2 from above, including a rotated side la
         let bits='';
         for(let col=0;col<5;col++){
           const across=character*3+(col+.5)*.5,down=(row+.5)*.5;
-          // Look from +Z with +Y up. For the side label, turn the physical
-          // top view clockwise 90 degrees so its baseline reads left-to-right.
-          const x=label.x+.8+(rotation?down:across)-origin.x;
-          const y=label.y+.8+(rotation?across:3.5-down)-origin.y;
+          // Sample the layout's font rows after the SAME whole-body conversion
+          // as its pocket. The side label retains its original layout rotation.
+          const x=label.x+.8+(rotation?3.5-down:across)-origin.x;
+          const y=origin.height-(label.y+.8+(rotation?across:down)-origin.y);
           bits+=materialAt(actual,x,y,label.top-.15)?'0':'1';
           assert.equal(materialAt(actual,x,y,label.top-label.depth-.15),true,'every sampled pixel retains support beneath engraving');
         }

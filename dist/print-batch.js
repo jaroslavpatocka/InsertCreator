@@ -4,8 +4,9 @@ import {validateLayout} from './geometry.js';
 import {pocketOutline} from './finger-grip.js';
 import {planSizeLabels} from './size-labels.js';
 import {planJoints,planCutJoints,JOINT_BED_RESERVE,jointClearance} from './module-joints.js';
-import {buildPrintTriangles,encodeSTL,printConfig,trianglesVolume,validatePrintMesh} from './print-geometry.js';
+import {buildPrintTriangles,encodeSTL,printConfig,trianglesVolume,validatePrintMesh,weldPrintVertices,finalizePrintTriangles} from './print-geometry.js';
 import {i18nError} from './i18n.js';
+import {layoutMeshToPhysical} from './manufacturing-coordinates.js';
 
 const EPS=1e-6,MAX_PARTS=400,MAX_BYTES=128*1024*1024;
 const clonePlain=value=>Array.isArray(value)?value.map(clonePlain):value&&typeof value==='object'?Object.fromEntries(Object.entries(value).map(([key,item])=>[key,clonePlain(item)])):value;
@@ -27,7 +28,7 @@ function tilePlan(project,module,bedWidth,bedHeight){
   const alternative=(width,height)=>{
     // A tile with a male joint must fit together with its protrusion. Reserve only
     // axes that actually need cutting.
-    if(project.connectors&&project.bottomMode!=='grid'&&project.bottomMode!=='magnet'){
+    if(project.connectors&&project.bottomMode!=='grid'){
       if(module.width-.5>width+EPS)width-=JOINT_BED_RESERVE;
       if(module.height-.5>height+EPS)height-=JOINT_BED_RESERVE;
     }
@@ -69,6 +70,28 @@ export function planPrintBatch(project,modules=project.modules,tools=project.too
   return{plans,total,jointPlan};
 }
 
+/** The exact physical part geometry shared by STL export and the manufacturing preview.
+ * Tools already contain their layout-space pocket polygons. STL encoding rounds mesh vertices to Float32.
+ */
+export function buildPrintPart(project,module,tools,tile,{labelPlan=null,jointPlan=null}={}){
+  const meshOrigin={x:tile.clip?.x??module.x,y:tile.clip?.y??module.y},cutJoints=jointPlan?.byPart.get(tile.key),joints=cutJoints?new Map([[module.id,cutJoints]]):jointPlan?.byModule;
+  const mesh=buildPrintTriangles(project,[module],tools,meshOrigin,{clip:tile.clip,labelPlan,joints});
+  if(!mesh.length)return null;
+  const box=bounds(mesh),rotation=fits(box.width,box.height,project.bedWidth,project.bedHeight)?0:fits(box.height,box.width,project.bedWidth,project.bedHeight)?90:null;
+  if(rotation===null)throw i18nError('Tiskový díl se nevejde na zadanou tiskovou plochu.');
+  // Layout Y grows down the screen. Reflect the complete body, including
+  // pockets and joints, into physical Y-up before any proper print rotation.
+  // Bind existing serialized vertices before normalization can separate their
+  // double coordinates; defer collapsed-fan cleanup until every affine is done.
+  const normalized=weldPrintVertices(mesh).map(triangle=>triangle.map(point=>[point[0]-box.min[0],point[1]-box.min[1],point[2]])),physical=layoutMeshToPhysical(normalized,box.height,{finalize:false});
+  const local=finalizePrintTriangles(rotation?physical.map(triangle=>triangle.map(point=>[box.height-point[1],point[0],point[2]])):physical);
+  validatePrintMesh(local);
+  const offset={x:round(meshOrigin.x+box.min[0]),y:round(meshOrigin.y+box.min[1]),z:0};
+  const assemblyTransform=rotation?[0,1,0,offset.x,-1,0,0,round(project.height-offset.y),0,0,1,0,0,0,0,1]:[1,0,0,offset.x,0,1,0,round(project.height-offset.y-box.height),0,0,1,0,0,0,0,1];
+  const layoutTransform=rotation?[0,1,0,offset.x,1,0,0,offset.y,0,0,1,0,0,0,0,1]:[1,0,0,offset.x,0,-1,0,round(offset.y+box.height),0,0,1,0,0,0,0,1];
+  return{mesh:local,box,rotation,offset,assemblyTransform,layoutTransform};
+}
+
 /** files contain STL plus assembly.json. Part offsets and inverse transforms use world millimetres. */
 export async function preparePrintBatch(project,{moduleIds,signal,onProgress}={}){
   const abort=()=>{if(signal?.aborted)throw new DOMException('Příprava tiskových dílů byla zrušena.','AbortError');};
@@ -96,18 +119,12 @@ export async function preparePrintBatch(project,{moduleIds,signal,onProgress}={}
     const own=source.tools.filter(tool=>tool.moduleId===module.id).map(tool=>({...tool,poly:pocketOutline(tool,source.clearance)})),labelPlan=planSizeLabels(source,[module],own),moduleParts=[];
     for(const tile of tiles){
       progress({stage:'cutting',progress:total?completed/total:0,completed,total,moduleId:module.id});await pause();
-      const meshOrigin={x:tile.clip?.x??module.x,y:tile.clip?.y??module.y};
-      const cutJoints=jointPlan?.byPart.get(tile.key),joints=cutJoints?new Map([[module.id,cutJoints]]):jointPlan?.byModule;
-      const mesh=buildPrintTriangles(source,[module],own,meshOrigin,{clip:tile.clip,labelPlan,joints});abort();completed++;
-      if(!mesh.length)continue;
-      const box=bounds(mesh),rotation=fits(box.width,box.height,bedWidth,bedHeight)?0:fits(box.height,box.width,bedWidth,bedHeight)?90:null;
-      if(rotation===null)throw i18nError('Tiskový díl se nevejde na zadanou tiskovou plochu.');
-      const local=mesh.map(triangle=>triangle.map(point=>rotation?[box.height-(point[1]-box.min[1]),point[0]-box.min[0],point[2]]:[point[0]-box.min[0],point[1]-box.min[1],point[2]]));
-      validatePrintMesh(local);
+      const geometry=buildPrintPart(source,module,own,tile,{labelPlan,jointPlan});abort();completed++;
+      if(!geometry)continue;
+      const {mesh:local,box,rotation,offset,assemblyTransform,layoutTransform}=geometry;
       const index=moduleParts.length+1,file=`${String(moduleIndex+1).padStart(3,'0')}-${slug(module.name||module.id)}-${String(index).padStart(3,'0')}.stl`,data=encodeSTL(local,'InsertCreator | mm | cut '+module.id+' '+index);
       bytes+=data.byteLength;if(bytes>MAX_BYTES)throw i18nError('Tiskové díly přesahují limit 128 MB. Vyberte méně modulů a export zopakujte.');
-      const offset={x:round(meshOrigin.x+box.min[0]),y:round(meshOrigin.y+box.min[1]),z:0},assemblyTransform=rotation?[0,1,0,offset.x,-1,0,0,round(offset.y+box.height),0,0,1,0,0,0,0,1]:[1,0,0,offset.x,0,1,0,offset.y,0,0,1,0,0,0,0,1];
-      const part={moduleId:module.id,key:tile.key,file,index,count:0,row:tile.row,column:tile.column,offset,rotationForPrinting:rotation,assemblyTransform,clip:tile.clip||{x:module.x,y:module.y,width:module.width,height:module.height},bounds:{width:rotation?box.height:box.width,height:rotation?box.width:box.height,heightMm:box.heightMm},sourceBounds:{width:box.width,height:box.height,heightMm:box.heightMm},triangles:local.length,volumeMm3:trianglesVolume(local)};
+      const part={moduleId:module.id,key:tile.key,file,index,count:0,row:tile.row,column:tile.column,offset,rotationForPrinting:rotation,assemblyTransform,layoutTransform,clip:tile.clip||{x:module.x,y:module.y,width:module.width,height:module.height},bounds:{width:rotation?box.height:box.width,height:rotation?box.width:box.height,heightMm:box.heightMm},sourceBounds:{width:box.width,height:box.height,heightMm:box.heightMm},triangles:local.length,volumeMm3:trianglesVolume(local)};
       files.push({name:file,data});moduleParts.push(part);parts.push(part);
       progress({stage:'cutting',progress:completed/total,completed,total,moduleId:module.id});await pause();
     }
@@ -115,7 +132,7 @@ export async function preparePrintBatch(project,{moduleIds,signal,onProgress}={}
     splitSummary.push({moduleId:module.id,name:module.name||module.id,count:moduleParts.length,files:moduleParts.map(part=>part.file)});
   }
   if(!parts.length)throw i18nError('Vybrané moduly neobsahují žádnou tisknutelnou geometrii.');
-  const manifest={schemaVersion:1,units:'mm',bed:{width:bedWidth,height:bedHeight},coordinates:'world',transform:'row-major 4x4: STL vertex to original drawer world coordinates',parts,...(jointPlan?{joints:{count:jointPlan.joints.length,moduleCount:jointPlan.moduleCount,cutCount:jointPlan.cutCount,skipped:jointPlan.skipped,clearance:jointPlan.clearance,seams:jointPlan.seams,unjoined:jointPlan.unjoined,connections:jointPlan.joints}}:{})};
+  const manifest={schemaVersion:2,units:'mm',bed:{width:bedWidth,height:bedHeight},coordinates:'physical-world',coordinateFrames:{assembly:{origin:'drawer lower-left',axes:'X right, Y up, Z up'},layout:{origin:'drawer upper-left',axes:'X right, Y down, Z up'},stl:{origin:'part print-bed lower-left',axes:'X right, Y up, Z up'}},layoutHeightMm:source.height,layoutSize:{width:source.width,height:source.height},layoutFields:['parts.offset','parts.clip','parts.row','parts.column','joints'],transform:'row-major 4x4: assemblyTransform maps STL vertices to physical drawer world; layoutTransform maps STL vertices to original 2D drawer layout',parts,...(jointPlan?{joints:{count:jointPlan.joints.length,moduleCount:jointPlan.moduleCount,cutCount:jointPlan.cutCount,skipped:jointPlan.skipped,clearance:jointPlan.clearance,seams:jointPlan.seams,unjoined:jointPlan.unjoined,connections:jointPlan.joints}}:{})};
   const assembly=JSON.stringify(manifest,null,2);bytes+=new TextEncoder().encode(assembly).byteLength;
   if(bytes>MAX_BYTES)throw i18nError('Tiskové díly přesahují limit 128 MB. Vyberte méně modulů a export zopakujte.');
   files.push({name:'assembly.json',data:assembly});

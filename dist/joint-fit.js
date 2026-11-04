@@ -4,7 +4,8 @@ import {preparePrintBatch} from './print-batch.js';
 
 /** Two real puzzle coupons. The user's drawer and its tools are never modified or exported. */
 export async function prepareJointFitTest(project,options={}){
-  const base=project?.base??2.4,clearance=project?.jointClearance??.2;
+  // Match the production tab's height, including the roof over blind magnet pockets.
+  const base=project?.bottomMode==='magnet'?Math.max(project.base??2.4,Number(project.magnetDepth??2.2)+1.2):project?.base??2.4,clearance=project?.jointClearance??.2;
   const sample=validateProject({...blankProject(),id:'joint-fit-test',name:'Puzzle fit test',
     width:44,height:42,grid:42,base,insertHeight:Math.max(3,Number(base)+1.2),
     bedWidth:project?.bedWidth??220,bedHeight:project?.bedHeight??220,

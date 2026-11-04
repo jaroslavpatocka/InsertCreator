@@ -1,14 +1,16 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {preparePrintBatch} from '../dist/print-batch.js';
+import {preparePrintBatch,buildPrintPart} from '../dist/print-batch.js';
 import {blankProject} from '../dist/model.js';
 import {exportSTL,zipFiles} from '../dist/geometry.js';
-import {buildPrintTriangles,validatePrintMesh,trianglesVolume} from '../dist/print-geometry.js';
+import {buildPrintTriangles,validatePrintMesh,trianglesVolume,encodeSTL} from '../dist/print-geometry.js';
 import {pocketOutline} from '../dist/finger-grip.js';
 import {catalogSets} from '../dist/catalog/index.js';
 import {catalogTool} from '../dist/catalog-ui.js';
 import {addToolGroup} from '../dist/set-module.js';
 import {planSizeLabels} from '../dist/size-labels.js';
+import {magnetPocketCenters} from '../dist/magnet-pockets.js';
+import {alignedStitchContour} from './fixtures/stitch-contour.mjs';
 
 const rectangle=(w,h)=>[{x:0,y:0},{x:w,y:0},{x:w,y:h},{x:0,y:h}];
 const fixture=(extra={})=>({...blankProject(),id:'batch',width:840,height:420,printMode:'solid',bottomMode:'plain',bedWidth:84,bedHeight:84,modules:[
@@ -25,11 +27,15 @@ const bounds=mesh=>{const min=[Infinity,Infinity,Infinity],max=[-Infinity,-Infin
 const close=(a,b,tolerance=.05)=>assert.ok(Math.abs(a-b)<tolerance,`${a} should equal ${b}`);
 const transform=(mesh,m)=>mesh.map(t=>t.map(p=>[m[0]*p[0]+m[1]*p[1]+m[2]*p[2]+m[3],m[4]*p[0]+m[5]*p[1]+m[6]*p[2]+m[7],m[8]*p[0]+m[9]*p[1]+m[10]*p[2]+m[11]]));
 function assertReassembly(source,result,id){
-  const module=source.modules.find(module=>module.id===id),original=decode(exportSTL(source,{moduleId:id,checkBed:false})).map(t=>t.map(p=>[p[0]+module.x,p[1]+module.y,p[2]])),assembled=[];
+  const module=source.modules.find(module=>module.id===id),original=decode(exportSTL(source,{moduleId:id,checkBed:false})).map(t=>t.map(p=>[p[0]+module.x,p[1]+source.height-module.y-module.height,p[2]])),assembled=[];
   const parts=result.parts.filter(part=>part.moduleId===id);assert.ok(parts.length);
   for(const part of parts){
     const file=result.files.find(file=>file.name===part.file),mesh=decode(file.data),box=bounds(mesh);validatePrintMesh(mesh);close(box.min[0],0,1e-5);close(box.min[1],0,1e-5);
-    assert.ok(box.max[0]<=source.bedWidth+1e-5&&box.max[1]<=source.bedHeight+1e-5);assert.equal(part.offset.z,0);assert.equal(part.assemblyTransform.length,16);assert.equal(part.count,parts.length);
+    assert.ok(box.max[0]<=source.bedWidth+1e-5&&box.max[1]<=source.bedHeight+1e-5);assert.equal(part.offset.z,0);assert.equal(part.assemblyTransform.length,16);assert.equal(part.layoutTransform.length,16);assert.equal(part.count,parts.length);
+    assert.equal(part.assemblyTransform[0]*part.assemblyTransform[5]-part.assemblyTransform[1]*part.assemblyTransform[4],1,'physical assembly uses only proper rotations and translation');
+    assert.equal(part.layoutTransform[0]*part.layoutTransform[5]-part.layoutTransform[1]*part.layoutTransform[4],-1,'mapping back to screen layout changes coordinate handedness');
+    const physicalVertices=transform(mesh,part.assemblyTransform).flat(),layoutVertices=transform(mesh,part.layoutTransform).flat();
+    for(let index=0;index<physicalVertices.length;index++){const physical=physicalVertices[index],layout=layoutVertices[index];close(physical[0],layout[0],1e-5);close(physical[1],source.height-layout[1],1e-5);close(physical[2],layout[2],1e-5);}
     assembled.push(...transform(mesh,part.assemblyTransform));
   }
   close(trianglesVolume(assembled),trianglesVolume(original),.15);const a=bounds(assembled),b=bounds(original);for(let i=0;i<3;i++){close(a.min[i],b.min[i],.0002);close(a.max[i],b.max[i],.0002);}
@@ -119,7 +125,7 @@ test('the real 26-wrench set with 52 central grips, mixed depths, engraved sizes
   // loft intervals, before triangulation. Whole-source STL exceeds its existing
   // 120000-facet guard; slicing must not change that production safety limit.
   close(trianglesVolume(assembled),2670989.687896,.5);
-  const box=bounds(assembled);for(const [actual,expected] of [...box.min.map((v,i)=>[v,[.25,.25,0][i]]),...box.max.map((v,i)=>[v,[503.75,671.75,25.65][i]])])close(actual,expected,.0002);
+  const box=bounds(assembled);for(const [actual,expected] of [...box.min.map((v,i)=>[v,[.25,source.height-671.75,0][i]]),...box.max.map((v,i)=>[v,[503.75,source.height-.25,25.65][i]])])close(actual,expected,.0002);
   // This actual "9 mm" engraving crosses the 42 mm Gridfinity boundary. The
   // normal 210 mm batch tiles do not intersect any glyph in this exact layout.
   const label=labels.find(label=>label.toolId==='wrench-3');assert.ok(label.polygons.some(poly=>Math.min(...poly.map(p=>p.y))<42&&Math.max(...poly.map(p=>p.y))>42));
@@ -142,13 +148,44 @@ function materialAt(mesh,[x,y,z]){
   return crossings%2===1;
 }
 
+test('an asymmetric pocket has the same handedness as the layout on the actual upper STL surface before and after a print rotation',async()=>{
+  const outline=[{x:0,y:0},{x:50,y:0},{x:50,y:12},{x:15,y:12},{x:15,y:80},{x:0,y:80}];
+  for(const rotation of [0,90]){
+    const module={id:'handed',x:42,y:42,width:84,height:126},tool={id:'L',moduleId:'handed',name:'Asymmetric L',points:outline,x:54,y:60,rotation:0,depth:8,fingerGrips:[]};
+    const source=fixture({width:504,height:504,clearance:0,modules:[module],tools:[tool],bedWidth:rotation?150:100,bedHeight:rotation?100:150}),before=JSON.stringify(source),result=await preparePrintBatch(source),part=result.parts[0],mesh=decode(result.files.find(file=>file.name===part.file).data);
+    assert.equal(result.parts.length,1);assert.equal(part.rotationForPrinting,rotation);validatePrintMesh(mesh);
+    // Independent screen-to-print probes: top-of-layout is +Y on the physical
+    // part. Neither assembly matrix nor the manufacturing helper supplies them.
+    const stlPoint=([x,y])=>rotation?[y-module.y-.25,x-module.x-.25,19]:[x-module.x-.25,module.y+module.height-.25-y,19];
+    assert.equal(materialAt(mesh,stlPoint([tool.x+40.13,tool.y+5.37])),false,'upper-right arm is an open pocket in the physical top view');
+    assert.equal(materialAt(mesh,stlPoint([tool.x+40.13,tool.y+74.63])),true,'lower-right region remains material, detecting a whole-model reflection');
+    assert.equal(result.manifest.schemaVersion,2);assert.equal(result.manifest.coordinates,'physical-world');assert.deepEqual(result.manifest.layoutSize,{width:source.width,height:source.height});assert.equal(JSON.stringify(source),before);
+    assertReassembly(source,result,module.id);
+  }
+});
+
+test('near-collinear stitch fans retain strict serialized topology after physical normalization and both print rotations',()=>{
+  for(const printMode of ['solid','light'])for(const rotation of [0,90]){
+    const fixture=structuredClone(alignedStitchContour),module=fixture.module,tool={...fixture.tool,points:fixture.points,moduleId:module.id},source={...blankProject(),...fixture.settings,printMode,bottomMode:'plain',modules:[module],tools:[tool],bedWidth:rotation?600:200,bedHeight:rotation?200:600},before=JSON.stringify(source);
+    const part=buildPrintPart(source,module,[{...tool,poly:pocketOutline(tool,source.clearance)}],{key:'numeric-regression',row:0,column:0,clip:null}),mesh=decode(encodeSTL(part.mesh)),edges=new Map();
+    assert.equal(part.rotation,rotation);validatePrintMesh(mesh);
+    for(const triangle of mesh){
+      const keys=triangle.map(point=>point.join(','));assert.equal(new Set(keys).size,3,'a physical Float32 facet must not collapse after the last affine');
+      const [a,b,c]=triangle,u=b.map((value,index)=>value-a[index]),v=c.map((value,index)=>value-a[index]);assert.ok(Math.hypot(u[1]*v[2]-u[2]*v[1],u[2]*v[0]-u[0]*v[2],u[0]*v[1]-u[1]*v[0])>1e-12,'the serialized physical facet retains a real surface');
+      for(let index=0;index<3;index++){const a=keys[index],b=keys[(index+1)%3],key=a<b?a+'|'+b:b+'|'+a,edge=edges.get(key)||{count:0,winding:0};edge.count++;edge.winding+=a<b?1:-1;edges.set(key,edge);}
+    }
+    for(const edge of edges.values()){assert.equal(edge.count,2,'every actual Float32 edge has exactly two faces without tolerance welding');assert.equal(edge.winding,0);}
+    close(trianglesVolume(mesh),trianglesVolume(part.mesh),.05);assert.equal(JSON.stringify(source),before);
+  }
+});
+
 for(const [width,height,printMode,bottomMode] of [[168,84,'solid','plain'],[84,168,'light','adhesive'],[168,168,'solid','plain'],[168,168,'light','plain']])test(`${printMode} ${bottomMode} ${width} by ${height} cut parts contain real complementary base joints and exact assembly transforms`,async()=>{
   const source=fixture({width:504,height:504,connectors:true,bedWidth:100,bedHeight:100,printMode,bottomMode,modules:[{id:'cut',name:'Cut with puzzle',x:42,y:42,width,height,locked:true}],tools:[]}),before=JSON.stringify(source),result=await preparePrintBatch(source),world=new Map();
   assert.equal(result.parts.length,width===height?4:2);assert.equal(result.manifest.joints.cutCount,width===height?4:1);assert.equal(result.manifest.joints.unjoined.length,0);assert.equal(JSON.stringify(source),before);
   for(const part of result.parts){
     const mesh=decode(result.files.find(file=>file.name===part.file).data),box=bounds(mesh);validatePrintMesh(mesh);
     close(box.min[0],0,1e-5);close(box.min[1],0,1e-5);assert.ok(box.max[0]<=100&&box.max[1]<=100);assert.equal(part.rotationForPrinting,0);
-    world.set(part.key,transform(mesh,part.assemblyTransform));
+    world.set(part.key,transform(mesh,part.layoutTransform));
   }
   for(const joint of result.manifest.joints.connections){
     const point=[joint.at.x+(joint.axis==='x'?5.77:.137),joint.at.y+(joint.axis==='y'?5.77:.137),source.base/2],owner=world.get(joint.owner),host=world.get(joint.host);
@@ -170,7 +207,7 @@ test('cut joints respect awkward bed sizes, rotation, labels and pocket floors, 
 test('adjustable per-side clearance changes the actual STL socket while leaving its male head fixed',async()=>{
   const widths=[];
   for(const jointClearance of [.1,.3,.5]){
-    const source=fixture({width:504,height:504,connectors:true,jointClearance,bedWidth:100,bedHeight:100,modules:[{id:'fit',x:0,y:0,width:168,height:84}],tools:[]}),result=await preparePrintBatch(source),joint=result.manifest.joints.connections[0],world=new Map(result.parts.map(part=>[part.key,transform(decode(result.files.find(file=>file.name===part.file).data),part.assemblyTransform)]));
+    const source=fixture({width:504,height:504,connectors:true,jointClearance,bedWidth:100,bedHeight:100,modules:[{id:'fit',x:0,y:0,width:168,height:84}],tools:[]}),result=await preparePrintBatch(source),joint=result.manifest.joints.connections[0],world=new Map(result.parts.map(part=>[part.key,transform(decode(result.files.find(file=>file.name===part.file).data),part.layoutTransform)]));
     const at=distance=>[joint.at.x+9.75+distance,joint.at.y+.137,source.base/2],owner=world.get(joint.owner),host=world.get(joint.host);
     assert.equal(materialAt(owner,at(jointClearance-.03)),false,'the male head never grows with clearance');
     assert.equal(materialAt(host,at(jointClearance-.03)),false,'the socket includes the selected radial clearance');
@@ -184,10 +221,30 @@ test('blocked cut seams remain explicit in assembly and disabled or unsupported 
   const source=fixture({width:504,height:504,connectors:true,bedWidth:100,bedHeight:100,modules:[{id:'blocked',x:0,y:0,width:168,height:84}],tools:[{id:'crossing',moduleId:'blocked',name:'Crosses seam',points:rectangle(40,74),x:70,y:5,rotation:0,depth:8,fingerGrips:[]}]}),before=JSON.stringify(source),result=await preparePrintBatch(source);
   assert.equal(result.manifest.joints.cutCount,0);assert.equal(result.manifest.joints.unjoined.length,1);assert.equal(result.manifest.joints.unjoined[0].reason,'no-safe-site');assert.equal(result.manifest.joints.skipped,1);assert.equal(JSON.stringify(source),before);
   for(const part of result.parts)validatePrintMesh(decode(result.files.find(file=>file.name===part.file).data));
-  for(const bottomMode of ['plain','grid','magnet']){
+  for(const bottomMode of ['plain','grid']){
     const p={...source,bottomMode,connectors:bottomMode!=='plain',tools:[]},r=await preparePrintBatch(p);
     if(bottomMode==='plain')assert.equal(r.manifest.joints,undefined);else assert.equal(r.manifest.joints.count,0);
     assertReassembly(p,r,'blocked');
+  }
+});
+
+for(const printMode of ['solid','light'])test(`${printMode} magnetic bottoms retain real puzzle tabs, sockets, blind magnet pockets and their roofs in whole and cut modules`,async()=>{
+  const cases=[
+    {modules:[{id:'cut',x:42,y:42,width:168,height:168}],bedWidth:100,bedHeight:100},
+    {modules:[{id:'stepped',x:42,y:42,width:168,height:168,cells:Array.from({length:4},(_,y)=>Array.from({length:y<2?4:2},(_,x)=>({x,y}))).flat()}],bedWidth:100,bedHeight:100},
+    {modules:[{id:'rotate',x:42,y:42,width:252,height:84}],bedWidth:100,bedHeight:150},
+    {modules:[{id:'left',x:0,y:0,width:84,height:84},{id:'right',x:84,y:0,width:84,height:84}],bedWidth:100,bedHeight:100}
+  ];
+  for(const item of cases){
+    const tools=item.modules.map(module=>({id:'tool-'+module.id,moduleId:module.id,name:'Tool',points:rectangle(30,30),x:module.x+20,y:module.y+20,rotation:0,depth:8,fingerGrips:[]})),source=fixture({width:504,height:504,...item,tools,printMode,bottomMode:'magnet',connectors:true}),before=JSON.stringify(source),result=await preparePrintBatch(source),world=new Map(),base=Math.max(source.base,source.magnetDepth+1.2);
+    assert.ok(result.manifest.joints.count>0);assert.equal(JSON.stringify(source),before);
+    for(const part of result.parts){const mesh=decode(result.files.find(file=>file.name===part.file).data);validatePrintMesh(mesh);const box=bounds(mesh);assert.ok(box.max[0]<=source.bedWidth+1e-5&&box.max[1]<=source.bedHeight+1e-5);world.set(part.key,transform(mesh,part.layoutTransform));}
+    for(const joint of result.manifest.joints.connections){const xy=[joint.at.x+(joint.axis==='x'?5.77:.137),joint.at.y+(joint.axis==='y'?5.77:.137)],owner=world.get(joint.owner),host=world.get(joint.host);assert.equal(materialAt(owner,[...xy,base/2]),true,'the tab survives magnet generation');assert.equal(materialAt(host,[...xy,base/2]),false,'the complementary socket survives magnet generation');assert.equal(materialAt(owner,[...xy,base+.1]),false,'the tab ends at the effective magnetic base height');}
+    for(const module of source.modules)for(const center of magnetPocketCenters(source,module)){
+      const own=result.parts.filter(part=>part.moduleId===module.id).map(part=>world.get(part.key)),xy=[center.x+.071,center.y+.137];
+      assert.equal(own.some(mesh=>materialAt(mesh,[...xy,source.magnetDepth/2])),false,'the actual blind magnet pocket remains empty');
+      assert.equal(own.some(mesh=>materialAt(mesh,[...xy,source.magnetDepth+.3])),true,'the roof above the magnet remains solid');
+    }
   }
 });
 
@@ -195,7 +252,7 @@ test('regular and oversized neighbouring modules export their shared joints toge
   for(const modules of [[{id:'big',x:0,y:0,width:168,height:84},{id:'b',x:168,y:0,width:84,height:84},{id:'c',x:252,y:0,width:84,height:84}],[{id:'big',x:0,y:0,width:168,height:84},{id:'big2',x:168,y:0,width:168,height:84}]]){
     const source=fixture({width:504,height:504,connectors:true,bedWidth:100,bedHeight:100,modules,tools:[]}),before=JSON.stringify(source),result=await preparePrintBatch(source),world=new Map();
     assert.equal(result.parts.length,4);assert.equal(result.manifest.joints.count,3);assert.equal(result.manifest.joints.unjoined.length,0);
-    for(const part of result.parts){const mesh=decode(result.files.find(file=>file.name===part.file).data);validatePrintMesh(mesh);const box=bounds(mesh);assert.ok(box.max[0]<=100&&box.max[1]<=100);world.set(part.key,transform(mesh,part.assemblyTransform));}
+    for(const part of result.parts){const mesh=decode(result.files.find(file=>file.name===part.file).data);validatePrintMesh(mesh);const box=bounds(mesh);assert.ok(box.max[0]<=100&&box.max[1]<=100);world.set(part.key,transform(mesh,part.layoutTransform));}
     for(const joint of result.manifest.joints.connections){const point=[joint.at.x+5.77,joint.at.y+.137,source.base/2];assert.equal(materialAt(world.get(joint.owner),point),true);assert.equal(materialAt(world.get(joint.host),point),false);}
     assert.equal(JSON.stringify(source),before);
   }
@@ -204,14 +261,14 @@ test('regular and oversized neighbouring modules export their shared joints toge
 test('parts rotated for a narrow bed retain complementary joints at their exact original world position',async()=>{
   const source=fixture({width:504,height:504,connectors:true,bedWidth:100,bedHeight:150,modules:[{id:'rotate',x:42,y:42,width:252,height:84}],tools:[]}),before=JSON.stringify(source),result=await preparePrintBatch(source),world=new Map();
   assert.equal(result.parts.length,2);assert.equal(result.manifest.joints.cutCount,1);
-  for(const part of result.parts){assert.equal(part.rotationForPrinting,90);const mesh=decode(result.files.find(file=>file.name===part.file).data);validatePrintMesh(mesh);const box=bounds(mesh);assert.ok(box.max[0]<=100&&box.max[1]<=150);world.set(part.key,transform(mesh,part.assemblyTransform));}
+  for(const part of result.parts){assert.equal(part.rotationForPrinting,90);const mesh=decode(result.files.find(file=>file.name===part.file).data);validatePrintMesh(mesh);const box=bounds(mesh);assert.ok(box.max[0]<=100&&box.max[1]<=150);world.set(part.key,transform(mesh,part.layoutTransform));}
   const joint=result.manifest.joints.connections[0],point=[joint.at.x+5.77,joint.at.y+.137,source.base/2];assert.equal(materialAt(world.get(joint.owner),point),true);assert.equal(materialAt(world.get(joint.host),point),false);assert.equal(JSON.stringify(source),before);
 });
 
 test('a split stepped body and the module occupying its notch export their reentrant puzzle seams as watertight meshes',async()=>{
   const cells=Array.from({length:4},(_,y)=>Array.from({length:y<2?6:4},(_,x)=>({x,y}))).flat(),source=fixture({width:504,height:504,connectors:true,bedWidth:150,bedHeight:150,modules:[{id:'step',x:0,y:0,width:252,height:168,cells},{id:'notch',x:168,y:84,width:84,height:84}],tools:[]}),before=JSON.stringify(source),result=await preparePrintBatch(source),world=new Map();
   assert.equal(result.parts.length,5);
-  for(const part of result.parts){const mesh=decode(result.files.find(file=>file.name===part.file).data);validatePrintMesh(mesh);const box=bounds(mesh);assert.ok(box.max[0]<=150&&box.max[1]<=150);world.set(part.key,transform(mesh,part.assemblyTransform));}
+  for(const part of result.parts){const mesh=decode(result.files.find(file=>file.name===part.file).data);validatePrintMesh(mesh);const box=bounds(mesh);assert.ok(box.max[0]<=150&&box.max[1]<=150);world.set(part.key,transform(mesh,part.layoutTransform));}
   const joints=result.manifest.joints.connections.filter(joint=>joint.ownerModuleId==='step'&&joint.hostModuleId==='notch');assert.ok(joints.length>=2);
   for(const joint of joints){const point=[joint.at.x+(joint.axis==='x'?5.77:.137),joint.at.y+(joint.axis==='y'?5.77:.137),source.base/2];assert.equal(materialAt(world.get(joint.owner),point),true);assert.equal(materialAt(world.get(joint.host),point),false);}
   assert.equal(JSON.stringify(source),before);

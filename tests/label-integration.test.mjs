@@ -30,12 +30,12 @@ const action=name=>click(`#app [data-action="${name}"]`);
 const change=(selector,value)=>{const element=$(selector);assert.ok(element,'Missing '+selector);element.value=value;element.dispatchEvent(new win.Event('change',{bubbles:true}));};
 const saved=()=>JSON.parse(localStorage.getItem('suplik-studio-projects-v1')).find(project=>project.id==='label-scope');
 
-test('the 2D board draws readable Y-down glyphs while STL uses physical Y-up lettering',()=>{
+test('the 2D board and raw engraving share one Y-down layout before the whole STL conversion',()=>{
   const label=planSizeLabels(saved()).labels.find(label=>label.toolId==='ta');assert.ok(label);
   const path=polygon=>polygon.map((point,i)=>`${i?'L':'M'}${point.x.toFixed(2)},${point.y.toFixed(2)}`).join(' ')+'Z';
   const paths=Array.from(win.document.querySelectorAll('[data-tool-label="ta"] path'),node=>node.getAttribute('d'));
   assert.deepEqual(paths,label.screenPolygons.map(path),'the board must use screen font rows');
-  assert.notDeepEqual(paths,label.polygons.map(path),'physical engraving cannot be drawn directly into a Y-down SVG');
+  assert.deepEqual(paths,label.polygons.map(path),'lettering must use the same layout frame as pockets and module outlines');
 });
 
 test('legacy PH/PZ/Torx names label the driver code instead of its shaft length, including PH0',()=>{

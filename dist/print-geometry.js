@@ -4,6 +4,7 @@ import {i18nError} from './i18n.js';
 import {fmtLen,fmtSize} from './units.js';
 import {planSizeLabels} from './size-labels.js';
 import {moduleOutline,validateModuleFootprint,containsPocketWalls} from './module-footprint.js';
+import {magnetPocketCenters} from './magnet-pockets.js';
 
 const SCALE=10000,EPS=1e-7;
 const number=(value,fallback)=>Number.isFinite(+value)?+value:fallback;
@@ -97,7 +98,9 @@ export function validatePrintBed(project,modules){
   if(tooBig)throw i18nError('Modul „{name}“ se nevejde na tiskovou plochu {size} ani po otočení. Zmenšete modul nebo zvětšete tiskovou plochu.',{name:tooBig.name||tooBig.id,size:fmtSize(width,height)});
 }
 
-/** Build non-overlapping material slabs, then expose only their actual boundary faces. */
+/** Build non-overlapping material slabs in local editor coordinates (X right, Y down,
+ * Z up), then expose only their actual boundary faces. Serialization callers must
+ * convert the whole returned mesh to physical Y-up coordinates exactly once. */
 export function buildPrintTriangles(project,modules,tools,origin={x:0,y:0},{fit=false,clip=null,labelPlan:providedLabelPlan=null,joints=null}={}){
   const kernel=clip?cutKernel:defaultKernel,{round,toInt,fromInt,boolean,union,subtract,offset,rect,roundedRect,circle}=kernel;
   const cfg=printConfig(fit?{...project,bottomMode:'plain'}:project),triangles=[];
@@ -220,22 +223,7 @@ export function buildPrintTriangles(project,modules,tools,origin={x:0,y:0},{fit=
     const bottom=cfg.footHeight,baseTop=bottom+cfg.effectiveBaseMm,H=bottom+cfg.height+cfg.extraBase;
     let magnets=[];
     if(cfg.bottomMode==='magnet'){
-      const r=cfg.magnetDiameter/2,edge=Math.max(1.2,cfg.wall),inset=r+edge;
-      if(Math.min(m.width-.5,m.height-.5)<2*cfg.magnetDiameter+2*edge+.5)throw i18nError('Modul „{name}“ je příliš malý pro čtyři bezpečně oddělené magnetové kapsy.',{name:m.name||m.id});
-      if(!footprint.cells)for(const x of [m.x+.25+inset,m.x+m.width-.25-inset])for(const y of [m.y+.25+inset,m.y+m.height-.25-inset])magnets.push(circle(x,y,r));
-      else{
-        const candidates=[],seen=new Set(),grid=number(project.grid,42);
-        const consider=(x,y)=>{const id=`${round(x)},${round(y)}`;if(seen.has(id))return;seen.add(id);const poly=circle(x,y,r);if(containsPocketWalls(m,poly,edge,grid))candidates.push({x,y,poly});};
-        for(const x of [m.x+.25+inset,m.x+m.width-.25-inset])for(const y of [m.y+.25+inset,m.y+m.height-.25-inset])consider(x,y);
-        for(const cell of footprint.cells){const x=m.x+cell.x*grid,y=m.y+cell.y*grid;consider(x+grid/2,y+grid/2);for(const dx of [.25+inset,grid-.25-inset])for(const dy of [.25+inset,grid-.25-inset])consider(x+dx,y+dy);}
-        const chosen=[];
-        while(chosen.length<4){
-          const eligible=candidates.filter(p=>chosen.every(q=>Math.hypot(p.x-q.x,p.y-q.y)>=2*r+edge+.5-EPS));
-          eligible.sort((a,b)=>{const score=p=>chosen.length?Math.min(...chosen.map(q=>Math.hypot(p.x-q.x,p.y-q.y))):Math.hypot(p.x-(m.x+m.width/2),p.y-(m.y+m.height/2));return score(b)-score(a)||a.y-b.y||a.x-b.x;});
-          if(!eligible.length)throw i18nError('Modul „{name}“ je příliš malý pro čtyři bezpečně oddělené magnetové kapsy.',{name:m.name||m.id});chosen.push(eligible[0]);
-        }
-        magnets=chosen.map(p=>p.poly);
-      }
+      magnets=magnetPocketCenters(project,m,{diameter:cfg.magnetDiameter,wall:cfg.wall}).map(({x,y,radius})=>circle(x,y,radius));
     }
     const labels=labelPlan.labels.filter(label=>label.moduleId===m.id&&touchesClip(label.plate)),joint=joints?.get(m.id);
     if(joint||(clip&&cfg.printMode!=='light')||!disjointComponents(outer,pockets,labels,bottom,baseTop,H,magnets,feet)){
@@ -351,6 +339,27 @@ function cancelOppositeFaces(triangles,{canonical=false}={}){
     pending.set(key,pair);
   }
   return triangles.filter((triangle,i)=>keep[i]);
+}
+
+/** Retain the vertex equivalence of the actual binary STL at a coordinate boundary.
+ * No distance-based welding is allowed here: only identical Float32 coordinates
+ * share an existing representative. This does not move distinct printed edges.
+ */
+export function weldPrintVertices(triangles){
+  const vertices=new Map();
+  return triangles.map(triangle=>triangle.map(point=>{
+    const key=point.map(Math.fround).join(',');
+    if(!vertices.has(key))vertices.set(key,point);
+    return vertices.get(key);
+  }));
+}
+
+/** Run after the final manufacturing-frame affine, before strict mesh validation.
+ * A translation or reflection can change which tiny stitching fans collapse in
+ * Float32. Remove only those zero-width fans and paired opposite facets.
+ */
+export function finalizePrintTriangles(triangles){
+  return cancelOppositeFaces(weldPrintVertices(triangles));
 }
 
 export function trianglesVolume(triangles){return Math.abs(triangles.reduce((s,[a,b,c])=>s+(a[0]*(b[1]*c[2]-b[2]*c[1])-a[1]*(b[0]*c[2]-b[2]*c[0])+a[2]*(b[0]*c[1]-b[1]*c[0]))/6,0));}

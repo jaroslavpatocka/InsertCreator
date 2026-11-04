@@ -1015,8 +1015,8 @@ async function exportGridfinityBaseplate(){
       await new Promise(resolve=>requestAnimationFrame(resolve));if(cancelled)return;
       files.push({name:`gridfinity-${String(index+1).padStart(3,'0')}-${tile.columns}x${tile.rows}.stl`,data:exportBaseplateSTL(snapshot,{tile})});
     }
-    files.push({name:'assembly.json',data:JSON.stringify({units:'mm',pitch:42,layout:plan.layout,rotateForPrinting:plan.rotated,tiles:plan.tiles.map((tile,i)=>({...tile,file:files[i].name,xMm:tile.x*42,yMm:tile.y*42}))},null,2)});
-    files.push({name:'README.txt',data:'InsertCreator\n\n'+tr('Základna Gridfinity: díly sestavte podle assembly.json. Souřadnice jsou od levého horního rohu šuplíku, X doprava a Y dolů. STL jsou v mm; mezi díly nepřidávejte mezeru. Volný okraj šuplíku zůstává bez základny.')+(plan.rotated?'\n'+tr('Díly při tisku otočte o 90° podle podložky tiskárny.'):'')});
+    files.push({name:'assembly.json',data:JSON.stringify({schemaVersion:2,units:'mm',pitch:42,layout:plan.layout,layoutSize:{width:snapshot.width,height:snapshot.height},coordinates:'physical-world',layoutAxes:'X right, Y down',assemblyAxes:'X right, Y up, Z up',rotateForPrinting:plan.rotated,tiles:plan.tiles.map((tile,i)=>({...tile,file:files[i].name,xMm:tile.x*42,yMm:tile.y*42,assemblyTransform:[1,0,0,tile.x*42,0,1,0,snapshot.height-(tile.y+tile.rows)*42,0,0,1,0,0,0,0,1]}))},null,2)});
+    files.push({name:'README.txt',data:'InsertCreator\n\n'+tr('Základna Gridfinity: díly sestavte podle assembly.json. Polohy buněk x/y a xMm/yMm popisují layout od levého horního rohu šuplíku. assemblyTransform umístí STL do fyzické sestavy s X doprava, Y nahoru a Z nahoru. STL jsou v mm; mezi díly nepřidávejte mezeru. Volný okraj šuplíku zůstává bez základny.')+(plan.rotated?'\n'+tr('Díly při tisku otočte o 90° podle podložky tiskárny.'):'')});
     if(cancelled)return;download(slug(snapshot.name)+'-gridfinity-baseplate.zip',zipFiles(files),'application/zip');modal.close();toast(tr('Základna Gridfinity exportována.'));
   }catch(error){toast(errorText(error));}
 }
@@ -1045,9 +1045,9 @@ async function exportJointFit(button,modal){
 }
 // Plan the same printable parts as the ZIP so cut seams and bed margins agree with this summary.
 function jointStatus(source,entries){
-  const unsupported=project.bottomMode==='grid'||project.bottomMode==='magnet';
+  const unsupported=project.bottomMode==='grid';
   const toggle=`<label class="check-row"><input id="export-connectors" type="checkbox" ${project.connectors&&!unsupported?'checked':''} ${unsupported?'disabled':''}>${tr('Spojky mezi tiskovými díly (puzzle)')}</label>`;
-  if(unsupported)return toggle+`<p class="muted-note">${tr('U Gridfinity a magnetů se spojky nepřidávají, moduly drží základna nebo magnety.')}</p>`;
+  if(unsupported)return toggle+`<p class="muted-note">${tr('U Gridfinity se puzzle spojky nepřidávají, moduly drží základna. S magnety lze puzzle spojky kombinovat.')}</p>`;
   if(!project.connectors)return toggle;
   const clearance=source.jointClearance??.2;
   const settings=`<label class="field"><span>${tr('Boční vůle spoje v XY na každé straně')}</span><div class="input-wrap"><input id="export-joint-clearance" type="text" inputmode="decimal" value="${inputValue(clearance,{unit:'mm',digits:4})}" aria-describedby="joint-clearance-help"><em>mm</em></div></label><p class="muted-note" id="joint-clearance-help">${esc(tr('Výchozí hodnota je 0,20 mm na stranu. Povolený rozsah je 0–1 mm. Vhodná vůle závisí na tiskárně, materiálu a první vrstvě.'))} ${esc(tr('Aktuálně {side} na stranu = {total} navíc přes šířku zdířky.',{side:fmtLen(clearance,{unit:'mm',digits:4}),total:fmtLen(2*clearance,{unit:'mm',digits:4})}))}</p><button type="button" class="btn btn-light" id="export-joint-fit">${icon('cube')}${tr('Zkušební tisk spojky')}</button>`;
@@ -1056,7 +1056,7 @@ function jointStatus(source,entries){
   const skipped=plan.skipped?' '+plural(plan.skipped,['{n} spojka se nevešla: u hrany leží kapsa nástroje, nebo by díl přesáhl tiskovou plochu.','{n} spojky se nevešly: u hrany leží kapsa nástroje, nebo by díl přesáhl tiskovou plochu.','{n} spojek se nevešlo: u hrany leží kapsa nástroje, nebo by díl přesáhl tiskovou plochu.']):'';
   const cuts=plan.cutCount?' '+tr('Z toho {n} spojek propojuje díly rozdělené podle podložky.',{n:plan.cutCount}):'';
   const unjoined=plan.unjoined?.length?' '+tr('Na {n} společných hranách není bezpečné místo pro spojku. Podrobnosti jsou v assembly.json.',{n:plan.unjoined.length}):'';
-  return toggle+settings+`<p class="muted-note" data-joint-status>${esc(count+cuts+skipped+unjoined)} ${tr('Skládejte zleva doprava a shora dolů, další modul vždy nasaďte shora. Moduly exportujte společně, aby výstupky a zdířky seděly. Se spojkami mají moduly větší okraj, ruční a zamčené moduly se nemění.')}</p>`;
+  return toggle+settings+`<p class="muted-note" data-joint-status>${esc(count+cuts+skipped+unjoined)} ${tr("Spojky jsou ve vrstvě dna. V sestaveném modelu je zkontrolujete pohledem zespodu.")} ${tr('Skládejte zleva doprava a shora dolů, další modul vždy nasaďte shora. Moduly exportujte společně, aby výstupky a zdířky seděly. Se spojkami mají moduly větší okraj, ruční a zamčené moduly se nemění.')}</p>`;
 }
 function openExport(){
   const m=moduleFor(),selectedId=m?.id||null;

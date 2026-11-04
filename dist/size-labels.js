@@ -101,8 +101,8 @@ export function sizeLabelGlyphs(input){
 
 /**
  * A shared plan for 2D, preview and STL. Coordinates are absolute drawer millimetres.
- * `polygons` engrave readable text on the +Z face in the STL's right-handed XY plane;
- * `screenPolygons` retain readable font rows in the editor's Y-down SVG plane.
+ * Both polygon fields use the editor's Y-down coordinates, just like the pockets.
+ * The complete body is converted to physical Y-up coordinates at STL export.
  * Solid labels remove only the top .35 mm. Light labels receive an integral 1 mm plaque above the
  * existing base; engraving stays entirely above that base. All plaques avoid every pocket + wall.
  */
@@ -146,10 +146,9 @@ export function planSizeLabels(project,modules=project.modules||[],tools=project
       if(!chosen){failure('no-space');continue;}
       const {x,y,width,height:labelHeight,rotation,plate}=chosen;
       const screenPolygons=glyphs.polygons.map(poly=>poly.map(p=>rotation?{x:round(x+PAD+glyphs.height-p.y),y:round(y+PAD+p.x)}:{x:round(x+PAD+p.x),y:round(y+PAD+p.y)}));
-      // Font rows run downwards, but physical +Y runs upwards when seen from +Z.
-      // Reflect the glyph locally before its proper 0/90 degree rotation, then restore
-      // contour winding (including holes). Neither module nor pocket placement changes.
-      const polygons=glyphs.polygons.map(poly=>poly.map(p=>rotation?{x:round(x+PAD+p.y),y:round(y+PAD+p.x)}:{x:round(x+PAD+p.x),y:round(y+PAD+glyphs.height-p.y)}).reverse());
+      // Lettering and pockets share one frame. Reflecting only the glyph here
+      // would mirror it a second time when the whole body is exported.
+      const polygons=screenPolygons;
       labels.push({toolId:tool.id,moduleId:module.id,text,x,y,width,height:labelHeight,rotation,polygons,screenPolygons,plate,top:round(top),depth:DEPTH,baseTop:round(baseTop),light});
       for(const poly of offset(plate,CLEAR))blocked.push({poly,bounds:box(poly)});
     }

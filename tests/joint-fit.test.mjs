@@ -48,9 +48,17 @@ test('the test socket physically grows with clearance while its mating tab remai
   const file=(result,id)=>result.files.find(file=>file.name===result.parts.find(part=>part.moduleId===id).file).data;
   assert.deepEqual(file(tight,'joint-fit-tab'),file(loose,'joint-fit-tab'),'clearance changes only the female opening');
   assert.ok(loose.parts.find(part=>part.moduleId==='joint-fit-socket').volumeMm3<tight.parts.find(part=>part.moduleId==='joint-fit-socket').volumeMm3);
-  const [joint]=tight.manifest.joints.connections,point=[joint.at.x+5.75,joint.at.y+4.25,source.base/2];
+  const [joint]=tight.manifest.joints.connections,point=[joint.at.x+5.75,42-(joint.at.y+4.25),source.base/2];
   assert.equal(materialAt(worldMesh(tight,'joint-fit-socket'),point),true,'0.1 mm retains material just outside the socket head');
   assert.equal(materialAt(worldMesh(loose,'joint-fit-socket'),point),false,'0.4 mm removes that material in the actual exported STL');
+});
+
+test('a magnet fit coupon matches the raised production base and tab height',async()=>{
+  const source={...blankProject(),bottomMode:'magnet',base:2.4,magnetDepth:3.2},before=structuredClone(source),result=await prepareJointFitTest(source);
+  const joint=result.manifest.joints.connections[0],mesh=worldMesh(result,'joint-fit-tab'),x=joint.at.x+5.77,y=42-joint.at.y-.137;
+  assert.equal(materialAt(mesh,[x,y,4.3]),true,'the tab reaches the same effective 4.4 mm base as the magnet model');
+  assert.equal(materialAt(mesh,[x,y,4.5]),false,'the tab stops at the production base height');
+  assert.deepEqual(source,before);
 });
 
 test('coupon preparation keeps normal printer validation, default clearance and cancellation',async()=>{
