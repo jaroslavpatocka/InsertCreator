@@ -108,6 +108,52 @@ test('fractions, all supported letter forms and a rotated side label remain mani
   assert.deepEqual(validateLayout(narrow),[]);const plan=planSizeLabels(narrow);assert.equal(plan.labels.length,1);assert.equal(plan.labels[0].rotation,90,'a vertical side strip can carry the size');mesh(exportSTL(narrow));
 });
 
+test('actual upper STL cavities read FR2 from above, including a rotated side label',()=>{
+  // Independent expected pixels: asymmetric letters/digit detect a reflection that
+  // manifoldness and cavity-volume tests cannot see. Read the exported binary STL,
+  // never the planned polygons or the 3D preview's projection.
+  const expected=[
+    ['11111','10000','10000','11110','10000','10000','10000'],
+    ['11110','10001','10001','11110','10100','10010','10001'],
+    ['01110','10001','00001','00010','00100','01000','11111']
+  ];
+  for(const printMode of ['solid','light'])for(const rotation of [0,90]){
+    const p={...fixture(),printMode,
+      modules:[{id:'m',name:'Side label',x:42,y:42,width:rotation?42:126,height:rotation?126:42}],
+      tools:[{id:'t',name:'Test',sizeLabel:'FR2',points:rectangle(rotation?20:115,rotation?115:20),x:rotation?52:47,y:rotation?47:52,rotation:0,depth:10,moduleId:'m',fingerGrips:[]}]
+    };
+    const [label]=planSizeLabels(p).labels;assert.ok(label);assert.equal(label.rotation,rotation);
+    const actual=mesh(exportSTL(p,{moduleId:'m'})),origin=p.modules[0],pixels=[];
+    for(let character=0;character<3;character++){
+      const rows=[];
+      for(let row=0;row<7;row++){
+        let bits='';
+        for(let col=0;col<5;col++){
+          const across=character*3+(col+.5)*.5,down=(row+.5)*.5;
+          // Look from +Z with +Y up. For the side label, turn the physical
+          // top view clockwise 90 degrees so its baseline reads left-to-right.
+          const x=label.x+.8+(rotation?down:across)-origin.x;
+          const y=label.y+.8+(rotation?across:3.5-down)-origin.y;
+          bits+=materialAt(actual,x,y,label.top-.15)?'0':'1';
+          assert.equal(materialAt(actual,x,y,label.top-label.depth-.15),true,'every sampled pixel retains support beneath engraving');
+        }
+        rows.push(bits);
+      }
+      pixels.push(rows);
+    }
+    assert.deepEqual(pixels,expected,`${printMode}/${rotation}: readable physical upper surface, not reflected text`);
+    // The editor uses its own Y-down representation, without changing the
+    // manufacturing shape or relying on SVG's screen convention for the STL.
+    for(let character=0;character<3;character++)for(let row=0;row<7;row++)for(let col=0;col<5;col++){
+      const across=character*3+(col+.5)*.5,down=(row+.5)*.5;
+      const point={x:label.x+.8+(rotation?3.5-down:across),y:label.y+.8+(rotation?across:down)};
+      const ink=label.screenPolygons.reduce((sum,polygon)=>sum+(inside(point,polygon)?Math.sign(area(polygon)):0),0)!==0;
+      assert.equal(ink,expected[character][row][col]==='1','the Y-down editor representation also stays readable');
+    }
+    assert.equal(label.depth,.35);
+  }
+});
+
 test('all 26 real compact wrench-set sizes fit labels and remain below the STL complexity limit',()=>{
   const set=catalogSets().find(set=>set.id==='combination-wrench-set-6-32mm');assert.ok(set);
   const tools=set.tools.map((item,i)=>{const tool={...catalogTool(item),id:'w-'+i,depth:12,locked:false,moduleId:null};return{...tool,fingerGrips:automaticFingerGrips(tool,{radius:9})};});

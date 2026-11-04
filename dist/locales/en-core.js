@@ -195,4 +195,5 @@ export default {
   'Tiskový díl se nevejde na zadanou tiskovou plochu.':'A printable part does not fit the specified print bed.',
   'Tiskové díly přesahují limit 128 MB. Vyberte méně modulů a export zopakujte.':'The printable parts exceed the 128 MB limit. Select fewer modules and export again.',
   'Vybrané moduly neobsahují žádnou tisknutelnou geometrii.':'The selected modules contain no printable geometry.',
+  'vůle spojky':'joint clearance',
 };

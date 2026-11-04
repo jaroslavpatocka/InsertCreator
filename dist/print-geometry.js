@@ -128,17 +128,17 @@ export function buildPrintTriangles(project,modules,tools,origin={x:0,y:0},{fit=
     }
   }
   function sides(paths,z0,z1){for(const poly of paths)for(let i=0;i<poly.length;i++){const a=poly[i],b=poly[(i+1)%poly.length];add(v(a,z0),v(b,z0),v(b,z1));add(v(a,z0),v(b,z1),v(a,z1));}}
-  function slabs(levels,sections,bottom=[],barriers=null,topCuts=[]){
+  function slabs(levels,sections,bottom=[],barriers=null,topCuts=[],sectionsClipped=false){
     // Clip material sections before caps and sides are triangulated. This closes every
     // cut plane, including cuts through pockets, lettering and blind magnet holes.
     // Differences use original contributors, not a rounded union from the
     // preceding wall section. This keeps shared cap intersections consistent.
     const rawOf=new Map();
-    if(clip){
+    if(clip&&!sectionsClipped){
       sections=sections.map(paths=>{const value=clipped(union(paths));rawOf.set(value,paths);return value;});
       const rawBottom=bottom;bottom=clipped(bottom);rawOf.set(bottom,rawBottom);
     }
-    const diff=(a,b)=>clip?clipped(subtract(rawOf.get(a)||a,rawOf.get(b)||b)):subtract(a,b);
+    const diff=(a,b)=>clip&&!sectionsClipped?clipped(subtract(rawOf.get(a)||a,rawOf.get(b)||b)):subtract(a,b);
     let below=bottom;
     if(!barriers){
       for(let i=0;i<sections.length;i++){const current=sections[i];face(diff(current,below),levels[i],false);face(diff(below,current),levels[i],true);sides(current,levels[i],levels[i+1]);below=current;}
@@ -251,13 +251,16 @@ export function buildPrintTriangles(project,modules,tools,origin={x:0,y:0},{fit=
         section=middle<baseTop-EPS?[outer]:clip?active:union(active);
       }
       else section=subtract([outer],pockets.filter(t=>middle>=H-number(t.depth,10)-EPS).map(t=>t.poly));
+      // Cut the original material first. Base-layer tabs then extend beyond the
+      // cut rectangle, while the socket and all higher material keep their true cut.
+      if(joint&&clip)section=clipped(union(section));
       if(joint&&middle<baseTop-EPS)section=subtract(union([...section,...joint.tabs]),joint.sockets);
       if(magnets.length&&middle<cfg.magnetDepth-EPS)section=subtract(section,magnets);
       const lettering=labels.filter(label=>middle>=label.top-label.depth-EPS&&middle<label.top-EPS).flatMap(label=>label.polygons);
       if(lettering.length)section=subtract(section,lettering);
       sections.push(section);
     }
-    slabs(z,sections,feet,barriers);
+    slabs(z,sections,feet,barriers,[],!!(joint&&clip));
     }
     const stitched=stitchBoundaryEdges(triangles.splice(start),{canonical:!!clip});for(const triangle of stitched)triangles.push(triangle);
     if(triangles.length>120000)throw i18nError('Model je pro jeden export příliš složitý. Exportujte jednotlivé moduly.');

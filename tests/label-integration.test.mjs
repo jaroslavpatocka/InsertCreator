@@ -7,6 +7,7 @@ import {getToolSize,sizeText,orderTools} from '../dist/tool-size.js';
 import {catalogItems} from '../dist/catalog/index.js';
 import {catalogTool} from '../dist/catalog-ui.js';
 import {setLang} from '../dist/i18n.js';
+import {planSizeLabels} from '../dist/size-labels.js';
 
 const outline=[{x:0,y:0},{x:20,y:0},{x:20,y:50},{x:0,y:50}];
 const win=new Window({url:'http://localhost:5173'}),html=await fs.readFile(new URL('../dist/index.html',import.meta.url),'utf8');
@@ -28,6 +29,14 @@ const click=selector=>{const element=$(selector);assert.ok(element,'Missing '+se
 const action=name=>click(`#app [data-action="${name}"]`);
 const change=(selector,value)=>{const element=$(selector);assert.ok(element,'Missing '+selector);element.value=value;element.dispatchEvent(new win.Event('change',{bubbles:true}));};
 const saved=()=>JSON.parse(localStorage.getItem('suplik-studio-projects-v1')).find(project=>project.id==='label-scope');
+
+test('the 2D board draws readable Y-down glyphs while STL uses physical Y-up lettering',()=>{
+  const label=planSizeLabels(saved()).labels.find(label=>label.toolId==='ta');assert.ok(label);
+  const path=polygon=>polygon.map((point,i)=>`${i?'L':'M'}${point.x.toFixed(2)},${point.y.toFixed(2)}`).join(' ')+'Z';
+  const paths=Array.from(win.document.querySelectorAll('[data-tool-label="ta"] path'),node=>node.getAttribute('d'));
+  assert.deepEqual(paths,label.screenPolygons.map(path),'the board must use screen font rows');
+  assert.notDeepEqual(paths,label.polygons.map(path),'physical engraving cannot be drawn directly into a Y-down SVG');
+});
 
 test('legacy PH/PZ/Torx names label the driver code instead of its shaft length, including PH0',()=>{
   for(const [name,label] of [['Šroubovák PH0×60 mm','PH0'],['Šroubovák PZ2×100 mm','PZ2'],['Torx T25','T25'],['Torx TX20 × 100 mm','TX20']]){

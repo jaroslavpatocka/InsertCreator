@@ -34,13 +34,30 @@ test('orbit exposes actual opposite STL walls and the underside without rebuildi
   const project=fixture(),facets=stlFaces(project);
   const front=printPreview(project,null,null,{yaw:0,pitch:.5}),back=printPreview(project,null,null,{yaw:Math.PI,pitch:.5}),under=printPreview(project,null,null,{yaw:0,pitch:-.5});
   const normals=preview=>renderedFaces(preview).map(face=>facets[face.index].normal);
-  assert.ok(normals(front).some(n=>n[1]>.9)&&!normals(front).some(n=>n[1]<-.9),'the front view must expose its facing Y walls');
-  assert.ok(normals(back).some(n=>n[1]<-.9)&&!normals(back).some(n=>n[1]>.9),'rotating half a turn must expose the opposite Y walls');
+  assert.ok(normals(front).some(n=>n[1]<-.9)&&!normals(front).some(n=>n[1]>.9),'the front view from negative Y must expose its facing Y walls');
+  assert.ok(normals(back).some(n=>n[1]>.9)&&!normals(back).some(n=>n[1]<-.9),'rotating half a turn must expose the opposite Y walls');
   assert.ok(normals(front).some(n=>n[2]>.9)&&!normals(front).some(n=>n[2]<-.9));
   assert.ok(normals(under).some(n=>n[2]<-.9)&&!normals(under).some(n=>n[2]>.9),'negative pitch must render actual bottom facets');
   assert.equal(front.stats.triangles,facets.length,'cache must retain every STL triangle');
   assert.equal(front.stats.meshRevision,back.stats.meshRevision);assert.equal(front.stats.meshRevision,under.stats.meshRevision);
   assert.equal(front.stats.invalidModules,0);assert.deepEqual(front.warnings,[]);
+});
+
+test('visible outward STL faces keep camera handedness for every orbit quadrant and underneath view',()=>{
+  // With screen Y pointing down, an outward face seen from outside has negative
+  // signed area in screen coordinates. The former reflected camera made these areas
+  // positive even though its normal-based visibility and manifold tests passed.
+  const project=fixture();let checked=0;
+  for(const yaw of [-2.6,-1.3,0,.7,2.1])for(const pitch of [-1.56,-.65,0,.55,1.56]){
+    const preview=printPreview(project,null,null,{yaw,pitch});
+    for(const face of renderedFaces(preview)){
+      const points=face.points.split(' ').map(pair=>pair.split(',').map(Number));
+      const twiceArea=points.reduce((sum,a,i)=>{const b=points[(i+1)%points.length];return sum+a[0]*b[1]-b[0]*a[1];},0);
+      if(Math.abs(twiceArea)<1e-4)continue; // SVG rounds subpixel fragments to .001 mm.
+      assert.ok(twiceArea<0,`outward face ${face.index} is reflected at yaw=${yaw}, pitch=${pitch}`);checked++;
+    }
+  }
+  assert.ok(checked>200,'the regression exercises actual nondegenerate manufacturing facets');
 });
 
 test('orbit changes projected triangles while keeping the fit, pan and zoom frame stable',()=>{
@@ -104,7 +121,7 @@ test('the opaque solid bottom occludes every pocket wall in rasterized underside
     const [cx,cy,cz]=preview.frame.center,sy=Math.sin(yaw),cos=Math.cos(yaw),sp=Math.sin(camera.pitch),cp=Math.cos(camera.pitch);
     let mismatches=0,samples=0,example='';
     for(const module of project.modules)for(let x=module.x+4;x<module.x+module.width-4;x+=3)for(let y=module.y+4;y<module.y+module.height-4;y+=3){
-      const sx=(x-cx)*cos-(y-cy)*sy,screenY=((x-cx)*sy+(y-cy)*cos)*sp+cz*cp;
+      const sx=(x-cx)*cos-(y-cy)*sy,screenY=-((x-cx)*sy+(y-cy)*cos)*sp+cz*cp;
       const px=Math.floor((sx-preview.viewBounds.x)/preview.viewBounds.width*width),py=Math.floor((screenY-preview.viewBounds.y)/preview.viewBounds.height*height),offset=(py*width+px)*4;
       // Subpixel seams between identically colored facets may blend a few RGB
       // levels; an exposed pocket wall has a distinctly different material shade.

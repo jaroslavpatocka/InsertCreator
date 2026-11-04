@@ -3,7 +3,7 @@ import {validateProject} from './model.js';
 import {validateLayout} from './geometry.js';
 import {pocketOutline} from './finger-grip.js';
 import {planSizeLabels} from './size-labels.js';
-import {planJoints} from './module-joints.js';
+import {planJoints,planCutJoints,JOINT_BED_RESERVE,jointClearance} from './module-joints.js';
 import {buildPrintTriangles,encodeSTL,printConfig,trianglesVolume,validatePrintMesh} from './print-geometry.js';
 import {i18nError} from './i18n.js';
 
@@ -25,6 +25,12 @@ function tilePlan(project,module,bedWidth,bedHeight){
   if(footprintFits(module,bedWidth,bedHeight)&&feet<=400)return[{row:0,column:0,clip:null}];
   const pitch=isGrid?42:grid;
   const alternative=(width,height)=>{
+    // A tile with a male joint must fit together with its protrusion. Reserve only
+    // axes that actually need cutting.
+    if(project.connectors&&project.bottomMode!=='grid'&&project.bottomMode!=='magnet'){
+      if(module.width-.5>width+EPS)width-=JOINT_BED_RESERVE;
+      if(module.height-.5>height+EPS)height-=JOINT_BED_RESERVE;
+    }
     let w=Math.floor((width+EPS)/pitch)*pitch,h=Math.floor((height+EPS)/pitch)*pitch;
     if(isGrid&&(w<42||h<42))throw i18nError('Tisková plocha je příliš malá pro celé pole Gridfinity 42 mm.');
     if(!w)w=width;if(!h)h=height;
@@ -48,6 +54,21 @@ function tilePlan(project,module,bedWidth,bedHeight){
   return options[0].tiles;
 }
 
+/** Synchronous geometry plan shared by export and its UI. All shapes use original drawer coordinates. */
+export function planPrintBatch(project,modules=project.modules,tools=project.tools){
+  const bedWidth=Number(project.bedWidth),bedHeight=Number(project.bedHeight);
+  const plans=modules.map(module=>({module,tiles:tilePlan(project,module,bedWidth,bedHeight).map(tile=>({...tile,key:JSON.stringify([module.id,tile.row,tile.column])}))}));
+  const total=plans.reduce((sum,plan)=>sum+plan.tiles.length,0);
+  if(total>MAX_PARTS)throw i18nError('Pro jeden export lze připravit nejvýše 400 tiskových dílů. Vyberte méně modulů nebo větší tiskovou plochu.');
+  let jointPlan=null;
+  if(project.connectors){
+    const modulePlan=planJoints(project,modules,tools),cutPlan=planCutJoints(project,plans,tools,{modulePlan}),keyOf=new Map(plans.filter(plan=>plan.tiles.length===1).map(plan=>[plan.module.id,plan.tiles[0].key]));
+    const moduleJoints=modulePlan.joints.map(joint=>({...joint,kind:'module',ownerModuleId:joint.owner,hostModuleId:joint.host,owner:keyOf.get(joint.owner),host:keyOf.get(joint.host),clearance:jointClearance(project)}));
+    jointPlan={...modulePlan,joints:[...moduleJoints,...cutPlan.joints],byPart:cutPlan.byPart,moduleCount:modulePlan.joints.length,cutCount:cutPlan.joints.length,skipped:modulePlan.skipped+cutPlan.skipped,seams:cutPlan.seams,unjoined:cutPlan.unjoined,clearance:jointClearance(project)};
+  }
+  return{plans,total,jointPlan};
+}
+
 /** files contain STL plus assembly.json. Part offsets and inverse transforms use world millimetres. */
 export async function preparePrintBatch(project,{moduleIds,signal,onProgress}={}){
   const abort=()=>{if(signal?.aborted)throw new DOMException('Příprava tiskových dílů byla zrušena.','AbortError');};
@@ -68,16 +89,16 @@ export async function preparePrintBatch(project,{moduleIds,signal,onProgress}={}
   const issue=validateLayout(source)[0];if(issue)throw Object.assign(Error(issue.message),{i18n:issue.i18n});
   if(source.bottomMode==='grid')for(const module of source.modules)if([module.x,module.y,module.width,module.height].some(value=>Math.abs(value/42-Math.round(value/42))>.0001))throw i18nError('Modul „{name}“ musí mít rozměry i polohu v násobcích 42 mm pro Gridfinity patky.',{name:module.name||module.id});
   progress({stage:'planning',progress:0,completed:0,total:0});await pause();
-  const plans=source.modules.map(module=>({module,tiles:tilePlan(source,module,bedWidth,bedHeight)})),total=plans.reduce((sum,plan)=>sum+plan.tiles.length,0);
+  const {plans,total,jointPlan}=planPrintBatch(source);
   if(total>MAX_PARTS)throw i18nError('Pro jeden export lze připravit nejvýše 400 tiskových dílů. Vyberte méně modulů nebo větší tiskovou plochu.');
-  const jointPlan=source.connectors?planJoints(source,source.modules,source.tools):null;
   const files=[],parts=[],splitSummary=[];let completed=0,bytes=0;
   for(const [moduleIndex,{module,tiles}] of plans.entries()){
     const own=source.tools.filter(tool=>tool.moduleId===module.id).map(tool=>({...tool,poly:pocketOutline(tool,source.clearance)})),labelPlan=planSizeLabels(source,[module],own),moduleParts=[];
     for(const tile of tiles){
       progress({stage:'cutting',progress:total?completed/total:0,completed,total,moduleId:module.id});await pause();
       const meshOrigin={x:tile.clip?.x??module.x,y:tile.clip?.y??module.y};
-      const mesh=buildPrintTriangles(source,[module],own,meshOrigin,{clip:tile.clip,labelPlan,joints:jointPlan?.byModule});abort();completed++;
+      const cutJoints=jointPlan?.byPart.get(tile.key),joints=cutJoints?new Map([[module.id,cutJoints]]):jointPlan?.byModule;
+      const mesh=buildPrintTriangles(source,[module],own,meshOrigin,{clip:tile.clip,labelPlan,joints});abort();completed++;
       if(!mesh.length)continue;
       const box=bounds(mesh),rotation=fits(box.width,box.height,bedWidth,bedHeight)?0:fits(box.height,box.width,bedWidth,bedHeight)?90:null;
       if(rotation===null)throw i18nError('Tiskový díl se nevejde na zadanou tiskovou plochu.');
@@ -86,7 +107,7 @@ export async function preparePrintBatch(project,{moduleIds,signal,onProgress}={}
       const index=moduleParts.length+1,file=`${String(moduleIndex+1).padStart(3,'0')}-${slug(module.name||module.id)}-${String(index).padStart(3,'0')}.stl`,data=encodeSTL(local,'InsertCreator | mm | cut '+module.id+' '+index);
       bytes+=data.byteLength;if(bytes>MAX_BYTES)throw i18nError('Tiskové díly přesahují limit 128 MB. Vyberte méně modulů a export zopakujte.');
       const offset={x:round(meshOrigin.x+box.min[0]),y:round(meshOrigin.y+box.min[1]),z:0},assemblyTransform=rotation?[0,1,0,offset.x,-1,0,0,round(offset.y+box.height),0,0,1,0,0,0,0,1]:[1,0,0,offset.x,0,1,0,offset.y,0,0,1,0,0,0,0,1];
-      const part={moduleId:module.id,file,index,count:0,row:tile.row,column:tile.column,offset,rotationForPrinting:rotation,assemblyTransform,clip:tile.clip||{x:module.x,y:module.y,width:module.width,height:module.height},bounds:{width:rotation?box.height:box.width,height:rotation?box.width:box.height,heightMm:box.heightMm},sourceBounds:{width:box.width,height:box.height,heightMm:box.heightMm},triangles:local.length,volumeMm3:trianglesVolume(local)};
+      const part={moduleId:module.id,key:tile.key,file,index,count:0,row:tile.row,column:tile.column,offset,rotationForPrinting:rotation,assemblyTransform,clip:tile.clip||{x:module.x,y:module.y,width:module.width,height:module.height},bounds:{width:rotation?box.height:box.width,height:rotation?box.width:box.height,heightMm:box.heightMm},sourceBounds:{width:box.width,height:box.height,heightMm:box.heightMm},triangles:local.length,volumeMm3:trianglesVolume(local)};
       files.push({name:file,data});moduleParts.push(part);parts.push(part);
       progress({stage:'cutting',progress:completed/total,completed,total,moduleId:module.id});await pause();
     }
@@ -94,7 +115,7 @@ export async function preparePrintBatch(project,{moduleIds,signal,onProgress}={}
     splitSummary.push({moduleId:module.id,name:module.name||module.id,count:moduleParts.length,files:moduleParts.map(part=>part.file)});
   }
   if(!parts.length)throw i18nError('Vybrané moduly neobsahují žádnou tisknutelnou geometrii.');
-  const manifest={schemaVersion:1,units:'mm',bed:{width:bedWidth,height:bedHeight},coordinates:'world',transform:'row-major 4x4: STL vertex to original drawer world coordinates',parts,...(jointPlan?{joints:{count:jointPlan.joints.length,skipped:jointPlan.skipped}}:{})};
+  const manifest={schemaVersion:1,units:'mm',bed:{width:bedWidth,height:bedHeight},coordinates:'world',transform:'row-major 4x4: STL vertex to original drawer world coordinates',parts,...(jointPlan?{joints:{count:jointPlan.joints.length,moduleCount:jointPlan.moduleCount,cutCount:jointPlan.cutCount,skipped:jointPlan.skipped,clearance:jointPlan.clearance,seams:jointPlan.seams,unjoined:jointPlan.unjoined,connections:jointPlan.joints}}:{})};
   const assembly=JSON.stringify(manifest,null,2);bytes+=new TextEncoder().encode(assembly).byteLength;
   if(bytes>MAX_BYTES)throw i18nError('Tiskové díly přesahují limit 128 MB. Vyberte méně modulů a export zopakujte.');
   files.push({name:'assembly.json',data:assembly});
