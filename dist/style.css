@@ -110,6 +110,9 @@
 .catalog-section-count{margin-left:auto;font-size:11px;font-weight:500;color:var(--muted);white-space:nowrap}
 .catalog-section-body{display:flex;flex-direction:column;gap:10px;padding:4px 10px 12px}
 .library-item>div{min-width:0}
+.trace-depth{flex:0 0 42px;width:42px;padding:4px 3px;border:1px solid var(--line);border-radius:5px;background:#fff;font:inherit;text-align:right;color:var(--ink)}
+.trace-depth::placeholder{color:#a9b39d}
+.trace-depth-note{font-size:11px;line-height:1.5;color:var(--muted);margin:-4px 0 12px}
 .library-category{display:block;width:100%;max-width:190px;padding:3px 6px;border:1px solid var(--line);border-radius:6px;background:#fff;font:inherit;font-size:11px;color:var(--muted);cursor:pointer}
 .library-category:focus-visible{outline:2px solid var(--amber);outline-offset:1px}
 .library-sets{display:flex;flex-direction:column;gap:6px}
@@ -149,6 +152,7 @@
   .catalog-toggles,.catalog-system{width:100%}.catalog-system button{flex:1;min-height:44px}
   .catalog-section-toggle,.library-set-toggle{min-height:44px}
   .library-category{min-height:36px;font-size:13px}
+  .trace-depth{flex-basis:58px;width:58px;min-height:36px;font-size:16px}
   .catalog-grid{grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px}
   .catalog-actions .btn,.catalog-actions .icon-btn{min-height:44px}.catalog-actions .icon-btn{width:44px;height:44px}
   .modal-foot:has(.catalog-foot-actions){flex-direction:column;align-items:stretch}
@@ -383,3 +387,4 @@
   .inspector-selection{--selection-max:240px}
 }
 .calibration-preview{min-width:0;align-self:start}.calibration-toolbar{display:flex;align-items:center;justify-content:flex-end;gap:6px;flex-wrap:wrap;margin-top:9px}.calibration-toolbar output{min-width:54px;text-align:center;font-size:11px;font-variant-numeric:tabular-nums;color:var(--muted)}.calibration-toolbar .btn{min-height:34px;padding:7px 10px;font-size:11px}.modal p.calibration-view-hint{font-size:10px;line-height:1.6;color:var(--muted);margin:7px 0 0}
+.author-credit{margin:-24px 18px 26px;color:#8d9783;font-size:10px;line-height:1.4}
