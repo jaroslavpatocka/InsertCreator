@@ -400,3 +400,4 @@
 .preview-loading .preview-spinner{width:30px;height:30px;border-width:3px}
 .preview-loading>.preview-error{justify-content:flex-start;overflow:auto;padding-top:32px;color:#a35840}
 .preview-loading>.preview-error strong{color:#a35840}
+.pocket-height-fix{display:flex;flex-direction:column;align-items:flex-start;gap:10px;margin:12px 0;max-width:440px;font-size:12px;line-height:1.6}.pocket-height-fix p{margin:0}.pocket-height-fix small{color:var(--muted)}.preview-error .pocket-height-fix{align-items:center}

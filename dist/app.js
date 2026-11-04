@@ -1,4 +1,4 @@
-import {FLOOR_THICKNESS,materialConfig,materialSlots} from './print-material.js';
+import {FLOOR_THICKNESS,materialConfig,materialSlots,maxPocketDepth,requiredInsertHeight} from './print-material.js';
 import {createManufacturingClient} from './manufacturing-client.js';
 import {bounds,transformedPoints,autoArrange,resizeModule,validateLayout,createDemoProject} from './geometry.js';
 import {previewGeometryKey,createCamera3D,normalizeCamera3D} from './preview3d.js';
@@ -564,7 +564,7 @@ function openBulkAlign(){
   modal.el.querySelector('[data-apply-bulk-distribute]').onclick=()=>{try{applyBulk(bulk.bulkDistributeTools,{axis:axis()});modal.close();}catch(error){toast(errorText(error));}};
 }
 function openBulkDepth(){
-  const modal=openModal({title:tr('Hloubka vybraných kapes'),body:input(tr('Hloubka kapsy'),tool()?.depth||12,'bulkDepth',{min:.5,max:project.insertHeight-project.base}),footer:`<button class="btn btn-primary" data-apply-bulk-depth>${tr('Použít hloubku')}</button>`});
+  const modal=openModal({title:tr('Hloubka vybraných kapes'),body:input(tr('Hloubka kapsy'),tool()?.depth||12,'bulkDepth',{min:.5,max:maxPocketDepth(project)}),footer:`<button class="btn btn-primary" data-apply-bulk-depth>${tr('Použít hloubku')}</button>`});
   modal.el.querySelector('[data-apply-bulk-depth]').onclick=()=>{const value=lengthFrom(modal.el.querySelector('[data-field=bulkDepth]'));if(value===null)return;try{applyBulk(bulk.bulkSetDepth,value);modal.close();}catch(error){toast(errorText(error));}};
 }
 function readAngle(value,{relative=false}={}){
@@ -622,7 +622,7 @@ function selectedPanel(){
   const dimensions=getToolDimensions(t),dimensionFields=`<div class='fields-row'>${input(tr('Délka'),dimensions.length,'toolLength',{unit:toolUnit(t),scope:'tool',min:2,max:3000})}${input(tr('Šířka'),dimensions.width,'toolBreadth',{unit:toolUnit(t),scope:'tool',min:2,max:3000})}</div><p class='muted-note'>${tr('Délka a šířka mění jen vybranou konturu v jejích osách. Jmenovitá velikost a ostatní nástroje se nemění.')}</p>`;
   const shape=`${input(tr('Šířka při rovnoměrném měřítku'),bounds(t).width,'toolWidth',{unit:toolUnit(t),scope:'tool',min:2,max:2000})}<label class='field'><span>${tr('Měřítko')}</span><div class='input-wrap'><input type='text' inputmode='decimal' autocomplete='off' spellcheck='false' value='100' data-field='toolScale' data-scope='tool' aria-label='${tr('Měřítko')} (%)'><em>%</em></div></label><p class='muted-note tool-scale-hint'>${tr('Měřítko mění délku i šířku rovnoměrně kolem středu. Poloměr výřezů pro prsty zůstává stejný.')}</p>${unitSelect(tr('Jednotky nástroje'),t.unit,'tool')}`;
   const moduleOptions=m?`${moduleSizing(m)}<button class='btn btn-light' data-action='lock'>${icon(m.locked?'unlock':'lock')}${m.locked?tr('Odemknout'):tr('Zamknout')}</button><p class='muted-note'>${moduleKindNote(m)}</p>`:unplacedToolNote(t);
-  return `<div class='panel-header'><h2 class='panel-title'>${icon('wrench')}${tr('Vybraný nástroj')}${unitBadge(t.unit)}</h2>${drawerButton}</div><div class='panel-body'><div class='tool-basic-properties'>${input(tr('Název'),t.name,'name',{type:'text',scope:'tool'})}${dimensionFields}${toolPositionPanel(t,m)}<div class='fields-row'>${input(tr('Otočení'),((t.rotation%360)+360)%360,'rotation',{type:'angle',min:0,max:359.99,scope:'tool'})}${input(tr('Hloubka kapsy'),t.depth,'depth',{unit:toolUnit(t),scope:'tool',min:.5,max:project.insertHeight-project.base})}</div><div class='selected-actions'><button class='btn btn-light' data-action='rotate'>${icon('rotate')}${tr('Otočit 90°')}</button><button class='btn btn-light' data-action='duplicate'>${icon('copy')}${tr('Kopie')}</button><button class='btn btn-danger' data-action='delete' aria-label='${tr('Smazat nástroj')}'>${icon('trash')}</button></div></div>${moduleMembersPanel(m)}${inspectorSection('finger-grips',tr('Výřezy pro prsty'),fingerGripPanel(t))}${inspectorSection('tool-shape',tr('Rozměry a měřítko'),shape)}${inspectorSection('size-label',tr('Popisek velikosti'),sizeLabelPanel(t))}${inspectorSection('tool-set',tr('Sady nástrojů'),selectedToolSetPanel(t)+moduleSetControls(m))}${inspectorSection('module-options',tr('Nastavení modulu'),moduleOptions)}</div>`;
+  return `<div class='panel-header'><h2 class='panel-title'>${icon('wrench')}${tr('Vybraný nástroj')}${unitBadge(t.unit)}</h2>${drawerButton}</div><div class='panel-body'><div class='tool-basic-properties'>${input(tr('Název'),t.name,'name',{type:'text',scope:'tool'})}${dimensionFields}${toolPositionPanel(t,m)}<div class='fields-row'>${input(tr('Otočení'),((t.rotation%360)+360)%360,'rotation',{type:'angle',min:0,max:359.99,scope:'tool'})}${input(tr('Hloubka kapsy'),t.depth,'depth',{unit:toolUnit(t),scope:'tool',min:.5,max:maxPocketDepth(project)})}</div><div class='selected-actions'><button class='btn btn-light' data-action='rotate'>${icon('rotate')}${tr('Otočit 90°')}</button><button class='btn btn-light' data-action='duplicate'>${icon('copy')}${tr('Kopie')}</button><button class='btn btn-danger' data-action='delete' aria-label='${tr('Smazat nástroj')}'>${icon('trash')}</button></div></div>${moduleMembersPanel(m)}${inspectorSection('finger-grips',tr('Výřezy pro prsty'),fingerGripPanel(t))}${inspectorSection('tool-shape',tr('Rozměry a měřítko'),shape)}${inspectorSection('size-label',tr('Popisek velikosti'),sizeLabelPanel(t))}${inspectorSection('tool-set',tr('Sady nástrojů'),selectedToolSetPanel(t)+moduleSetControls(m))}${inspectorSection('module-options',tr('Nastavení modulu'),moduleOptions)}</div>`;
 }
 const inspectorDisclosureState=new Map();
 const inspectorContext=()=>`${project.id}:${selectedIds().length?'bulk':inspectorTab+':'+(selectedModule||selected||'')}`;
@@ -800,6 +800,19 @@ function resizeHandles(svg,w,h){
   }
   return out;
 }
+function pocketHeightMessage(height=requiredInsertHeight(project)){
+  return tr('Pro nastavené kapsy a dno je potřeba výška vložky alespoň {height}.',{height:fmtLen(height,{digits:2})});
+}
+function pocketHeightControls(showMessage=true){
+  const height=requiredInsertHeight(project);if(height<=project.insertHeight+1e-7)return '';
+  return `<div class="pocket-height-fix">${showMessage?`<p>${esc(pocketHeightMessage(height))}</p>`:''}${height<=100?`<button class="btn btn-primary" data-action="fit-pocket-height">${esc(tr('Zvýšit výšku vložky na {height}',{height:fmtLen(height,{digits:2})}))}</button><small>${esc(tr('Hloubky kapes zůstanou zachované.'))}</small>`:`<p>${esc(tr('Potřebná výška přesahuje 100 mm. Zmenšete hloubku kapes nebo tloušťku dna.'))}</p>`}</div>`;
+}
+function fitPocketHeight({refresh=true}={}){
+  const height=requiredInsertHeight(project);if(height<=project.insertHeight+1e-7||height>100)return false;
+  if(refresh)commit(()=>project.insertHeight=height);
+  else{remember();project.insertHeight=height;persist();editorNeedsRefresh=true;}
+  return true;
+}
 function liveEngine(){
   if(livePreview===undefined){
     let queued=false;
@@ -819,7 +832,7 @@ function previewNotice(svg,text,busy=false,progress=null){
     const total=Number(progress?.total)||0,ready=Number(progress?.ready)||0;
     notice.innerHTML=`<span class="spinner preview-spinner" aria-hidden="true"></span><strong>${esc(tr('Načítání 3D náhledu…'))}</strong><span>${esc(text)}</span>${total?`<progress max="${total}" value="${ready}" aria-label="${esc(tr('Načítání 3D náhledu…'))}"></progress>`:''}`;
   }else if(failed){
-    notice.innerHTML=`<strong>${esc(tr('3D náhled se nepodařilo dokončit.'))}</strong><span>${esc(text)}</span><button class="btn btn-light" data-action="retry-preview">${esc(tr('Zkusit znovu'))}</button>`;
+    notice.innerHTML=`<strong>${esc(tr('3D náhled se nepodařilo dokončit.'))}</strong><span>${esc(text)}</span>${pocketHeightControls(false)}<button class="btn btn-light" data-action="retry-preview">${esc(tr('Zkusit znovu'))}</button>`;
   }else notice.textContent=text;
 }
 function applyPreviewFrame(svg,result,signature,viewport){
@@ -843,6 +856,13 @@ function renderLive(svg,live,refresh){
   previewNotice(svg,preview.notice,preview.busy,preview.stats);
 }
 function render3D(svg,refresh=true){
+  const height=requiredInsertHeight(project);
+  // The magnet floor reserve depends on the actual pocket position in solid mode;
+  // let the exact mesher check that case instead of rejecting a conservative estimate.
+  if((project.printMode==='light'||project.bottomMode!=='magnet')&&height>project.insertHeight+1e-7){
+    previewSequence++;livePreview?.canvas.remove();svg.innerHTML='';
+    previewNotice(svg,pocketHeightMessage(height),false,{failed:1});return;
+  }
   const live=liveEngine();
   if(live){previewSequence++;renderLive(svg,live,refresh);return;}
   livePreview?.canvas.remove();delete svg.dataset.renderer;
@@ -882,9 +902,10 @@ function renderCameraFrame(){
 function switchProject(p){labelJob=null;analysisClient.cancel();previewClient.cancel();fileClient.cancel();previewSequence++;persist();project=clone(p);selected=project.tools[0]?.id||null;selectedModule=null;inspectorTab='drawer';undoStack=[];redoStack=[];bulkSelection.clear();zoom=1;pan2D={x:0,y:0};camera3D=createCamera3D();persist();closeModal();render();}
 function addTools(tools,opts={}){
   if(project.tools.length+tools.length>300)throw i18nError('V jednom projektu může být nejvýše 300 nástrojů. Založte další projekt.');
-  if(project.insertHeight-project.base<.5)throw i18nError('Výška inzertu musí být alespoň o {gap} větší než tloušťka dna.',{gap:fmtLen(.5)});
+  const depthLimit=maxPocketDepth(project);
+  if(depthLimit<.5)throw i18nError('Pro kapsu musí zbýt alespoň {depth}. Zvyšte výšku vložky nebo zmenšete tloušťku dna.',{depth:fmtLen(.5)});
   const prepared=tools.map(t=>{
-    const item=validateProject({...blankProject(),tools:[{...t,id:uid(),depth:Math.min(t.depth||12,project.insertHeight-project.base),locked:false,moduleId:null}]}).tools[0];
+    const item=validateProject({...blankProject(),tools:[{...t,id:uid(),depth:Math.min(t.depth||12,depthLimit),locked:false,moduleId:null}]}).tools[0];
     if(!Object.prototype.hasOwnProperty.call(t,'fingerGrips'))item.fingerGrips=fittingFingerGrips(item,{radius:9});
     pocketOutline(item,project.clearance);return item;
   });
@@ -1012,7 +1033,7 @@ function offerDrawerFit(ids,{name,group}={}){
     if(choice==='new'&&fresh2){try{const next=validateProject(clone(fresh2.project));project=undoStack.pop()||project;persist();switchProject(next);toast(tr('Nástroje přidány do nového šuplíku „{name}“.',{name:next.name}));}catch(error){toast(errorText(error));}}
   });
 }
-function capture(){openCapture({onAdd:(tools,{layout}={})=>addTools(tools,{layout,offerFit:true,name:tr('Sada z fotky')}),toast,maxDepth:()=>project.insertHeight-project.base});}
+function capture(){openCapture({onAdd:(tools,{layout}={})=>addTools(tools,{layout,offerFit:true,name:tr('Sada z fotky')}),toast,maxDepth:()=>maxPocketDepth(project)});}
 function undo(){if(!undoStack.length)return;redoStack.push(clone(project));project=undoStack.pop();persist();render();}
 function redo(){if(!redoStack.length)return;undoStack.push(clone(project));project=redoStack.pop();persist();render();}
 const invalidLength=()=>toast(tr('Zadejte platnou délku, například 12, 12,5 mm nebo 3 1/2 in.'));
@@ -1064,7 +1085,7 @@ const volumeText=cm3=>unit()==='in'?`${fmt(cm3/16.387064,2)} in³`:`${fmt(cm3)} 
 // Colour printing settings of the export dialog. Filament numbers match the parts in the slicer.
 function colorPrintPanel(){
   const config=materialConfig(project),{zones}=materialSlots({...config,text:config.text&&!!project.sizeLabels}),zone=(key,label,field,toggle)=>`<div class="color-zone">${toggle?`<input type="checkbox" data-zone-on="${key}" aria-label="${tr(label)}" ${config[key]?'checked':''}>`:'<span></span>'}<input type="color" data-zone-color="${field}" value="${config[field]}" aria-label="${tr('Barva: {name}',{name:tr(label)})}"><span>${tr(label)}</span><small>${zones[key]?tr('Filament {n}',{n:zones[key]}):tr('Stejně jako tělo')}</small></div>`;
-  return`<section class="color-print"><label class="print-toggle"><input id="print-colors" type="checkbox" ${config.enabled?'checked':''}><span><strong>${tr('Vícebarevný tisk')}</strong><small>${tr('Tělo, dno kapes a text jako samostatné části pro více filamentů.')}</small></span></label>${config.enabled?`<div class="color-zones">${zone('body','Tělo','bodyColor',false)}${zone('floor','Dno kapes','floorColor',true)}${zone('text','Text','textColor',true)}</div>${config.floor?`<label class="field"><span>${tr('Tloušťka vložky dna (mm)')}</span><input id="print-floor-thickness" inputmode="decimal" value="${inputValue(config.floorThickness,{unit:'mm',digits:2})}"></label>`:''}${config.text&&!project.sizeLabels?`<p class="muted-note">${tr('Text se vytiskne jen se zapnutými popisky velikostí.')}</p>`:''}<p class="muted-note">${tr('Stáhne se 3MF s částmi a čísly filamentů. Barvy ve sliceru nastavte podle čísel. Pro ostatní slicery jsou ve složce barvy samostatné STL.')}</p>`:''}</section>`;
+  return`<section class="color-print"><label class="print-toggle"><input id="print-colors" type="checkbox" ${config.enabled?'checked':''}><span><strong>${tr('Vícebarevný tisk')}</strong><small>${tr('Tělo, dno kapes a text jako samostatné části pro více filamentů.')}</small></span></label>${config.enabled?`<div class="color-zones">${zone('body','Tělo','bodyColor',false)}${zone('floor','Dno kapes','floorColor',true)}${zone('text','Text','textColor',true)}</div>${config.floor?`<label class="field"><span>${tr('Tloušťka vložky dna (mm)')}</span><input id="print-floor-thickness" inputmode="decimal" value="${inputValue(config.floorThickness,{unit:'mm',digits:2})}"></label>`:''}${config.text&&!project.sizeLabels?`<p class="muted-note">${tr('Text se vytiskne jen se zapnutými popisky velikostí.')}</p>`:''}<p class="muted-note">${tr('Stáhne se 3MF s částmi a čísly filamentů. Barvy ve sliceru nastavte podle čísel. Pro ostatní slicery jsou ve složce barvy samostatné STL.')}</p>`:''}${config.enabled&&(project.printMode==='light'||project.bottomMode!=='magnet')?pocketHeightControls():''}</section>`;
 }
 function splitModuleForExport(moduleId){
   return exportPrintBatch([moduleId]);
@@ -1184,6 +1205,7 @@ function openExport(){
   modal.el.querySelectorAll('[data-export-module]').forEach(input=>input.onchange=()=>{const ids=exportModuleIds();exportModuleChoice.all=false;if(input.checked)ids.add(input.dataset.exportModule);else ids.delete(input.dataset.exportModule);exportModuleChoice.ids=ids;exportScope=ids.size===project.modules.length?'all':'custom';exportModuleChoice.all=exportScope==='all';redraw();});
   modal.el.querySelectorAll('[data-export-select]').forEach(button=>button.onclick=()=>{exportModuleChoice.all=button.dataset.exportSelect==='all';exportModuleChoice.ids=new Set(exportModuleChoice.all?project.modules.map(module=>module.id):[]);exportScope=exportModuleChoice.all?'all':'custom';redraw();});
   modal.el.querySelector('#export-size-labels')?.addEventListener('change',e=>setting('sizeLabels',e.target.checked));
+  modal.el.querySelector('[data-action="fit-pocket-height"]')?.addEventListener('click',()=>{if(fitPocketHeight({refresh:false}))redraw();});
   const material=(key,value)=>{remember();project.multiMaterial={...materialConfig(project),[key]:value};persist();editorNeedsRefresh=true;redraw();};
   modal.el.querySelector('#print-colors')?.addEventListener('change',e=>material('enabled',e.target.checked));
   modal.el.querySelectorAll('[data-zone-on]').forEach(input=>input.onchange=()=>material(input.dataset.zoneOn,input.checked));
@@ -1313,6 +1335,7 @@ const actions={
  snap:()=>{snap=!snap;render();},grid:()=>{showGrid=!showGrid;render();},labels:()=>{showLabels=!showLabels;render();},
  '2d':()=>{previewSequence++;previewClient.cancel();view='2d';render();},'3d':()=>{view='3d';render();},
  'retry-preview':()=>{livePreview?.retry();previewValue=null;previewSignature=null;const svg=$('#board-svg');if(svg&&view==='3d')render3D(svg);},
+ 'fit-pocket-height':()=>fitPocketHeight(),
  'zoom-in':()=>{if(view==='3d')camera3D=normalizeCamera3D({...camera3D,zoom:camera3D.zoom*1.25});else zoom=Math.min(3,zoom+.25);render();},'zoom-out':()=>{if(view==='3d')camera3D=normalizeCamera3D({...camera3D,zoom:camera3D.zoom/1.25});else zoom=Math.max(.5,zoom-.25);render();},fit:()=>{if(view==='3d')camera3D=createCamera3D();else{zoom=1;pan2D={x:0,y:0};}render();},
  'hide-tip':()=>{tipVisible=false;writeLocal('suplik-hide-tip',true);render();},
  rotate:()=>rotateCurrentTool(90),'rotate-module':()=>applyModuleEdit(moduleEdit.rotateModule,90,tr('Modul otočen.')),'duplicate-module':duplicateCurrentModule,

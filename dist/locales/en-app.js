@@ -882,4 +882,9 @@ export default {
   'Načítání 3D náhledu…':'Loading the 3D preview…',
   '3D náhled se nepodařilo dokončit.':'The 3D preview could not be completed.',
   'Spojky jsou pouze mezi díly. Na vnějším obvodu šuplíku se nepřidávají.':'Joints are only added between parts, never along the outer perimeter of the drawer.',
+  'Pro nastavené kapsy a dno je potřeba výška vložky alespoň {height}.':'The configured pockets and floor need an insert height of at least {height}.',
+  'Zvýšit výšku vložky na {height}':'Increase the insert height to {height}',
+  'Hloubky kapes zůstanou zachované.':'Pocket depths will be preserved.',
+  'Potřebná výška přesahuje 100 mm. Zmenšete hloubku kapes nebo tloušťku dna.':'The required height exceeds 100 mm. Reduce the pocket depth or floor thickness.',
+  'Pro kapsu musí zbýt alespoň {depth}. Zvyšte výšku vložky nebo zmenšete tloušťku dna.':'At least {depth} must remain for a pocket. Increase the insert height or reduce the floor thickness.',
 };

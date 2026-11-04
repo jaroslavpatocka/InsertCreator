@@ -5,6 +5,7 @@ import {automaticFingerGrips} from './finger-grip.js';
 import {setCoherence} from './tool-sets.js';
 import {i18nError,t} from './i18n.js';
 import {fmtLen} from './units.js';
+import {maxPocketDepth} from './print-material.js';
 
 const issueError=issue=>Object.assign(Error(issue.message),{i18n:issue.i18n});
 const issueKey=issue=>JSON.stringify([issue.type,[...issue.ids].sort(),issue.i18n?.cs||issue.message]);
@@ -169,7 +170,7 @@ export function bulkDelete(project,toolIds){
 
 /** Set only selected pocket depths. Position locks do not prevent a depth edit. */
 export function bulkSetDepth(project,toolIds,depth){
-  const {next,ids,tools,modules}=selection(project,toolIds),value=finite(depth,'hloubku kapsy'),max=Math.min(99,next.insertHeight-next.base);
+  const {next,ids,tools,modules}=selection(project,toolIds),value=finite(depth,'hloubku kapsy'),max=maxPocketDepth(next);
   if(value<.5||value>max+.0000001)throw i18nError('Hloubka kapsy musí být od {min} do {max}.',{min:fmtLen(.5),max:fmtLen(max)});
   for(const tool of tools)tool.depth=Math.min(max,value);
   return checked(project,next,ids,modules,{depth:true});
