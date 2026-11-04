@@ -1,0 +1,107 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="description" content="Libraries, fonts, model and catalogue assets used in InsertCreator, their authors and complete licence texts.">
+  <title>Components and licences · InsertCreator</title>
+  <link rel="alternate" hreflang="cs" href="./licenses.html">
+  <link rel="alternate" hreflang="en" href="./licenses-en.html">
+  <link rel="stylesheet" href="./licenses.css">
+</head>
+<body>
+  <a class="skip" href="#content">Skip to content</a>
+  <header class="site-head">
+    <a class="brand" href="./">InsertCreator</a>
+    <nav class="language-nav" aria-label="Page language">
+      <a href="./licenses.html" lang="cs" hreflang="cs">Čeština</a>
+      <a href="./licenses-en.html" lang="en" aria-current="page">English</a>
+    </nav>
+  </header>
+  <main class="document" id="content">
+    <p class="eyebrow">Authors and provenance</p>
+    <h1>Components and licences</h1>
+    <p class="lead">InsertCreator combines its application code with libraries, fonts, an image processing model and geometry assets from other authors. This page records their origins and links to the complete licence texts.</p>
+    <aside class="intro" aria-labelledby="app-license">
+      <h2 id="app-license">Licence of the application’s own code</h2>
+      <p>The repository does not yet declare an overall licence for InsertCreator’s own code. The open licences below apply to the specific components listed; they do not automatically grant the same rights to the entire application. Publishing source code does not by itself provide an open-source licence.</p>
+    </aside>
+    <nav class="contents" aria-label="Contents">
+      <a href="#libraries">Libraries</a><a href="#model">Image model</a><a href="#fonts">Fonts</a><a href="#catalogue">Catalogue assets</a><a href="#references">References and sharing</a>
+    </nav>
+
+    <section id="libraries" aria-labelledby="libraries-title">
+      <h2 id="libraries-title">Libraries</h2>
+      <article class="component">
+        <div class="component-head"><div><h3>Earcut 3.0.2</h3><p class="byline">Mapbox · geometry triangulation</p></div><span class="license-tag">ISC</span></div>
+        <p>Splits polygons into triangles for previews and manufacturing geometry. Its licence permits use, modification and distribution, including commercial use, while retaining the copyright and permission notice.</p>
+        <ul class="links"><li><a href="./vendor/earcut.LICENSE">Complete bundled licence</a></li><li><a href="https://github.com/mapbox/earcut/tree/v3.0.2">Version 3.0.2 source</a></li></ul>
+      </article>
+      <article class="component">
+        <div class="component-head"><div><h3>JavaScript Clipper 6.4.2.2</h3><p class="byline">Angus Johnson · JavaScript translation by Timo Kähkönen</p></div><span class="license-tag">Boost 1.0</span></div>
+        <p>Performs polygon unions, differences and offsets, including the clearance around tools. The bundled licence records the local ES module adaptation. Retain the applicable copyright notices and complete licence when distributing source or modified versions.</p>
+        <ul class="links"><li><a href="./vendor/clipper.LICENSE">Complete bundled licence</a></li><li><a href="./vendor/clipper.README.md">Library provenance</a></li><li><a href="https://sourceforge.net/p/jsclipper/wiki/Home%206/">Official project</a></li></ul>
+      </article>
+      <article class="component">
+        <div class="component-head"><div><h3>JSBN within Clipper</h3><p class="byline">Tom Wu · big integer arithmetic</p></div><span class="license-tag">Tom Wu’s permissive licence</span></div>
+        <p>Clipper includes part of JSBN. Its licence is separate from Clipper’s Boost licence. Redistributions must retain the copyright notice, permission notice and disclaimer.</p>
+        <ul class="links"><li><a href="./vendor/jsbn.LICENSE">Complete bundled JSBN licence</a></li><li><a href="https://sourceforge.net/p/jsclipper/wiki/Home%206/#licence">Separate licences explained by the original project</a></li></ul>
+      </article>
+      <article class="component">
+        <div class="component-head"><div><h3>ONNX Runtime Web 1.20.1</h3><p class="byline">Microsoft and contributors · local model inference</p></div><span class="license-tag">MIT + third-party notices</span></div>
+        <p>Runs the image model in the browser using WebAssembly. The bundled distribution includes the MIT licence and the terms and notices for other components; retain them when redistributing it.</p>
+        <ul class="links"><li><a href="./vendor/ort/LICENSE">Complete MIT licence</a></li><li><a href="./vendor/ort/ThirdPartyNotices.txt">Complete third-party notices</a></li><li><a href="https://github.com/microsoft/onnxruntime/tree/v1.20.1">Version 1.20.1 source</a></li></ul>
+      </article>
+    </section>
+
+    <section id="model" aria-labelledby="model-title">
+      <h2 id="model-title">Image model</h2>
+      <article class="component">
+        <div class="component-head"><div><h3>U2Netp / U-2-Net</h3><p class="byline">Xuebin Qin and the U-2-Net authors · rembg ONNX distribution: Daniel Gatis and contributors</p></div><span class="license-tag">Apache 2.0 / MIT</span></div>
+        <p>The original U-2-Net project provides an Apache 2.0 licence; the rembg distribution and conversion provide an MIT licence. InsertCreator bundles both texts and records the origin of <code>u2netp.onnx</code> from rembg release <code>v0.0.0</code>. Retain the applicable licences, provenance and required notices when redistributing it.</p>
+        <p>Model weights are a separate asset from application source code. This inventory does not audit training data or describe the entire system as “fully open-source AI”.</p>
+        <ul class="links"><li><a href="./models/U2NET-LICENSE">Complete original project licence</a></li><li><a href="./models/REMBG-LICENSE">Complete rembg licence</a></li><li><a href="./models/README.txt">Model provenance and checksum</a></li><li><a href="https://github.com/xuebinqin/U-2-Net">Original U-2-Net</a></li><li><a href="https://github.com/danielgatis/rembg/blob/main/rembg/sessions/u2netp.py">Official rembg model source</a></li></ul>
+      </article>
+    </section>
+
+    <section id="fonts" aria-labelledby="fonts-title">
+      <h2 id="fonts-title">Fonts</h2>
+      <article class="component">
+        <div class="component-head"><div><h3>DM Sans and Manrope</h3><p class="byline">DM Sans Project Authors · Manrope Project Authors</p></div><span class="license-tag">SIL OFL 1.1</span></div>
+        <p>The application uses local DM Sans 4.004 and Manrope 4.505 fonts. Their licence allows use and bundling with an application; retain the copyright notices and licence when redistributing the fonts. Fonts may not be sold by themselves, and modified versions remain subject to the OFL conditions.</p>
+        <ul class="links"><li><a href="./fonts/DM-Sans-OFL.txt">Complete DM Sans licence</a></li><li><a href="./fonts/Manrope-OFL.txt">Complete Manrope licence</a></li><li><a href="https://github.com/googlefonts/dm-fonts">DM Sans project</a></li><li><a href="https://github.com/googlefonts/manrope">Manrope project</a></li></ul>
+      </article>
+    </section>
+
+    <section id="catalogue" aria-labelledby="catalogue-title">
+      <h2 id="catalogue-title">Catalogue assets</h2>
+      <article class="component">
+        <div class="component-head"><div><h3>Poly Haven tool models</h3><p class="byline">16 outlines derived from 15 source models · geometry without textures</p></div><span class="license-tag">CC0 1.0</span></div>
+        <p>Source artists: BKS, Mateusz Sadek, Will Evarts, John Hutcheson, PierreB3D, Dylan Detwiller, James Ray Cock, Ulan Cabanilla, Tics, Dabou Master and Kuutti Siitonen. Conversion includes top-view projection, alignment and outline simplification.</p>
+        <p>CC0 permits further use and redistribution, including commercial use, without mandatory attribution. Origins, artists, changes and checksums are nevertheless documented.</p>
+        <ul class="links"><li><a href="./catalog/sources/polyhaven/LICENSE.txt">Bundled licence notice</a></li><li><a href="./catalog/sources/polyhaven/README.md">Models, artists and modifications</a></li><li><a href="https://polyhaven.com/license">Official Poly Haven licence</a></li><li><a href="https://creativecommons.org/publicdomain/zero/1.0/legalcode">Complete CC0 legal text</a></li></ul>
+      </article>
+      <article class="component" id="freecad">
+        <div class="component-head"><div><h3>FreeCAD-library digital caliper</h3><p class="byline">Digital_caliper · author hasecilu</p></div><span class="license-tag">CC BY 3.0</span></div>
+        <p>The source model comes from the FreeCAD Parts Library. Attribution: Digital caliper by hasecilu, FreeCAD-library, CC BY 3.0. When sharing the asset or adaptations, provide the author, source, licence link and the applicable changes.</p>
+        <p class="attribution"><strong>Modifications for InsertCreator:</strong> the mesh was split into connected components. Every component except the beam was moved 69.0 mm along the beam to close the outside jaws. The result was projected into a top view, the projected triangles were unioned, the beam aligned with X, and the outline simplified using Douglas–Peucker with a 0.1 mm tolerance. The catalogue outline is labelled as a typical shape.</p>
+        <ul class="links"><li><a href="./catalog/sources/freecad-library/LICENSE-Assets.txt">Complete bundled CC BY 3.0 licence</a></li><li><a href="./catalog/sources/freecad-library/README.md">Exact provenance and full modification notes</a></li><li><a href="https://github.com/FreeCAD/FreeCAD-library/tree/f5ca01cdcaa2f69b9295a6382719c2d90628780c/Industrial%20Design/Hand%20tools/Measuring%20tools/Digital_caliper">Original asset at the recorded revision</a></li><li><a href="https://creativecommons.org/licenses/by/3.0/">CC BY 3.0 terms</a></li></ul>
+      </article>
+      <article class="component">
+        <div class="component-head"><div><h3>InsertCreator parametric outlines</h3><p class="byline">230 generated outlines based on nominal dimensions</p></div><span class="license-tag">Declared CC0 1.0</span></div>
+        <p>The catalogue expressly declares CC0 1.0 for these generated geometry assets. That declaration does not license the rest of the application or the text of DIN/ISO standards.</p>
+        <ul class="links"><li><a href="./catalog/parametric.js">Declaration and outline generator</a></li><li><a href="https://creativecommons.org/publicdomain/zero/1.0/legalcode">Complete CC0 legal text</a></li></ul>
+      </article>
+    </section>
+
+    <section class="reference-note" id="references" aria-labelledby="references-title">
+      <h2 id="references-title">References, development tools and sharing</h2>
+      <p>Project references to Gridfinity, DIN/ISO and other design or dimensional references do not by themselves mean their program code was adopted. Dimensional compatibility, inspiration, imported models and imported libraries are different things; the specific reused components are listed above.</p>
+      <p>Development and testing also use <code>@napi-rs/canvas</code> 1.1.0 (MIT), <code>happy-dom</code> 21.0.4 (MIT) and <code>pdfjs-dist</code> 4.10.38 (Apache 2.0). These are not part of the static application published from <code>dist/</code>.</p>
+      <p><strong>When redistributing:</strong> keep the complete licence texts for the applicable components. When sharing derived catalogue models, preserve the attribution their licences require. Current project and manufacturing exports do not automatically attach all of these details; add them when sharing the FreeCAD-derived asset, for example in an accompanying README.</p>
+      <p>This page is a summary. The linked licence texts and provenance documents contain the complete terms.</p>
+    </section>
+  </main>
+  <footer class="site-foot"><p><a href="./">Back to InsertCreator</a></p><p>Inventory date: <time datetime="2026-11-04">4 November 2026</time></p></footer>
+</body>
+</html>

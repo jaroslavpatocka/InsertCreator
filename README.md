@@ -4,6 +4,8 @@ Zdrojový repozitář: [InsertCreator](https://github.com/jaroslavpatocka/Insert
 
 Česká aplikace pro návrh modulárních inzertů do šuplíku. Fotografie se zpracovávají lokálně v prohlížeči. Aplikace nepotřebuje účet, placené API ani server pro výpočty.
 
+Použité knihovny, fonty, model a katalogové podklady popisuje [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md). Pro uživatele webu je stejný přehled dostupný přes odkaz **Použité součásti a licence** v patičce aplikace: [česky](dist/licenses.html), [English](dist/licenses-en.html). Jednotlivé úplné licence zůstávají přibalené u příslušných součástí; přehled neuděluje licenci vlastnímu aplikačnímu kódu.
+
 ## Spuštění
 
 Vyžaduje Node.js 20 nebo novější. V adresáři projektu spusťte:

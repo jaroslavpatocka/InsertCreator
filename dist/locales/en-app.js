@@ -107,6 +107,7 @@ export default {
   'Export':'Export',
   'Navrženo ve skutečných rozměrech. Vyrobeno pro vaši dílnu.':'Designed at real size. Made for your workshop.',
   'Návod a inspirace':'Guide and inspiration',
+  'Použité součásti a licence':'Components and licences',
 
   // Workspace
   'Editor sestavy':'Layout editor',
