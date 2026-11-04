@@ -39,6 +39,12 @@ async function verifyDownload(download){
   assert.match(download.name,/-gridfinity-baseplate\.zip$/);const files=await unzip(download.blob),assembly=JSON.parse(new TextDecoder().decode(files.get('assembly.json'))),seen=new Set();
   assert.equal(assembly.units,'mm');assert.equal(assembly.pitch,42);assert.deepEqual([assembly.layout.columns,assembly.layout.rows],[3,3]);assert.equal(assembly.tiles.length,4);assert.equal(files.size,6);assert.match(new TextDecoder().decode(files.get('README.txt')),/assembly\.json/);
   for(const tile of assembly.tiles){const triangles=decodeSTL(files.get(tile.file));validatePrintMesh(triangles);assert.ok(trianglesVolume(triangles)>0);const points=triangles.flat(),width=Math.max(...points.map(p=>p[0])),height=Math.max(...points.map(p=>p[1]));assert.equal(Math.min(...points.map(p=>p[0])),0);assert.equal(Math.min(...points.map(p=>p[1])),0);assert.equal(width,tile.columns*42);assert.equal(height,tile.rows*42);assert.ok(width<=84&&height<=84);assert.equal(Math.max(...points.map(p=>p[2])),5);assert.equal(tile.xMm,tile.x*42);assert.equal(tile.yMm,tile.y*42);for(let y=tile.y;y<tile.y+tile.rows;y++)for(let x=tile.x;x<tile.x+tile.columns;x++){const key=`${x},${y}`;assert.equal(seen.has(key),false);seen.add(key);}}
+  assert.equal(assembly.schemaVersion,2);assert.equal(assembly.coordinates,'physical-world');
+  for(const tile of assembly.tiles){
+    const matrix=tile.assemblyTransform;assert.equal(matrix.length,16);
+    assert.equal(matrix[3],tile.xMm);assert.equal(matrix[7],assembly.layoutSize.height-tile.yMm-tile.rows*42);
+    assert.deepEqual([matrix[0],matrix[5],matrix[10]],[1,1,1],'physical baseplate assembly uses translations without reflection');
+  }
   assert.equal(seen.size,9,'all drawer cells are covered exactly once');
 }
 after(()=>win.happyDOM.abort());

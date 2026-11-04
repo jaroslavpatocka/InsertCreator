@@ -101,3 +101,18 @@ test('the export dialog statistics see the inlay and refuse the same pocket',asy
   assert.ok(on.volumeMm3>off.volumeMm3,'walls rise and the inlay counts');
   assert.throws(()=>printStats(project({printMode:'light'},17.6),{checkBed:false}),/Klíč/);
 });
+
+for(const [name,bed] of [['flat',{}],['turned for the bed',{bedWidth:140,bedHeight:200}]])test(`an off-centre inlay lies exactly in its pocket, ${name}`,async()=>{
+  const p=project(bed);p.tools[0].x=14;p.tools[0].y=70;const result=await preparePrintBatch(p),body=stl(result,'body'),floor=stl(result,'floor');
+  if(name!=='flat')assert.equal(result.parts[0].rotationForPrinting,90);
+  const [low]=range(floor),span=(mesh,axis)=>{const values=mesh.flat().map(point=>point[axis]);return[Math.min(...values),Math.max(...values)];};
+  const seat=body.filter(triangle=>triangle.every(point=>Math.abs(point[2]-low)<.001));assert.ok(seat.length,'the body has a floor at the bottom of the inlay');
+  for(const axis of [0,1]){const a=span(seat,axis),b=span(floor,axis);assert.ok(Math.abs(a[0]-b[0])<.01&&Math.abs(a[1]-b[1])<.01,`axis ${axis}: ${a} vs ${b}`);}
+});
+
+test('the 3D preview shows the printed colour parts',async()=>{
+  const {printPreview}=await import('../dist/preview3d.js'),{fills}={fills:svg=>new Set([...svg.matchAll(/fill="(rgb[^"]*)"/g)].map(match=>match[1]))};
+  const p=project({multiMaterial:{enabled:true,bodyColor:'#000000',floorColor:'#ff0000',textColor:'#0000ff'}}),found=fills(printPreview(p,null,null).html??String(printPreview(p,null,null)));
+  assert.ok([...found].some(color=>/^rgb\(\d+ 0 0\)$/.test(color)&&!color.startsWith('rgb(0 ')),'floor colour');
+  assert.ok([...found].some(color=>/^rgb\(0 0 \d+\)$/.test(color)&&!color.endsWith(' 0)')),'text colour');
+});

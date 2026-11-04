@@ -40,6 +40,10 @@ test('export tiles retain exact cell geometry, local coordinates and binary STL 
   assert.equal(count,triangles.length);assert.equal(bytes.byteLength,84+count*50);
   for(let i=0;i<count;i++)decoded.push([0,1,2].map(v=>[0,1,2].map(axis=>view.getFloat32(84+i*50+12+v*12+axis*4,true))));
   validatePrintMesh(decoded);
+  // The mesher remains in editor Y-down coordinates. The binary manufacturing
+  // boundary reflects every point once, then reverses winding to preserve solids.
+  // Check the correspondence even though the regular socket grid is symmetric.
+  for(let i=0;i<count;i++)assert.deepEqual(decoded[i],[triangles[i][0],triangles[i][2],triangles[i][1]].map(([x,y,z])=>[Math.fround(x),Math.fround(84-y),Math.fround(z)]));
   triangles[0][0][0]+=100;assert.deepEqual(bounds(baseplateTriangles(p,{tile})),{min:[0,0,0],max:[126,84,5]},'cached profiles cannot be changed through a returned mesh');
   for(const invalid of [{x:0,y:0,columns:11,rows:1},{x:0,y:-1,columns:1,rows:1},{x:0,y:0,columns:1.5,rows:1},{x:0,y:0,columns:1,rows:0}])assert.throws(()=>baseplateTriangles(p,{tile:invalid}),/celá pole/);
 });

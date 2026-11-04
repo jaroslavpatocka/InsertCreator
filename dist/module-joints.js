@@ -5,6 +5,7 @@ import Clipper from './vendor/clipper.js';
 import {pocketOutline} from './finger-grip.js';
 import {moduleOutline} from './module-footprint.js';
 import {planSizeLabels} from './size-labels.js';
+import {magnetPocketCenters} from './magnet-pockets.js';
 
 const INSET=.25,NECK=5.5,HEAD=4,NECK_LENGTH=1.5,MARGIN=1.2,ROOT=.6,SPACING=16,STEP=2,PITCH=105,MAX_PER_EDGE=4,SCALE=1000,EPS=.01;
 // Male geometry stays fixed. Reserve includes the inset between a nominal edge and its printed body.
@@ -54,20 +55,28 @@ const fromInt=paths=>paths.map(path=>path.map(p=>({x:p.X/SCALE,y:p.Y/SCALE})));
 const intersect=(outline,clip)=>fromInt(boolean([outline],[rectangle(clip)],Clipper.ClipType.ctIntersection));
 const bounds=paths=>{const points=paths.flat();return{x:Math.min(...points.map(p=>p.x)),y:Math.min(...points.map(p=>p.y)),width:Math.max(...points.map(p=>p.x))-Math.min(...points.map(p=>p.x)),height:Math.max(...points.map(p=>p.y))-Math.min(...points.map(p=>p.y))};};
 const withinPaths=(shape,paths)=>areaOf(boolean([shape],paths,Clipper.ClipType.ctDifference))<=EPS;
+function magnetGuard({x,y,radius},wall){
+  // Circumscribe the real circular pocket plus its full supporting wall: an
+  // inscribed approximation would shave the requested clearance between vertices.
+  const reach=(radius+Math.max(1.2,wall))/Math.cos(Math.PI/48);
+  return Array.from({length:48},(_,index)=>({x:x+Math.cos(index*Math.PI/24)*reach,y:y+Math.sin(index*Math.PI/24)*reach}));
+}
 const keepoutsFor=(project,module,tools)=>{
   const own=tools.filter(tool=>tool.moduleId===module.id),clearance=Number(project.clearance)||0,wall=Number(project.wall)||2.4;
   const labels=project.sizeLabels?planSizeLabels(project,[module],own.map(tool=>({...tool,poly:pocketOutline(tool,clearance)}))).labels.map(label=>label.plate):[];
-  return [...own.map(tool=>pocketOutline(tool,clearance+wall)),...labels];
+  const magnets=project.bottomMode==='magnet'?magnetPocketCenters(project,module).map(center=>magnetGuard(center,wall)):[];
+  return [...own.map(tool=>pocketOutline(tool,clearance+wall)),...labels,...magnets];
 };
+const rootGuard=(at,normal,inset,clearance)=>rectangle({x:at.x-(normal.x?inset+ROOT+MARGIN:NECK/2+clearance+MARGIN),y:at.y-(normal.x?NECK/2+clearance+MARGIN:inset+ROOT+MARGIN),width:normal.x?ROOT+MARGIN:NECK+2*(clearance+MARGIN),height:normal.x?NECK+2*(clearance+MARGIN):ROOT+MARGIN});
 
 const fitsBed=(width,height,bedWidth,bedHeight)=>(width<=bedWidth+1e-6&&height<=bedHeight+1e-6)||(height<=bedWidth+1e-6&&width<=bedHeight+1e-6);
 
 /**
  * joints: every planned joint; byModule: Map of module id to {tabs,sockets} in world millimetres; skipped: joints with no free place.
- * Modules cut into parts for the printer take no joints, and neither do Gridfinity or magnet bottoms.
+ * Modules cut into parts for the printer are handled by planCutJoints. Gridfinity takes no joints.
  */
 export function planJoints(project,modules,tools){
-  const unsupported=project.bottomMode==='grid'||project.bottomMode==='magnet',result={joints:[],byModule:new Map(),skipped:0,unsupported};
+  const unsupported=project.bottomMode==='grid',result={joints:[],byModule:new Map(),skipped:0,unsupported};
   if(unsupported)return result;
   const grid=Number(project.grid)||42,bedWidth=Number(project.bedWidth),bedHeight=Number(project.bedHeight),clearance=jointClearance(project);
   const usable=modules.filter(m=>fitsBed(m.width-2*INSET,m.height-2*INSET,bedWidth,bedHeight));
@@ -92,8 +101,8 @@ export function planJoints(project,modules,tools){
         const preferred=edge.lo+(edge.hi-edge.lo)*(i+.5)/wanted;let spot=null;
         for(let distance=0;distance<=edge.hi-edge.lo&&spot===null;distance+=STEP)for(const value of distance?[preferred+distance,preferred-distance]:[preferred]){
           if(value<lo||value>hi||placed.some(other=>Math.abs(other-value)<SPACING))continue;
-          const guard=puzzle(edge.at(value),edge.normal,{start:INSET*2,grow:clearance+MARGIN});
-          if(within(guard,printed.get(host.id))&&!overlaps(guard,keepoutsOf(host))){spot=value;break;}
+          const at=edge.at(value),guard=puzzle(at,edge.normal,{start:INSET*2,grow:clearance+MARGIN}),anchor=rootGuard(at,edge.normal,INSET,clearance);
+          if(within(guard,printed.get(host.id))&&within(anchor,printed.get(owner.id))&&!overlaps(guard,keepoutsOf(host))&&!overlaps(anchor,keepoutsOf(owner))){spot=value;break;}
         }
         const next={...size()};if(!reach.get(owner.id)[grown])next[grown==='x'?'width':'height']+=extent;
         if(spot===null||!fitsBed(next.width,next.height,bedWidth,bedHeight)){result.skipped++;continue;}
@@ -111,7 +120,7 @@ export function planJoints(project,modules,tools){
  * Unjoined seams remain explicit: a cut through a tool must not silently remove its floor or supporting wall.
  */
 export function planCutJoints(project,plans,tools,{modulePlan=null}={}){
-  const unsupported=project.bottomMode==='grid'||project.bottomMode==='magnet';
+  const unsupported=project.bottomMode==='grid';
   const result={joints:[],byPart:new Map(),skipped:0,unsupported,seams:[],unjoined:[]};
   if(unsupported)return result;
   const grid=Number(project.grid)||42,clearance=jointClearance(project),bedWidth=Number(project.bedWidth),bedHeight=Number(project.bedHeight);
@@ -148,7 +157,7 @@ export function planCutJoints(project,plans,tools,{modulePlan=null}={}){
         const preferred=edge.lo+(edge.hi-edge.lo)*(i+.5)/wanted;let spot=null;
         for(let distance=0;distance<=edge.hi-edge.lo&&spot===null;distance+=STEP)for(const value of distance?[preferred+distance,preferred-distance]:[preferred]){
           if(value<lo||value>hi||placed.some(other=>Math.abs(other-value)<SPACING))continue;
-          const at=edge.at(value),guard=puzzle(at,edge.normal,{start:2*edgeInset,grow:clearance+MARGIN}),anchor=rectangle({x:at.x-(edge.normal.x?edgeInset+ROOT+MARGIN:NECK/2+clearance+MARGIN),y:at.y-(edge.normal.x?NECK/2+clearance+MARGIN:edgeInset+ROOT+MARGIN),width:edge.normal.x?ROOT+MARGIN:NECK+2*(clearance+MARGIN),height:edge.normal.x?NECK+2*(clearance+MARGIN):ROOT+MARGIN});
+          const at=edge.at(value),guard=puzzle(at,edge.normal,{start:2*edgeInset,grow:clearance+MARGIN}),anchor=rootGuard(at,edge.normal,edgeInset,clearance);
           if(!withinPaths(guard,material.get(host.key))||!withinPaths(anchor,material.get(owner.key))||overlaps(guard,keepouts.get(host.module.id))||overlaps(anchor,keepouts.get(owner.module.id))||overlaps(guard,occupied.get(host.key))||overlaps(anchor,occupied.get(owner.key)))continue;
           const tab=puzzle(at,edge.normal,{start:-INSET-ROOT}),extent=bounds([...material.get(owner.key),...(result.byPart.get(owner.key)?.tabs||[]),tab]);
           if(!fitsBed(extent.width,extent.height,bedWidth,bedHeight)){bedBlocked=true;continue;}

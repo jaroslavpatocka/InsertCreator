@@ -4,12 +4,13 @@ import {createCamera3D,normalizeCamera3D,printPreview} from '../dist/preview3d.j
 import {blankProject} from '../dist/model.js';
 import {exportSTL,createDemoProject} from '../dist/geometry.js';
 import {createCanvas,loadImage} from '@napi-rs/canvas';
+import {preparePrintBatch} from '../dist/print-batch.js';
 
 const fixture=()=>({...blankProject(),id:'camera-test',width:168,height:126,printMode:'solid',bottomMode:'plain',limitToBed:false,modules:[{id:'m',name:'Nástroj',x:42,y:0,width:84,height:126}],tools:[{id:'t',name:'Nástroj',x:55,y:12,rotation:0,depth:9,moduleId:'m',points:[{x:0,y:0},{x:34,y:0},{x:34,y:75},{x:0,y:75}]}]});
 const renderedFaces=preview=>[...preview.html.matchAll(/<polygon data-module="([^"]+)" data-face-index="(\d+)" points="([^"]+)"/g)].map(match=>({moduleId:match[1],index:Number(match[2]),points:match[3]}));
 const stlFaces=project=>{
   const bytes=exportSTL(project,{moduleId:'m'}),view=new DataView(bytes.buffer,bytes.byteOffset,bytes.byteLength);
-  return Array.from({length:view.getUint32(80,true)},(_,i)=>({normal:[0,1,2].map(c=>view.getFloat32(84+i*50+c*4,true))}));
+  return Array.from({length:view.getUint32(80,true)},(_,i)=>({normal:[0,1,2].map(c=>view.getFloat32(84+i*50+c*4,true)),points:[0,1,2].map(j=>[0,1,2].map(c=>view.getFloat32(84+i*50+12+j*12+c*4,true)))}));
 };
 function assertFinite(preview){
   assert.ok(preview.viewBox.split(' ').map(Number).every(Number.isFinite));
@@ -17,6 +18,7 @@ function assertFinite(preview){
   assert.ok(Object.values(preview.camera).every(Number.isFinite));
   assert.doesNotMatch(preview.html,/NaN|Infinity/);
 }
+const inside2d=(point,polygon)=>{let yes=false;for(let i=0,j=polygon.length-1;i<polygon.length;j=i++){const a=polygon[i],b=polygon[j];if((a[1]>point[1])!==(b[1]>point[1])&&point[0]<(b[0]-a[0])*(point[1]-a[1])/(b[1]-a[1])+a[0])yes=!yes;}return yes;};
 
 test('camera normalization wraps yaw, supports underneath views and keeps invalid inputs finite',()=>{
   const camera=createCamera3D();assert.equal(camera.yaw,Math.PI/4);assert.equal(camera.zoom,1);assert.equal(camera.panX,0);
@@ -58,6 +60,67 @@ test('visible outward STL faces keep camera handedness for every orbit quadrant 
     }
   }
   assert.ok(checked>200,'the regression exercises actual nondegenerate manufacturing facets');
+});
+
+test('physical top preview preserves the layout position and chirality of an asymmetric pocket',()=>{
+  const project={...blankProject(),id:'layout-chirality',width:252,height:252,clearance:0,printMode:'solid',bottomMode:'plain',limitToBed:false,
+    modules:[{id:'m',name:'Asymmetric module',x:42,y:42,width:126,height:84}],
+    tools:[{id:'t',name:'L pocket',x:56,y:56,rotation:0,depth:8,moduleId:'m',fingerGrips:[],points:[{x:0,y:0},{x:38,y:0},{x:38,y:10},{x:12,y:10},{x:12,y:35},{x:0,y:35}]}]};
+  const pitch=1.56,preview=printPreview(project,null,null,{yaw:0,pitch}),facets=stlFaces(project),floor=12;
+  const floorIds=new Set(facets.flatMap((face,i)=>face.normal[2]>.99&&face.points.every(p=>Math.abs(p[2]-floor)<1e-5)?[i]:[]));
+  assert.ok(floorIds.size>0);
+  const polygons=renderedFaces(preview).filter(face=>floorIds.has(face.index)).map(face=>face.points.split(' ').map(pair=>pair.split(',').map(Number)));
+  const inside=(point,polygon)=>{let yes=false;for(let i=0,j=polygon.length-1;i<polygon.length;j=i++){const a=polygon[i],b=polygon[j];if((a[1]>point[1])!==(b[1]>point[1])&&point[0]<(b[0]-a[0])*(point[1]-a[1])/(b[1]-a[1])+a[0])yes=!yes;}return yes;};
+  const [cx,cy,cz]=preview.frame.center;
+  // Expectations come from the independently declared editor L shape. A physical
+  // +Z top view must put its long arm at the top and its short arm on the left.
+  // Do not obtain expected coordinates from the manufacturing transform helper.
+  for(const [x,y,expected] of [[61,61,true],[90,61,true],[61,83,true],[90,83,false]]){
+    const screen=[x-cx,(y-(project.height-cy))*Math.sin(pitch)-(floor-cz)*Math.cos(pitch)];
+    assert.equal(polygons.some(poly=>inside(screen,poly)),expected,`layout point ${x},${y} keeps its position and handedness in the physical preview`);
+  }
+  assert.deepEqual(preview.warnings,[]);
+});
+
+test('large Gridfinity wire reference retains the drawer top origin and the unused bottom strip in physical space',()=>{
+  const project={...blankProject(),width:1261,height:631,bottomMode:'grid',modules:[],tools:[]},pitch=1.56,preview=printPreview(project,null,null,{yaw:0,pitch});
+  const match=preview.html.match(/<g data-baseplate="true"[^>]*><path d="M([-\d.]+) ([-\d.]+)L/);assert.ok(match,'over 400 cells use the bounded wire reference');
+  const [cx,cy,cz]=preview.frame.center;
+  assert.ok(Math.abs(Number(match[1])-(-cx))<.002);
+  assert.ok(Math.abs(Number(match[2])-(-(project.height-cy)*Math.sin(pitch)-(-.25-cz)*Math.cos(pitch)))<.002,'layout top Y=0 maps to physical Y=drawer height');
+});
+
+test('puzzle preview renders the actual binary STL part geometry, including cut joints and magnet bottoms',async()=>{
+  const cases=[
+    {bottomMode:'plain',printMode:'solid',modules:[{id:'m',x:42,y:42,width:168,height:84}],bedWidth:100,bedHeight:100},
+    {bottomMode:'magnet',printMode:'solid',modules:[{id:'m',x:42,y:42,width:84,height:84},{id:'n',x:126,y:42,width:84,height:84}],bedWidth:220,bedHeight:220},
+    {bottomMode:'magnet',printMode:'light',modules:[{id:'m',x:42,y:42,width:168,height:84}],bedWidth:100,bedHeight:100},
+    {bottomMode:'magnet',printMode:'light',modules:[{id:'m',x:42,y:42,width:84,height:168}],bedWidth:100,bedHeight:100}
+  ];
+  for(const options of cases){
+    const project={...blankProject(),id:'visible-puzzle',width:336,height:252,connectors:true,tools:[],...options},before=JSON.stringify(project),result=await preparePrintBatch(project);
+    const pitch=-1.56,preview=printPreview(project,null,null,{yaw:0,pitch}),parts=new Map(),moduleCounts=new Map();
+    assert.equal(preview.stats.invalidModules,0);assert.equal(preview.stats.printParts,result.parts.length);assert.equal(preview.stats.joints,result.joints);assert.ok(result.joints>0);
+    assert.equal(preview.stats.triangles,result.parts.reduce((sum,part)=>sum+part.triangles,0),'the preview contains every exported part facet, including the base-level puzzle surfaces');
+    assert.equal(new Set([...preview.html.matchAll(/data-print-part="([^"]+)"/g)].map(match=>match[1])).size,result.parts.length);
+    for(const part of result.parts){
+      const bytes=result.files.find(file=>file.name===part.file).data,view=new DataView(bytes.buffer,bytes.byteOffset,bytes.byteLength),matrix=part.assemblyTransform,faces=[];
+      for(let i=0;i<view.getUint32(80,true);i++){
+        const points=[0,1,2].map(j=>[0,1,2].map(c=>view.getFloat32(84+i*50+12+j*12+c*4,true))).map(p=>[0,1,2].map(a=>matrix[a*4]*p[0]+matrix[a*4+1]*p[1]+matrix[a*4+2]*p[2]+matrix[a*4+3]));
+        faces.push({points,normalZ:view.getFloat32(84+i*50+8,true)});
+      }
+      parts.set(part.key,{part,faces,start:moduleCounts.get(part.moduleId)||0});moduleCounts.set(part.moduleId,(moduleCounts.get(part.moduleId)||0)+faces.length);
+    }
+    const rendered=renderedFaces(preview),[cx,cy,cz]=preview.frame.center;
+    for(const joint of result.manifest.joints.connections){
+      const owner=parts.get(joint.owner),x=joint.at.x+(joint.axis==='x'?5.75:.137),y=project.height-joint.at.y-(joint.axis==='y'?5.75:.137);
+      const index=owner.faces.findIndex(face=>face.normalZ<-.99&&inside2d([x,y],face.points));assert.ok(index>=0,'the actual exported male tab has a bottom facet under its head');
+      const screen=[x-cx,-(y-cy)*Math.sin(pitch)+cz*Math.cos(pitch)];
+      const faces=rendered.filter(face=>face.moduleId===owner.part.moduleId&&face.index===owner.start+index);
+      assert.ok(faces.some(face=>inside2d(screen,face.points.split(' ').map(pair=>pair.split(',').map(Number)))),'the actual male head is visibly rendered from underneath, rather than merely counted in a plan');
+    }
+    assert.equal(JSON.stringify(project),before,'viewing real puzzle and magnet geometry does not edit the drawer');
+  }
 });
 
 test('orbit changes projected triangles while keeping the fit, pan and zoom frame stable',()=>{
@@ -121,7 +184,8 @@ test('the opaque solid bottom occludes every pocket wall in rasterized underside
     const [cx,cy,cz]=preview.frame.center,sy=Math.sin(yaw),cos=Math.cos(yaw),sp=Math.sin(camera.pitch),cp=Math.cos(camera.pitch);
     let mismatches=0,samples=0,example='';
     for(const module of project.modules)for(let x=module.x+4;x<module.x+module.width-4;x+=3)for(let y=module.y+4;y<module.y+module.height-4;y+=3){
-      const sx=(x-cx)*cos-(y-cy)*sy,screenY=-((x-cx)*sy+(y-cy)*cos)*sp+cz*cp;
+      const physicalY=project.height-y;
+      const sx=(x-cx)*cos-(physicalY-cy)*sy,screenY=-((x-cx)*sy+(physicalY-cy)*cos)*sp+cz*cp;
       const px=Math.floor((sx-preview.viewBounds.x)/preview.viewBounds.width*width),py=Math.floor((screenY-preview.viewBounds.y)/preview.viewBounds.height*height),offset=(py*width+px)*4;
       // Subpixel seams between identically colored facets may blend a few RGB
       // levels; an exposed pocket wall has a distinctly different material shade.

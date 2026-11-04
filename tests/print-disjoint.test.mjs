@@ -56,7 +56,7 @@ test('disjoint mixed-depth walls join one base, keep exact additive volume and p
       assert.ok(Math.abs(mesh.volume-expected-lettering)<.05,`${printMode}/${bottomMode}/${sizeLabels}: components add only their own volume`);
       const baseTop=cfg.footHeight+cfg.effectiveBaseMm,H=cfg.footHeight+cfg.height+cfg.extraBase;
       for(const tool of p.tools){
-        const x=tool.x-module.x+10.137,y=tool.y-module.y+5.113;
+        const x=tool.x-module.x+10.137,y=module.height-(tool.y-module.y+5.113);
         assert.equal(materialAt(mesh,x,y,baseTop-.1),true,'The shared base remains under every pocket');
         if(printMode==='light'){
           assert.equal(materialAt(mesh,x,y,baseTop+.2),false,'The pocket stays open above the base');
@@ -67,7 +67,7 @@ test('disjoint mixed-depth walls join one base, keep exact additive volume and p
           assert.equal(materialAt(mesh,x,y,H-tool.depth-.2),true,'Material remains immediately below each pocket floor');
         }
       }
-      for(const label of plan.labels){const point=glyphPoint(label),x=point.x-module.x,y=point.y-module.y;assert.equal(materialAt(mesh,x,y,label.top-.15),false,'The label is really recessed');assert.equal(materialAt(mesh,x,y,label.top-label.depth-.15),true,'The engraving retains its supporting material');assert.equal(materialAt(mesh,x,y,baseTop-.1),true,'No engraving thins the common base');}
+      for(const label of plan.labels){const point=glyphPoint(label),x=point.x-module.x,y=module.height-(point.y-module.y);assert.equal(materialAt(mesh,x,y,label.top-.15),false,'The label is really recessed');assert.equal(materialAt(mesh,x,y,label.top-label.depth-.15),true,'The engraving retains its supporting material');assert.equal(materialAt(mesh,x,y,baseTop-.1),true,'No engraving thins the common base');}
       if(bottomMode==='magnet'){const xy=.25+cfg.magnetDiameter/2+cfg.wall;assert.equal(materialAt(mesh,xy,xy,cfg.magnetDepth-.2),false);assert.equal(materialAt(mesh,xy,xy,cfg.magnetDepth+.2),true,'The original magnet roof remains intact');}
       if(bottomMode==='grid')assert.equal(materialAt(mesh,21.137,21.113,.3),true,'Gridfinity feet remain part of the same closed object');
     }

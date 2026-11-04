@@ -17,7 +17,7 @@ const fixture=(id,extra={})=>validateProject({...blankProject(),id,name:id,width
   modules:[{id:'m',name:'Sada',x:0,y:0,width:168,height:84,locked:true,sizeMode:'manual'}],
   tools:[{id:'t',name:'Nástroj',moduleId:'m',x:20,y:20,points:rectangle(20,20),rotation:0,depth:8,fingerGrips:[]}],...extra});
 const projects=['invalid','inch','roundtrip','coupon','cut-status'].map(id=>fixture(id));
-projects.push(fixture('off',{connectors:false}),fixture('grid',{bottomMode:'grid'}));
+projects.push(fixture('off',{connectors:false}),fixture('grid',{bottomMode:'grid'}),fixture('magnet',{bottomMode:'magnet'}));
 localStorage.setItem('suplik-studio-projects-v1',JSON.stringify(projects));localStorage.setItem('suplik-studio-current','"invalid"');
 const blobs=new Map(),downloads=[];
 URL.createObjectURL=blob=>{const id='blob:http://localhost/joint-settings-'+blobs.size;blobs.set(id,blob);return id;};URL.revokeObjectURL=()=>{};
@@ -104,4 +104,14 @@ test('disabled connectors and unsupported Gridfinity bottoms do not offer cleara
     await open(id);const before=store(),undo=history();assert.equal($('#export-joint-clearance'),null);assert.equal($('#export-joint-fit'),null);
     assert.equal($('#export-connectors').disabled,id==='grid');assertReadOnly(before,undo);
   }
+});
+
+test('magnet bottoms allow puzzle joints, clearance settings and an actual joined print ZIP',async()=>{
+  await open('magnet');const before=store(),undo=history();
+  assert.equal($('#export-connectors').disabled,false);assert.equal($('#export-connectors').checked,true);
+  assert.ok($('#export-joint-clearance'));assert.equal($('#export-joint-fit').disabled,false);
+  const download=await downloadedFrom('[data-do-export]'),files=await unzip(download.blob);
+  const assembly=JSON.parse(new TextDecoder().decode(files.get('assembly.json')));
+  assert.ok(assembly.joints.count>0,'the downloaded magnet model must contain real puzzle connections');
+  assert.ok(assembly.joints.cutCount>0);assert.equal(assembly.schemaVersion,2);assertReadOnly(before,undo);
 });

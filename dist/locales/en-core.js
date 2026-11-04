@@ -196,4 +196,5 @@ export default {
   'Tiskové díly přesahují limit 128 MB. Vyberte méně modulů a export zopakujte.':'The printable parts exceed the 128 MB limit. Select fewer modules and export again.',
   'Vybrané moduly neobsahují žádnou tisknutelnou geometrii.':'The selected modules contain no printable geometry.',
   'vůle spojky':'joint clearance',
+  "Model je pro plynulý náhled příliš složitý. Zobrazuji obrysy modulů.":"The model is too complex for a smooth preview. Showing module outlines.",
 };

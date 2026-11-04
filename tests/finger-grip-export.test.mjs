@@ -93,9 +93,9 @@ test('central automatic wrench grips survive rotated layout and cut real printab
     const angle=own.rotation*Math.PI/180,c=Math.cos(angle),s=Math.sin(angle),rotated=points.map(p=>({x:p.x*c-p.y*s,y:p.x*s+p.y*c})),b=extent(rotated);
     const sample={x:120*c-38*s-b.x+own.x,y:120*s+38*c-b.y+own.y};
     const z=printMode==='solid'?cfg.height-5:cfg.effectiveBaseMm+5;
-    assert.equal(materialAt(original,sample.x,sample.y,z),true,'the uncut shaft side has material');
-    assert.equal(materialAt(mesh,sample.x,sample.y,z),false,'the central finger circle opens the actual pocket');
-    assert.equal(materialAt(mesh,sample.x,sample.y,cfg.effectiveBaseMm/2),true,'the shared floor is retained');
+    assert.equal(materialAt(original,sample.x,packed.height-sample.y,z),true,'the uncut shaft side has material');
+    assert.equal(materialAt(mesh,sample.x,packed.height-sample.y,z),false,'the central finger circle opens the actual pocket');
+    assert.equal(materialAt(mesh,sample.x,packed.height-sample.y,cfg.effectiveBaseMm/2),true,'the shared floor is retained');
     inspectSTL(exportFitSTL(packed));
     assert.deepEqual(own,before,'manufacturing exports preserve stored centres, radius and contour');
   }
@@ -140,16 +140,16 @@ test('finger pockets are real closed printable cavities for both constructions a
     const p={...project(),printMode,bottomMode},plain=structuredClone(p);plain.tools[0].fingerGrips=[];
     const mesh=inspectSTL(exportSTL(p)),original=inspectSTL(exportSTL(plain)),cfg=printConfig(p);
     const z=printMode==='solid'?cfg.footHeight+cfg.height+cfg.extraBase-5:cfg.footHeight+cfg.effectiveBaseMm+5;
-    assert.equal(materialAt(original,28.5,50,z),true,`${printMode}/${bottomMode}: original side wall`);
-    assert.equal(materialAt(mesh,28.5,50,z),false,`${printMode}/${bottomMode}: finger must enter the cavity`);
-    assert.equal(materialAt(mesh,20,50,z),true,`${printMode}/${bottomMode}: printable wall around the grip`);
-    assert.equal(materialAt(mesh,28.5,50,cfg.footHeight+cfg.effectiveBaseMm/2),true,`${printMode}/${bottomMode}: the pocket keeps its floor`);
+    assert.equal(materialAt(original,28.5,p.height-50,z),true,`${printMode}/${bottomMode}: original side wall`);
+    assert.equal(materialAt(mesh,28.5,p.height-50,z),false,`${printMode}/${bottomMode}: finger must enter the cavity`);
+    assert.equal(materialAt(mesh,20,p.height-50,z),true,`${printMode}/${bottomMode}: printable wall around the grip`);
+    assert.equal(materialAt(mesh,28.5,p.height-50,cfg.footHeight+cfg.effectiveBaseMm/2),true,`${printMode}/${bottomMode}: the pocket keeps its floor`);
     if(printMode==='solid'){
       const removed=(area(pocketOutline(p.tools[0],p.clearance))-area(pocketOutline(plain.tools[0],p.clearance)))*p.tools[0].depth;
       assert.ok(Math.abs((original.volume-mesh.volume)-removed)<.2,`${bottomMode}: actual removed finger volume`);
     }
     const fit=inspectSTL(exportFitSTL(p));
-    assert.equal(materialAt(fit,28.5,50,.5),false);assert.equal(materialAt(fit,20,50,.5),true);
+    assert.equal(materialAt(fit,28.5,p.height-50,.5),false);assert.equal(materialAt(fit,20,p.height-50,.5),true);
     const zs=fit.triangles.flat().map(p=>p[2]);assert.equal(Math.min(...zs),0);assert.equal(Math.max(...zs),1);
   }
 });

@@ -1,7 +1,8 @@
 import {moduleOutline,modulePadding} from './module-footprint.js';
 import Clipper from './vendor/clipper.js';
-import {buildColorZones,buildPrintTriangles,encodeSTL,trianglesVolume,printConfig,validatePrintBed} from './print-geometry.js';
+import {buildColorZones,buildPrintTriangles,encodeSTL,trianglesVolume,printConfig,validatePrintBed,validatePrintMesh} from './print-geometry.js';
 import {materialConfig} from './print-material.js';
+import {layoutMeshToPhysical} from './manufacturing-coordinates.js';
 import {pocketOutline} from './finger-grip.js';
 export {pocketOutline} from './finger-grip.js';
 import {t as tr,i18nError} from './i18n.js';
@@ -328,15 +329,18 @@ export function exportDXF(project,{moduleId=null}={}) {
 const printTools=(project,tools)=>tools.map(t=>({...t,poly:clean(pocketOutline(t,n(project.clearance,.8)))}));
 /** Binary STL in mm: solid or open contour walls, with the selected real underside. */
 export function exportSTL(project,{moduleId=null,checkBed=true}={}){
-  const {modules,tools,origin}=selected(project,moduleId);if(checkBed)validatePrintBed(project,modules);
-  return encodeSTL(buildPrintTriangles(project,modules,printTools(project,tools),origin),'InsertCreator | mm | '+(project.printMode||'solid')+' | '+(project.bottomMode||'plain'));
+  const {modules,tools,origin,height}=selected(project,moduleId);if(checkBed)validatePrintBed(project,modules);
+  const triangles=layoutMeshToPhysical(buildPrintTriangles(project,modules,printTools(project,tools),origin),height);
+  validatePrintMesh(triangles);
+  return encodeSTL(triangles,'InsertCreator | mm | '+(project.printMode||'solid')+' | '+(project.bottomMode||'plain'));
 }
 /** One millimetre high contour ring: same pocket clearance, no full block or base. */
 export function exportFitSTL(project,{moduleId=null}={}){
-  const {modules,tools,origin}=selected(project,moduleId);
+  const {modules,tools,origin,height}=selected(project,moduleId);
   const triangles=buildPrintTriangles(project,modules,printTools(project,tools),origin,{fit:true});
   if(project.limitToBed&&triangles.length){let minX=Infinity,minY=Infinity,maxX=-Infinity,maxY=-Infinity;for(const triangle of triangles)for(const p of triangle){minX=Math.min(minX,p[0]);minY=Math.min(minY,p[1]);maxX=Math.max(maxX,p[0]);maxY=Math.max(maxY,p[1]);}const width=maxX-minX,height=maxY-minY,bw=n(project.bedWidth,220),bh=n(project.bedHeight,220);if(!((width<=bw&&height<=bh)||(width<=bh&&height<=bw)))throw i18nError('Testovací obrys se nevejde na tiskovou plochu. Vyberte jeden menší modul.');}
-  return encodeSTL(triangles,'InsertCreator | mm | 1mm contour fit test');
+  const physical=layoutMeshToPhysical(triangles,height);validatePrintMesh(physical);
+  return encodeSTL(physical,'InsertCreator | mm | 1mm contour fit test');
 }
 /** Geometric volume only; does not pretend to predict slicer infill or print duration. */
 export function printStats(project,{moduleId=null,checkBed=true}={}){

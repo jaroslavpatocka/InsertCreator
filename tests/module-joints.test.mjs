@@ -41,10 +41,23 @@ test('stepped modules are joined along their real shared edge',()=>{
   const plan=planJoints(p,p.modules,[]);assert.equal(plan.joints.length,1);assert.equal(plan.joints[0].at.x,84);assert.ok(plan.joints[0].at.y<42);
 });
 
-test('Gridfinity and magnet bottoms take no joints, and modules cut for the printer are left out',()=>{
-  for(const bottomMode of ['grid','magnet']){const p=project([module('a',0,0),module('b',84,0)],[],{bottomMode}),plan=planJoints(p,p.modules,[]);assert.equal(plan.unsupported,true);assert.equal(plan.joints.length,0);}
+test('only Gridfinity takes no joints; oversized modules are handled by the cut-aware planner',()=>{
+  const grid=project([module('a',0,0),module('b',84,0)],[],{bottomMode:'grid'}),unsupported=planJoints(grid,grid.modules,[]);assert.equal(unsupported.unsupported,true);assert.equal(unsupported.joints.length,0);
+  const magnets=project([module('a',0,0),module('b',84,0)],[],{bottomMode:'magnet'}),supported=planJoints(magnets,magnets.modules,[]);assert.equal(supported.unsupported,false);assert.equal(supported.joints.length,1);
   const p=project([module('big',0,0,420,84),module('b',420,0)],[],{bedWidth:220,bedHeight:220});
   assert.equal(planJoints(p,p.modules,[]).joints.length,0);
+});
+
+test('magnet pocket positions and diameter protect socket walls and the tab root',()=>{
+  const narrow=[module('a',0,0,84,30),module('b',84,0,84,30)],plain=project(narrow),magnetic={...plain,bottomMode:'magnet'};
+  assert.equal(planJoints(plain,plain.modules,[]).joints.length,1);
+  const blocked=planJoints(magnetic,magnetic.modules,[]);assert.equal(blocked.joints.length,0);assert.equal(blocked.skipped,1);assert.equal(blocked.unsupported,false);
+  const larger=project([module('a',0,0,84,42),module('b',84,0,84,42)],[],{bottomMode:'magnet'});
+  assert.equal(planJoints(larger,larger.modules,[]).joints.length,1);
+  const bigMagnets={...larger,magnetDiameter:12};assert.equal(planJoints(bigMagnets,bigMagnets.modules,[]).joints.length,0);
+  const cut=project([module('big',0,0,168,30),module('host',168,0,84,30)],[],{bottomMode:'magnet',bedWidth:100,bedHeight:100}),plan=planPrintBatch(cut).jointPlan;
+  assert.equal(plan.cutCount,1,'the internal cut remains joinable away from corner magnets');
+  assert.ok(plan.unjoined.some(seam=>seam.moduleId==='big'&&seam.hostModuleId==='host'&&seam.reason==='no-safe-site'),'the magnetic corner keepouts explicitly block the original module boundary');
 });
 
 test('a tab that would push the part over the print bed is left out',()=>{
