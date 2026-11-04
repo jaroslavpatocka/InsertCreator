@@ -120,6 +120,24 @@ test('removing a tool keeps the filters of "Moje nástroje" and adding still use
   click('[data-modal-close]');
 });
 
+const moveTo=(name,category)=>{const select=$$('[data-library-category]').find(s=>libraryStore()[Number(s.dataset.libraryCategory)].name===name);assert.ok(select,'Missing category of '+name);select.value=category;select.dispatchEvent(new win.Event('change',{bubbles:true}));};
+
+test('a tool moved to another category stays there and keeps the card focused',async()=>{
+  await open('mine');
+  const select=$$('[data-library-category]').find(s=>libraryStore()[Number(s.dataset.libraryCategory)].name==='Moje záhadná věc');
+  assert.equal(select.querySelector('option[selected]').value,'other','the card shows the current category');
+  moveTo('Moje záhadná věc','striking');
+  assert.equal(libraryStore().find(t=>t.name==='Moje záhadná věc').category,'striking');
+  assert.ok(sectionIds().includes('striking'));assert.ok(!sectionIds().includes('other'));
+  assert.ok($('[data-catalog-section="striking"] .library-item'));
+  assert.ok(win.document.activeElement?.hasAttribute('data-library-category'),'focus stays on the moved tool');
+  assert.equal($('#toast').textContent,'Nástroj přesunut do kategorie Kladiva a průbojníky.');
+  click('[data-modal-close]');
+  await open('mine');assert.ok(sectionIds().includes('striking'),'the choice survives reopening');
+  moveTo('Moje záhadná věc','other');assert.equal(libraryStore().find(t=>t.name==='Moje záhadná věc').category,'other','"Ostatní" is a choice too');
+  click('[data-modal-close]');
+});
+
 test('a catalogue set saved to "Moje nástroje" is listed as a collapsible set; a shared tool keeps both sets',async()=>{
   const items=[8,10,13].map(s=>({id:'w-'+s,category:'wrenches',name:{cs:`Očkoplochý klíč ${s} mm`,en:`Combination wrench ${s} mm`},points:rect(100+s*5,20+s),depth:9,unit:'mm',size:s,tags:[],accuracy:'standard',source:{name:'x',license:'CC0'}}));
   const sets=[{id:'small',category:'wrenches',name:{cs:'Malá sada',en:'Small set'},items:['w-8','w-10'],unit:'mm',source:{name:'x'}},{id:'big',category:'wrenches',name:{cs:'Velká sada',en:'Big set'},items:['w-8','w-10','w-13'],unit:'mm',source:{name:'x'}}];
@@ -140,6 +158,19 @@ test('a catalogue set saved to "Moje nástroje" is listed as a collapsible set; 
     assert.ok($$('[data-library-set="set:Velká sada"] .library-item').length>0,'search opens the set holding the match');
     reset();click('[data-modal-close]');
   }finally{setCatalogSource(null);}
+});
+
+test('moving a tool of a set moves the whole set and leaves other tools alone',async()=>{
+  await open('mine');
+  click('[data-catalog-kind="items"]');
+  moveTo('Očkoplochý klíč 8 mm','measuring');
+  const category=name=>libraryStore().find(t=>t.name===name&&(t.setNames||!name.startsWith('Očko'))).category;
+  assert.deepEqual([8,10,13].map(s=>category(`Očkoplochý klíč ${s} mm`)),['measuring','measuring','measuring']);
+  assert.notEqual(category('Šroubovák PH2'),'measuring');
+  assert.equal($('#toast').textContent,'Sada přesunuta do kategorie Měření a značení.');
+  click('[data-catalog-kind="all"]');
+  assert.equal($$('[data-catalog-section="measuring"] [data-library-set]').length,2);
+  reset();click('[data-modal-close]');
 });
 
 test('libraryData keeps library indexes and derives sets',()=>{
