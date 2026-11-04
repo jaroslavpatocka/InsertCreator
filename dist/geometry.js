@@ -1,4 +1,4 @@
-import {moduleOutline} from './module-footprint.js';
+import {moduleOutline,modulePadding} from './module-footprint.js';
 import Clipper from './vendor/clipper.js';
 import {buildPrintTriangles,encodeSTL,trianglesVolume,printConfig,validatePrintBed} from './print-geometry.js';
 import {pocketOutline} from './finger-grip.js';
@@ -113,7 +113,7 @@ export function resizeModule(project,moduleId,{width,height,mode='manual'}={}) {
   if(mode==='auto'){
     if(!tools.length)throw i18nError('Automatickou velikost prázdného modulu nelze určit. Zadejte jeho rozměry.');
     if(!content)throw i18nError('Nástroj nemá platnou konturu pro určení velikosti modulu.');
-    const grid=n(next.grid,42),padding=n(next.wall,2.4)+.25;
+    const grid=n(next.grid,42),padding=modulePadding(next);
     if(grid<=0)throw i18nError('Rastr modulů musí být kladný.');
     width=Math.ceil((content.width+2*padding-EPS)/grid)*grid;
     height=Math.ceil((content.height+2*padding-EPS)/grid)*grid;
@@ -144,7 +144,7 @@ export function resizeModule(project,moduleId,{width,height,mode='manual'}={}) {
  * Explicit uniform set cells, locks and empty filler modules remain user constraints. */
 export function refitModules(project,{includeManual=false,moduleIds=null}={}) {
   const next=copy(project),resizedModules=[],selected=moduleIds===null?null:new Set(moduleIds);
-  const grid=n(next.grid,42),padding=n(next.wall,2.4)+.25;
+  const grid=n(next.grid,42),padding=modulePadding(next);
   if(!(grid>0&&padding>.25))return{project:next,resizedModules};
   for(const module of next.modules||[]){
     const own=(next.tools||[]).filter(tool=>tool.moduleId===module.id);
@@ -185,7 +185,7 @@ export function autoArrange(project,{preserveLocked=true}={}) {
   for(const tool of tools.filter(t=>invalid.has(t.id)&&!lockedIds.has(t.moduleId)&&!oldModules.some(m=>m.id===t.moduleId&&(m.sizeMode==='manual'||m.grouped===true||m.setLayout==='uniform')))){tool.moduleId=null;tool.x=n(project.width)+grid;tool.y=0;}
   // A fixed tool without a module receives a stationary enclosing module.
   for(const t of tools.filter(t=>preserveLocked&&t.locked&&!reservedTools.has(t.id))){
-    const b=footprints.get(t.id),padding=n(project.wall,2.4)+.25;
+    const b=footprints.get(t.id),padding=modulePadding(project);
     const x=Math.floor((b.x-padding)/grid)*grid,y=Math.floor((b.y-padding)/grid)*grid;
     const module={id:t.moduleId||`mod-${t.id}`,name:t.name,x,y,width:Math.ceil((b.maxX+padding-x)/grid)*grid,height:Math.ceil((b.maxY+padding-y)/grid)*grid,locked:true,sizeMode:'auto',...unitOf(t.moduleId)};
     t.moduleId=module.id;modules.push(module);reservedTools.add(t.id);
@@ -195,7 +195,7 @@ export function autoArrange(project,{preserveLocked=true}={}) {
     const own=tools.filter(t=>t.moduleId===original.id);let content=null,width=original.width,height=original.height,valid=!own.some(t=>invalid.has(t.id));
     if(valid&&original.grouped===true&&original.sizeMode!=='manual'&&!original.cells){
       content=box(own.flatMap(t=>{const b=footprints.get(t.id);return[{x:b.x,y:b.y},{x:b.maxX,y:b.maxY}];}));
-      const padding=n(project.wall,2.4)+.25;
+      const padding=modulePadding(project);
       width=Math.ceil((content.width+2*padding-EPS)/grid)*grid;height=Math.ceil((content.height+2*padding-EPS)/grid)*grid;
       if(width>3000||height>3000){valid=false;width=original.width;height=original.height;content=null;}
     }
@@ -227,7 +227,7 @@ export function autoArrange(project,{preserveLocked=true}={}) {
     for(const tool of own){tool.x=n(tool.x)+dx;tool.y=n(tool.y)+dy;reservedTools.add(tool.id);if(!position)markUnplaced(tool.id);}
     modules.push(module);
   }
-  const padding=n(project.wall,2.4)+.25;
+  const padding=modulePadding(project);
   const pendingOrder=new Map(),orderCursor=new Map();
   for(const set of project.toolSets||[]){
     if(!['auto','uniform'].includes(set.layout)||!['asc','desc'].includes(set.order))continue;

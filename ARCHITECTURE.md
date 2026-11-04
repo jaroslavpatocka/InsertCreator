@@ -17,7 +17,7 @@ Aktivní projekt je v tomto adresáři. ZIP se zdroji a dva deployment archivy v
 | Úchop nástroje | `dist/finger-grip.js` | Automatické boční výřezy, validace jejich parametrů a sjednocená výrobní kontura kapsy |
 | Rozměry jednotlivého nástroje | `dist/tool-dimensions.js` | Vlastní podélná/příčná osa, nezávislá změna délky a šířky se zachováním středu a fyzických poloměrů |
 | Fotografování | `dist/capture.js` | Soubory/kamera, kalibrace, průběh rozpoznávání, kontrola kvality a přidání nástrojů |
-| Obrazové algoritmy | `dist/trace.js`, `dist/auto-trace.js`, `dist/photo-enhance.js` | Převod světlých nástrojů na tmavé vložce do čitelné podoby (mění jen hodnoty pixelů, ne jejich polohu), Papír, perspektiva, komponenty obrazu, kontury a automatický výběr segmentace |
+| Obrazové algoritmy | `dist/trace.js`, `dist/auto-trace.js`, `dist/photo-enhance.js`, `dist/module-joints.js` | Převod světlých nástrojů na tmavé vložce do čitelné podoby (mění jen hodnoty pixelů, ne jejich polohu), Papír, perspektiva, komponenty obrazu, kontury a automatický výběr segmentace |
 | Kalibrace pravítky | `dist/ruler-calibration.js` | Dvě fyzicky kolmé známé reference, afinní převod obrazu a omezení rozměru výsledného rastru |
 | Rozpoznávání | `dist/recognize.js`, `dist/recognize-worker.js` | Souběh klasické a neuronové analýzy, klasický worker a fallback |
 | Neuronová inference | `dist/neural.js`, `dist/neural-worker.js`, `dist/neural-core.js` | Sdílený worker, fronta inference, ONNX session, preprocessing a masky |

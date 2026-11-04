@@ -5,7 +5,7 @@ import {arrangeToolSets} from './set-layout.js';
 import {analyzeToolShape,findToolSets,setCoherence} from './tool-sets.js';
 import {orderTools} from './tool-size.js';
 import {addToolGroup} from './set-module.js';
-import {moduleOutline,moduleIntersects,steppedModuleFootprint} from './module-footprint.js';
+import {moduleOutline,moduleIntersects,modulePadding,steppedModuleFootprint} from './module-footprint.js';
 
 const EPS=.001,SCALE=10000,CELL=2,MAX_CANDIDATES=32000;
 const copy=value=>typeof structuredClone==='function'?structuredClone(value):JSON.parse(JSON.stringify(value));
@@ -61,7 +61,7 @@ function usefulGrips(tool){
 }
 function orientations(tool,project,separation,{nest=false}={}){
   const aligned=90-principalAngle(tool.points),rotations=[aligned,aligned+180,aligned+90,aligned+270,...(nest?[]:[number(tool.rotation),number(tool.rotation)+90,number(tool.rotation)+180,number(tool.rotation)+270])];
-  const unique=[...new Set(rotations.map(angle))],padding=number(project.wall,2.4)+.26,grid=number(project.grid,42),result=[];
+  const unique=[...new Set(rotations.map(angle))],padding=modulePadding(project,.26),grid=number(project.grid,42),result=[];
   for(const rotation of unique){
     const source=pocketOutline({...tool,x:0,y:0,rotation},project.clearance),bounds=box(source),polygon=source.map(p=>({x:p.x-bounds.minX,y:p.y-bounds.minY}));
     const width=Math.ceil((bounds.width+2*padding-EPS)/grid)*grid,height=Math.ceil((bounds.height+2*padding-EPS)/grid)*grid;
@@ -76,7 +76,7 @@ function singleOption(orientation,module){
 }
 const hash=string=>{let value=2166136261;for(let i=0;i<string.length;i++){value^=string.charCodeAt(i);value=Math.imul(value,16777619);}return(value>>>0).toString(16);};
 function pairOption(a,b,dx,dy,project){
-  const padding=number(project.wall,2.4)+.26,grid=number(project.grid,42),minX=Math.min(0,dx),minY=Math.min(0,dy),w=Math.max(a.bounds.width,dx+b.bounds.width)-minX,h=Math.max(a.bounds.height,dy+b.bounds.height)-minY;
+  const padding=modulePadding(project,.26),grid=number(project.grid,42),minX=Math.min(0,dx),minY=Math.min(0,dy),w=Math.max(a.bounds.width,dx+b.bounds.width)-minX,h=Math.max(a.bounds.height,dy+b.bounds.height)-minY;
   const width=Math.ceil((w+2*padding-EPS)/grid)*grid,height=Math.ceil((h+2*padding-EPS)/grid)*grid;
   if(width>project.width+EPS||height>project.height+EPS)return null;
   // A shared rectangle alone is not contour nesting: the pocket bounds must
@@ -165,7 +165,7 @@ async function largeArrange(project,{mode='compact',moduleShape='rectangular',on
   if(initialIssue)throw Error(initialIssue.message);
   // A parked tool must pass the same contour/depth checks as a placed one.
   for(const tool of source.tools){
-    const poly=pocketOutline(tool,source.clearance),bounds=box(poly),padding=source.wall+.26,width=bounds.width+2*padding,height=bounds.height+2*padding;
+    const poly=pocketOutline(tool,source.clearance),bounds=box(poly),padding=modulePadding(source,.26),width=bounds.width+2*padding,height=bounds.height+2*padding;
     const issue=validateLayout({...source,width,height,modules:[{id:'check',x:0,y:0,width,height}],tools:[{...tool,x:tool.x+padding-bounds.minX,y:tool.y+padding-bounds.minY,moduleId:'check'}]})[0];
     if(issue)throw Error(issue.message);
   }
@@ -184,7 +184,7 @@ async function largeArrange(project,{mode='compact',moduleShape='rectangular',on
     const fixed=[],atoms=[],reserved=new Set(),ids=new Set(p.modules.map(module=>module.id));
     const allocate=base=>{let id=base,index=2;while(ids.has(id))id=`${base}-${index++}`;ids.add(id);return id;};
     const single=(tool,module)=>{
-      const rotations=[...new Set([number(tool.rotation),number(tool.rotation)+90])],padding=source.wall+.25,options=[];
+      const rotations=[...new Set([number(tool.rotation),number(tool.rotation)+90])],padding=modulePadding(source),options=[];
       for(const rotation of rotations){const bounds=box(pocketOutline({...tool,x:0,y:0,rotation},source.clearance)),width=Math.ceil((bounds.width+2*padding-1e-7)/grid)*grid,height=Math.ceil((bounds.height+2*padding-1e-7)/grid)*grid;options.push({width,height,items:[{tool,x:(width-bounds.width)/2-bounds.minX,y:(height-bounds.height)/2-bounds.minY,rotation}]});}
       return{id:module.id,module,options};
     };
@@ -264,7 +264,7 @@ async function compactArrange(project,{onProgress,signal,moduleShape='rectangula
   const initialIssues=validateLayout({...source,modules:placedModules,tools:source.tools.filter(tool=>placedIds.has(tool.moduleId))});
   if(initialIssues.length)throw Error('Nejdříve opravte sestavu: '+initialIssues[0].message);
   for(const tool of source.tools){
-    const poly=pocketOutline(tool,source.clearance),bounds=box(poly),padding=source.wall+.26,w=bounds.width+2*padding,h=bounds.height+2*padding;
+    const poly=pocketOutline(tool,source.clearance),bounds=box(poly),padding=modulePadding(source,.26),w=bounds.width+2*padding,h=bounds.height+2*padding;
     const check=validateLayout({...source,width:w,height:h,modules:[{id:'check',x:0,y:0,width:w,height:h}],tools:[{...tool,x:tool.x+padding-bounds.minX,y:tool.y+padding-bounds.minY,moduleId:'check'}]});
     if(check.length)throw Error('Nejdříve opravte nástroj: '+check[0].message);
   }
@@ -285,7 +285,7 @@ async function compactArrange(project,{onProgress,signal,moduleShape='rectangula
   for(const tool of free){
     const originalModule=source.modules.find(module=>module.id===tool.moduleId),id=allocate(originalModule?.id||`mod-${hash(tool.id)}`),module={...(originalModule||{}),id,name:originalModule?.name||tool.name,locked:false,sizeMode:'auto'};
     const available=orientations(tool,source,separation);
-    if(!available.length){const bounds=box(pocketOutline(tool,source.clearance)),width=Math.ceil((bounds.width+2*(source.wall+.26))/grid)*grid,height=Math.ceil((bounds.height+2*(source.wall+.26))/grid)*grid;available.push({tool,rotation:tool.rotation||0,bounds,width,height});}
+    if(!available.length){const bounds=box(pocketOutline(tool,source.clearance)),width=Math.ceil((bounds.width+2*modulePadding(source,.26))/grid)*grid,height=Math.ceil((bounds.height+2*modulePadding(source,.26))/grid)*grid;available.push({tool,rotation:tool.rotation||0,bounds,width,height});}
     const options=available.map(orientation=>singleOption(orientation,module));singleAtoms.push({id,module,options});singleCosts.push(Math.min(...options.map(area)));
     let prepared=tool;
     if(!Object.hasOwn(tool,'fingerGrips')){try{prepared={...tool,fingerGrips:automaticFingerGrips(tool,{radius:9})};}catch{prepared=null;}}

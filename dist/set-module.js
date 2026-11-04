@@ -7,7 +7,7 @@ import {uid} from './model.js';
 import {t,i18nError} from './i18n.js';
 import {fmtLen} from './units.js';
 import {compareToolSize,orderTools} from './tool-size.js';
-import {moduleIntersects} from './module-footprint.js';
+import {moduleIntersects,modulePadding} from './module-footprint.js';
 
 const EPS=1e-7,SCALE=10000,CELL=1,MAX_SIZE=3000;
 const copy=value=>JSON.parse(JSON.stringify(value));
@@ -192,7 +192,7 @@ function begin(project,tools,opts,{forceLayout=null,maxModules=1}={}){
     const setIds=new Set((next.toolSets||[]).map(s=>s.id)),base=String(toolSet.id||uid()).slice(0,90);
     setId=base;for(let i=2;setIds.has(setId);i++)setId=`${base}-${i}`;
   }
-  const clearance=num(next.clearance,.8),wall=num(next.wall,2.4),grid=Math.max(1,num(next.grid,42)),padding=wall+.25;
+  const clearance=num(next.clearance,.8),wall=num(next.wall,2.4),grid=Math.max(1,num(next.grid,42)),padding=modulePadding(next);
   const separation=Math.max(wall,num(opts.separation,wall))+.05,gap=separation+CELL+.01;
   const usedModules=new Set(next.modules.map(m=>m.id));
   const allocate=base=>{base=String(base).slice(0,90);let id=base;for(let i=2;usedModules.has(id);i++)id=`${base}-${i}`;usedModules.add(id);return id;};

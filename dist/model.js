@@ -22,6 +22,7 @@ export function validateProject(input){
   out.bedWidth=finite(p.bedWidth??220,50,2000,'šířka tiskové plochy');
   out.bedHeight=finite(p.bedHeight??220,50,2000,'hloubka tiskové plochy');
   out.limitToBed=p.limitToBed!==false;
+  out.connectors=p.connectors===true;
   out.unit=['mm','in'].includes(p.unit)?p.unit:'';
   out.sizeLabels=p.sizeLabels===true;
   out.magnetDiameter=finite(p.magnetDiameter??6.2,3,20,'průměr kapsy pro magnet');

@@ -98,7 +98,7 @@ export function validatePrintBed(project,modules){
 }
 
 /** Build non-overlapping material slabs, then expose only their actual boundary faces. */
-export function buildPrintTriangles(project,modules,tools,origin={x:0,y:0},{fit=false,clip=null,labelPlan:providedLabelPlan=null}={}){
+export function buildPrintTriangles(project,modules,tools,origin={x:0,y:0},{fit=false,clip=null,labelPlan:providedLabelPlan=null,joints=null}={}){
   const kernel=clip?cutKernel:defaultKernel,{round,toInt,fromInt,boolean,union,subtract,offset,rect,roundedRect,circle}=kernel;
   const cfg=printConfig(fit?{...project,bottomMode:'plain'}:project),triangles=[];
   if(clip&&(!['x','y','width','height'].every(key=>typeof clip[key]==='number'&&Number.isFinite(clip[key]))||clip.width<=0||clip.height<=0))throw i18nError('Řez modelu musí mít platnou polohu a kladné rozměry.');
@@ -237,8 +237,8 @@ export function buildPrintTriangles(project,modules,tools,origin={x:0,y:0},{fit=
         magnets=chosen.map(p=>p.poly);
       }
     }
-    const labels=labelPlan.labels.filter(label=>label.moduleId===m.id&&touchesClip(label.plate));
-    if((clip&&cfg.printMode!=='light')||!disjointComponents(outer,pockets,labels,bottom,baseTop,H,magnets,feet)){
+    const labels=labelPlan.labels.filter(label=>label.moduleId===m.id&&touchesClip(label.plate)),joint=joints?.get(m.id);
+    if(joint||(clip&&cfg.printMode!=='light')||!disjointComponents(outer,pockets,labels,bottom,baseTop,H,magnets,feet)){
     const levels=[bottom,baseTop,...pockets.map(t=>cfg.printMode==='light'?baseTop+number(t.depth,10):H-number(t.depth,10)),cfg.printMode==='solid'?H:baseTop];
     if(magnets.length)levels.push(cfg.magnetDepth);
     const barriers=labels.length?new Set(levels.map(round)):null;
@@ -251,6 +251,7 @@ export function buildPrintTriangles(project,modules,tools,origin={x:0,y:0},{fit=
         section=middle<baseTop-EPS?[outer]:clip?active:union(active);
       }
       else section=subtract([outer],pockets.filter(t=>middle>=H-number(t.depth,10)-EPS).map(t=>t.poly));
+      if(joint&&middle<baseTop-EPS)section=subtract(union([...section,...joint.tabs]),joint.sockets);
       if(magnets.length&&middle<cfg.magnetDepth-EPS)section=subtract(section,magnets);
       const lettering=labels.filter(label=>middle>=label.top-label.depth-EPS&&middle<label.top-EPS).flatMap(label=>label.polygons);
       if(lettering.length)section=subtract(section,lettering);

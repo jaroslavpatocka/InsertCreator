@@ -50,6 +50,14 @@ function boundary(cells){
 }
 
 /** Model fields only. Legacy rectangular modules remain rectangles without allocating cells. */
+// Depth a joint socket takes from the module edge, so that it keeps clear of the wall around every pocket.
+export const JOINT_RESERVE=11;
+/** Free margin between a module edge and its tools. With joints switched on it also leaves room for a socket on every side. */
+export function modulePadding(project,edge=.25){
+  const wall=Number(project.wall),base=(Number.isFinite(wall)?wall:2.4)+edge;
+  return project.connectors===true&&project.bottomMode!=='grid'&&project.bottomMode!=='magnet'?base+JOINT_RESERVE:base;
+}
+
 export function validateModuleFootprint(module,grid=42){
   const {width,height}=dimensions(module,grid);
   if(!Object.hasOwn(module,'cells')&&module.shape!=='stepped'){
@@ -105,7 +113,7 @@ export function steppedModuleFootprint(project,module){
   try{
     const wall=Number(project.wall??2.4),clearance=Number(project.clearance??.8),pockets=own.map(tool=>tool.poly||pocketOutline(tool,clearance));
     if(pockets.some(poly=>!containsPocketWalls(next,poly,wall,grid)))return next;
-    const grown=pockets.flatMap(poly=>offset(poly,wall+.25)),occupied=new Set();
+    const grown=pockets.flatMap(poly=>offset(poly,modulePadding(project))),occupied=new Set();
     // Rasterize each small pocket only over its own bounding cells. A large set must not
     // run a Boolean operation containing every outline for every empty module cell.
     for(const poly of grown){

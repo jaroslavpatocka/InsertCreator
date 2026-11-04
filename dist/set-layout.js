@@ -3,7 +3,7 @@ import {automaticFingerGrips} from './finger-grip.js';
 import {analyzeToolShape,findToolSets,setCoherence} from './tool-sets.js';
 import {orderTools} from './tool-size.js';
 import {addToolGroup} from './set-module.js';
-import {moduleOutline,moduleIntersects,steppedModuleFootprint} from './module-footprint.js';
+import {moduleOutline,moduleIntersects,modulePadding,steppedModuleFootprint} from './module-footprint.js';
 
 const EPS=.001,copy=value=>structuredClone(value),area=m=>{if(!m.cells)return(m.width-.5)*(m.height-.5);const grid=m.width/(Math.max(...m.cells.map(cell=>cell.x))+1),poly=moduleOutline(m,grid,{inset:.25});return Math.abs(poly.reduce((sum,p,index)=>{const q=poly[(index+1)%poly.length];return sum+p.x*q.y-q.x*p.y;},0)/2);};
 const bounds=points=>{let x=Infinity,y=Infinity,maxX=-Infinity,maxY=-Infinity;for(const p of points){x=Math.min(x,p.x);y=Math.min(y,p.y);maxX=Math.max(maxX,p.x);maxY=Math.max(maxY,p.y);}return{x,y,maxX,maxY,width:maxX-x,height:maxY-y};};
@@ -18,7 +18,7 @@ function metric(project,sets){
 }
 const better=(a,b)=>a.placed.size>b.placed.size||(a.placed.size===b.placed.size&&(a.score>b.score||(a.score===b.score&&(a.area<b.area-EPS||(Math.abs(a.area-b.area)<EPS&&(a.modules<b.modules||(a.modules===b.modules&&a.bbox<b.bbox-EPS)))))));
 function planOptions(project,set,allocate){
-  const source=set.toolIds.map(id=>project.tools.find(t=>t.id===id)),padding=project.wall+.26,gap=Math.max(project.wall,project.gap),grid=project.grid;
+  const source=set.toolIds.map(id=>project.tools.find(t=>t.id===id)),padding=modulePadding(project,.26),gap=Math.max(project.wall,project.gap),grid=project.grid;
   const ordered=set.arrangement||set.order?orderTools(source,set.order||'asc'):[...source].sort((a,b)=>analyzeToolShape(b).length-analyzeToolShape(a).length||a.id.localeCompare(b.id));
   const ids=new Map(source.map(t=>[t.id,allocate(`set-${hash(JSON.stringify([set.id,'uniform',t.id]))}`)])),sharedId=allocate(`set-${hash(JSON.stringify([set.id,'shared',set.toolIds.slice().sort()]))}`);
   const options=[];
