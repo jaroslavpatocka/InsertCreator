@@ -218,7 +218,9 @@ export function printPreview(project,selected,selectedModule,camera={},viewport=
   const width=scene.fitSize*Math.max(1,aspect)/state.zoom,height=scene.fitSize*Math.max(1,1/aspect)/state.zoom;
   const viewBounds={x:state.panX-width/2,y:state.panY-height/2,width,height};
   const cy=Math.cos(state.yaw),sy=Math.sin(state.yaw),cp=Math.cos(state.pitch),sp=Math.sin(state.pitch);
-  const towards=[sy*cp,cy*cp,sp],right=[cy,-sy,0],down=[sy*sp,cy*sp,-cp];
+  // Screen Y points down, so right × down must point away from the viewer.
+  // Use a right-handed camera: the preview must have the same chirality as the STL.
+  const towards=[-sy*cp,-cy*cp,sp],right=[cy,-sy,0],down=[-sy*sp,-cy*sp,-cp];
   const dot=(a,b)=>a[0]*b[0]+a[1]*b[1]+a[2]*b[2];
   const relative=point=>point.map((value,c)=>value-scene.center[c]);
   const projectPoint=point=>{const p=relative(point);return{x:dot(p,right),y:dot(p,down)};};

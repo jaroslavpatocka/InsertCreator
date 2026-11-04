@@ -55,7 +55,8 @@ export const JOINT_RESERVE=11;
 /** Free margin between a module edge and its tools. With joints switched on it also leaves room for a socket on every side. */
 export function modulePadding(project,edge=.25){
   const wall=Number(project.wall),base=(Number.isFinite(wall)?wall:2.4)+edge;
-  return project.connectors===true&&project.bottomMode!=='grid'&&project.bottomMode!=='magnet'?base+JOINT_RESERVE:base;
+  const extraClearance=Math.max(0,(Number(project.jointClearance??.2)||0)-.2);
+  return project.connectors===true&&project.bottomMode!=='grid'&&project.bottomMode!=='magnet'?base+JOINT_RESERVE+extraClearance:base;
 }
 
 export function validateModuleFootprint(module,grid=42){

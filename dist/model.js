@@ -23,6 +23,7 @@ export function validateProject(input){
   out.bedHeight=finite(p.bedHeight??220,50,2000,'hloubka tiskové plochy');
   out.limitToBed=p.limitToBed!==false;
   out.connectors=p.connectors===true;
+  out.jointClearance=finite(p.jointClearance??.2,0,1,'vůle spojky');
   out.unit=['mm','in'].includes(p.unit)?p.unit:'';
   out.sizeLabels=p.sizeLabels===true;
   out.magnetDiameter=finite(p.magnetDiameter??6.2,3,20,'průměr kapsy pro magnet');
@@ -62,4 +63,4 @@ export function validateProject(input){
 }
 export function readLocal(key,fallback){try{const value=localStorage.getItem(key);return value?JSON.parse(value):fallback;}catch{return fallback;}}
 export function writeLocal(key,value){try{localStorage.setItem(key,JSON.stringify(value));return true;}catch{return false;}}
-export function blankProject(){return{id:uid(),name:t('Můj nový šuplík'),width:504,height:378,grid:42,gap:3,clearance:.8,wall:2.4,base:2.4,insertHeight:20,printMode:'light',bottomMode:'plain',bedWidth:220,bedHeight:220,limitToBed:true,magnetDiameter:6.2,magnetDepth:2.2,unit:'',tools:[],modules:[]};}
+export function blankProject(){return{id:uid(),name:t('Můj nový šuplík'),width:504,height:378,grid:42,gap:3,clearance:.8,wall:2.4,base:2.4,insertHeight:20,printMode:'light',bottomMode:'plain',bedWidth:220,bedHeight:220,limitToBed:true,jointClearance:.2,magnetDiameter:6.2,magnetDepth:2.2,unit:'',tools:[],modules:[]};}

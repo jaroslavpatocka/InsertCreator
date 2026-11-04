@@ -128,3 +128,100 @@ test('the real 26-wrench set with 52 central grips, mixed depths, engraved sizes
   for(const mesh of meshes)validatePrintMesh(mesh);close(trianglesVolume(meshes[1])+trianglesVolume(meshes[2]),trianglesVolume(meshes[0]),.03);assert.equal(JSON.stringify(source),before);
   t.diagnostic(`${result.parts.length} actual Gridfinity parts, ${labels.length} printed labels: ${Math.round(performance.now()-started)}ms`);
 });
+
+// Count intersections above a point with horizontal surface triangles. At the
+// head centre the ray avoids all curve vertices, and double crossings through
+// material above a socket correctly leave its base cavity empty.
+function materialAt(mesh,[x,y,z]){
+  let crossings=0;
+  for(const [a,b,c] of mesh){
+    if(Math.abs(a[2]-b[2])>1e-5||Math.abs(a[2]-c[2])>1e-5||a[2]<=z+1e-5)continue;
+    const cross=(p,q)=>(q[0]-p[0])*(y-p[1])-(q[1]-p[1])*(x-p[0]),s=[cross(a,b),cross(b,c),cross(c,a)];
+    if(s.every(v=>v>=-1e-8)||s.every(v=>v<=1e-8))crossings++;
+  }
+  return crossings%2===1;
+}
+
+for(const [width,height,printMode,bottomMode] of [[168,84,'solid','plain'],[84,168,'light','adhesive'],[168,168,'solid','plain'],[168,168,'light','plain']])test(`${printMode} ${bottomMode} ${width} by ${height} cut parts contain real complementary base joints and exact assembly transforms`,async()=>{
+  const source=fixture({width:504,height:504,connectors:true,bedWidth:100,bedHeight:100,printMode,bottomMode,modules:[{id:'cut',name:'Cut with puzzle',x:42,y:42,width,height,locked:true}],tools:[]}),before=JSON.stringify(source),result=await preparePrintBatch(source),world=new Map();
+  assert.equal(result.parts.length,width===height?4:2);assert.equal(result.manifest.joints.cutCount,width===height?4:1);assert.equal(result.manifest.joints.unjoined.length,0);assert.equal(JSON.stringify(source),before);
+  for(const part of result.parts){
+    const mesh=decode(result.files.find(file=>file.name===part.file).data),box=bounds(mesh);validatePrintMesh(mesh);
+    close(box.min[0],0,1e-5);close(box.min[1],0,1e-5);assert.ok(box.max[0]<=100&&box.max[1]<=100);assert.equal(part.rotationForPrinting,0);
+    world.set(part.key,transform(mesh,part.assemblyTransform));
+  }
+  for(const joint of result.manifest.joints.connections){
+    const point=[joint.at.x+(joint.axis==='x'?5.77:.137),joint.at.y+(joint.axis==='y'?5.77:.137),source.base/2],owner=world.get(joint.owner),host=world.get(joint.host);
+    assert.equal(materialAt(owner,point),true,'the exported male head extends past the original cut');
+    assert.equal(materialAt(host,point),false,'the neighbouring exported base has its complementary socket');
+    assert.equal(materialAt(owner,[point[0],point[1],source.base+.1]),false,'the tab stops at the base surface');
+    if(printMode==='solid')assert.equal(materialAt(host,[point[0],point[1],source.base+.1]),true,'a socket does not remove the upper body');
+  }
+});
+
+test('cut joints respect awkward bed sizes, rotation, labels and pocket floors, with unchanged source data',async()=>{
+  for(const jointClearance of [.1,.3,.5]){
+    const source=fixture({width:504,height:504,connectors:true,jointClearance,bedWidth:95,bedHeight:76,printMode:'light',sizeLabels:true,modules:[{id:'awkward',x:42,y:42,width:168,height:126,locked:true}],tools:[{id:'tool',moduleId:'awkward',name:'Tool',points:rectangle(32,22),x:62,y:62,rotation:0,depth:8,sizeLabel:'13',fingerGrips:[]}]}),before=JSON.stringify(source),result=await preparePrintBatch(source);
+    assert.ok(result.manifest.joints.cutCount>0);assert.equal(result.manifest.joints.clearance,jointClearance);assert.equal(JSON.stringify(source),before);
+    for(const part of result.parts){const mesh=decode(result.files.find(file=>file.name===part.file).data);validatePrintMesh(mesh);const box=bounds(mesh);assert.ok(box.max[0]<=95.00001&&box.max[1]<=76.00001);}
+  }
+});
+
+test('adjustable per-side clearance changes the actual STL socket while leaving its male head fixed',async()=>{
+  const widths=[];
+  for(const jointClearance of [.1,.3,.5]){
+    const source=fixture({width:504,height:504,connectors:true,jointClearance,bedWidth:100,bedHeight:100,modules:[{id:'fit',x:0,y:0,width:168,height:84}],tools:[]}),result=await preparePrintBatch(source),joint=result.manifest.joints.connections[0],world=new Map(result.parts.map(part=>[part.key,transform(decode(result.files.find(file=>file.name===part.file).data),part.assemblyTransform)]));
+    const at=distance=>[joint.at.x+9.75+distance,joint.at.y+.137,source.base/2],owner=world.get(joint.owner),host=world.get(joint.host);
+    assert.equal(materialAt(owner,at(jointClearance-.03)),false,'the male head never grows with clearance');
+    assert.equal(materialAt(host,at(jointClearance-.03)),false,'the socket includes the selected radial clearance');
+    assert.equal(materialAt(host,at(jointClearance+.05)),true,'material resumes just past the selected socket');
+    widths.push(bounds(owner).max[0]);
+  }
+  assert.deepEqual(widths,[widths[0],widths[0],widths[0]]);
+});
+
+test('blocked cut seams remain explicit in assembly and disabled or unsupported connectors preserve ordinary cuts',async()=>{
+  const source=fixture({width:504,height:504,connectors:true,bedWidth:100,bedHeight:100,modules:[{id:'blocked',x:0,y:0,width:168,height:84}],tools:[{id:'crossing',moduleId:'blocked',name:'Crosses seam',points:rectangle(40,74),x:70,y:5,rotation:0,depth:8,fingerGrips:[]}]}),before=JSON.stringify(source),result=await preparePrintBatch(source);
+  assert.equal(result.manifest.joints.cutCount,0);assert.equal(result.manifest.joints.unjoined.length,1);assert.equal(result.manifest.joints.unjoined[0].reason,'no-safe-site');assert.equal(result.manifest.joints.skipped,1);assert.equal(JSON.stringify(source),before);
+  for(const part of result.parts)validatePrintMesh(decode(result.files.find(file=>file.name===part.file).data));
+  for(const bottomMode of ['plain','grid','magnet']){
+    const p={...source,bottomMode,connectors:bottomMode!=='plain',tools:[]},r=await preparePrintBatch(p);
+    if(bottomMode==='plain')assert.equal(r.manifest.joints,undefined);else assert.equal(r.manifest.joints.count,0);
+    assertReassembly(p,r,'blocked');
+  }
+});
+
+test('regular and oversized neighbouring modules export their shared joints together in actual watertight parts',async()=>{
+  for(const modules of [[{id:'big',x:0,y:0,width:168,height:84},{id:'b',x:168,y:0,width:84,height:84},{id:'c',x:252,y:0,width:84,height:84}],[{id:'big',x:0,y:0,width:168,height:84},{id:'big2',x:168,y:0,width:168,height:84}]]){
+    const source=fixture({width:504,height:504,connectors:true,bedWidth:100,bedHeight:100,modules,tools:[]}),before=JSON.stringify(source),result=await preparePrintBatch(source),world=new Map();
+    assert.equal(result.parts.length,4);assert.equal(result.manifest.joints.count,3);assert.equal(result.manifest.joints.unjoined.length,0);
+    for(const part of result.parts){const mesh=decode(result.files.find(file=>file.name===part.file).data);validatePrintMesh(mesh);const box=bounds(mesh);assert.ok(box.max[0]<=100&&box.max[1]<=100);world.set(part.key,transform(mesh,part.assemblyTransform));}
+    for(const joint of result.manifest.joints.connections){const point=[joint.at.x+5.77,joint.at.y+.137,source.base/2];assert.equal(materialAt(world.get(joint.owner),point),true);assert.equal(materialAt(world.get(joint.host),point),false);}
+    assert.equal(JSON.stringify(source),before);
+  }
+});
+
+test('parts rotated for a narrow bed retain complementary joints at their exact original world position',async()=>{
+  const source=fixture({width:504,height:504,connectors:true,bedWidth:100,bedHeight:150,modules:[{id:'rotate',x:42,y:42,width:252,height:84}],tools:[]}),before=JSON.stringify(source),result=await preparePrintBatch(source),world=new Map();
+  assert.equal(result.parts.length,2);assert.equal(result.manifest.joints.cutCount,1);
+  for(const part of result.parts){assert.equal(part.rotationForPrinting,90);const mesh=decode(result.files.find(file=>file.name===part.file).data);validatePrintMesh(mesh);const box=bounds(mesh);assert.ok(box.max[0]<=100&&box.max[1]<=150);world.set(part.key,transform(mesh,part.assemblyTransform));}
+  const joint=result.manifest.joints.connections[0],point=[joint.at.x+5.77,joint.at.y+.137,source.base/2];assert.equal(materialAt(world.get(joint.owner),point),true);assert.equal(materialAt(world.get(joint.host),point),false);assert.equal(JSON.stringify(source),before);
+});
+
+test('a split stepped body and the module occupying its notch export their reentrant puzzle seams as watertight meshes',async()=>{
+  const cells=Array.from({length:4},(_,y)=>Array.from({length:y<2?6:4},(_,x)=>({x,y}))).flat(),source=fixture({width:504,height:504,connectors:true,bedWidth:150,bedHeight:150,modules:[{id:'step',x:0,y:0,width:252,height:168,cells},{id:'notch',x:168,y:84,width:84,height:84}],tools:[]}),before=JSON.stringify(source),result=await preparePrintBatch(source),world=new Map();
+  assert.equal(result.parts.length,5);
+  for(const part of result.parts){const mesh=decode(result.files.find(file=>file.name===part.file).data);validatePrintMesh(mesh);const box=bounds(mesh);assert.ok(box.max[0]<=150&&box.max[1]<=150);world.set(part.key,transform(mesh,part.assemblyTransform));}
+  const joints=result.manifest.joints.connections.filter(joint=>joint.ownerModuleId==='step'&&joint.hostModuleId==='notch');assert.ok(joints.length>=2);
+  for(const joint of joints){const point=[joint.at.x+(joint.axis==='x'?5.77:.137),joint.at.y+(joint.axis==='y'?5.77:.137),source.base/2];assert.equal(materialAt(world.get(joint.owner),point),true);assert.equal(materialAt(world.get(joint.host),point),false);}
+  assert.equal(JSON.stringify(source),before);
+});
+
+test('a real shared 26-wrench module exports mixed depths, labels and cut joints without exceeding per-part mesh limits',async t=>{
+  const set=catalogSets().find(set=>set.id==='combination-wrench-set-6-32mm'),tools=set.tools.map((item,index)=>({...catalogTool(item),id:'wrench-'+index,locked:false,moduleId:null}));
+  const base={...blankProject(),width:1260,height:840,insertHeight:26,bedWidth:220,bedHeight:220,bottomMode:'plain',printMode:'light',sizeLabels:true,connectors:true};
+  const source=addToolGroup(base,tools,{name:'Wrenches 6–32',arrangement:'compact',order:'asc',checkManufacturing:false,toolSet:{id:'wrenches',name:'Wrenches 6–32',layout:'shared'}}).project,before=JSON.stringify(source),started=performance.now(),result=await preparePrintBatch(source);
+  assert.equal(result.parts.length,12);assert.ok(result.manifest.joints.cutCount>0);assert.ok(planSizeLabels(source).labels.length>0);assert.equal(JSON.stringify(source),before);
+  for(const part of result.parts){const mesh=decode(result.files.find(file=>file.name===part.file).data);validatePrintMesh(mesh);assert.ok(mesh.length<=120000);const box=bounds(mesh);assert.ok(box.max[0]<=220&&box.max[1]<=220);}
+  t.diagnostic(`${result.parts.length} actual plain-base parts, ${result.manifest.joints.cutCount} cut joints: ${Math.round(performance.now()-started)}ms`);
+});

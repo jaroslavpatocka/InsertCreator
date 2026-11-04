@@ -2,7 +2,7 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {planJoints} from '../dist/module-joints.js';
-import {preparePrintBatch} from '../dist/print-batch.js';
+import {preparePrintBatch,planPrintBatch} from '../dist/print-batch.js';
 import {validateProject,blankProject} from '../dist/model.js';
 import {validatePrintMesh} from '../dist/print-geometry.js';
 
@@ -95,4 +95,57 @@ test('the reserve covers the whole socket with its margin',async()=>{
   const {JOINT_RESERVE}=await import('../dist/module-footprint.js');
   const edge=.25,tab=1.5+8,clearance=.2,margin=1.2;
   assert.ok(edge+JOINT_RESERVE>=edge+tab+clearance+margin);
+});
+
+test('cut planning joins both axes of a two by two bed split and uses stable part identities',()=>{
+  const p=project([module('big',42,42,168,168)],[],{bedWidth:100,bedHeight:100}),before=JSON.stringify(p),{plans,total,jointPlan}=planPrintBatch(p);
+  assert.equal(total,4);assert.equal(jointPlan.cutCount,4);assert.equal(jointPlan.moduleCount,0);assert.equal(jointPlan.skipped,0);
+  assert.deepEqual(jointPlan.joints.map(j=>j.axis).sort(),['x','x','y','y']);
+  const keys=new Set(plans.flatMap(plan=>plan.tiles.map(tile=>tile.key)));
+  for(const joint of jointPlan.joints){assert.ok(keys.has(joint.owner));assert.ok(keys.has(joint.host));assert.notEqual(joint.owner,joint.host);}
+  assert.equal(JSON.stringify(p),before);
+});
+
+test('cut seams use actual stepped material and report narrow remainders and blocked pockets',()=>{
+  const cells=Array.from({length:4},(_,y)=>Array.from({length:y<2?4:2},(_,x)=>({x,y}))).flat();
+  const stepped=project([module('step',0,0,168,168,{cells})],[],{bedWidth:100,bedHeight:100}),step=planPrintBatch(stepped);
+  assert.equal(step.total,3);assert.equal(step.jointPlan.seams.length,2);assert.equal(step.jointPlan.cutCount,2);
+  const narrow=project([module('narrow',0,0,173,84)],[],{bedWidth:100,bedHeight:100}),n=planPrintBatch(narrow).jointPlan;
+  assert.equal(n.seams.length,2);assert.equal(n.cutCount,1);assert.equal(n.unjoined.length,1);assert.equal(n.unjoined[0].reason,'no-safe-site');assert.equal(n.skipped,1);
+  const blocked=project([module('big',0,0,168,84)],[tool('crossing','big',70,5,40,74)],{bedWidth:100,bedHeight:100}),b=planPrintBatch(blocked).jointPlan;
+  assert.equal(b.cutCount,0);assert.equal(b.unjoined.length,1);assert.equal(b.skipped,1);
+});
+
+test('socket clearance is per side, while all male shapes and reserved print cuts stay fixed',()=>{
+  const p=project([module('big',0,0,168,84)],[],{bedWidth:100,bedHeight:100}),plans=[.1,.3,.5].map(jointClearance=>planPrintBatch({...p,jointClearance}));
+  const width=path=>Math.max(...path.map(p=>p.y))-Math.min(...path.map(p=>p.y));
+  for(const [index,clearance] of [.1,.3,.5].entries()){
+    const result=plans[index],joint=result.jointPlan.joints[0],tab=result.jointPlan.byPart.get(joint.owner).tabs[0],socket=result.jointPlan.byPart.get(joint.host).sockets[0];
+    assert.equal(result.jointPlan.cutCount,1);assert.ok(Math.abs(width(socket)-width(tab)-2*clearance)<.01);
+    assert.deepEqual(result.plans,plans[0].plans);assert.deepEqual(tab,plans[0].jointPlan.byPart.get(joint.owner).tabs[0]);
+  }
+  for(const clearance of [.1,.3,.5]){
+    const q=project([module('a',0,0),module('b',84,0)],[],{jointClearance:clearance}),r=planJoints(q,q.modules,[]),joint=r.joints[0];
+    assert.ok(Math.abs(width(r.byModule.get(joint.host).sockets[0])-width(r.byModule.get(joint.owner).tabs[0])-2*clearance)<.01);
+  }
+});
+
+test('cut-aware joints also cross original module boundaries and coexist with ordinary module joints',()=>{
+  for(const modules of [[module('big',0,0,168,84),module('b',168,0),module('c',252,0)],[module('big',0,0,168,84),module('big2',168,0,168,84)]]){
+    const p=project(modules,[],{bedWidth:100,bedHeight:100}),before=JSON.stringify(p),{jointPlan}=planPrintBatch(p);
+    assert.equal(jointPlan.joints.length,3);assert.equal(jointPlan.unjoined.length,0);assert.equal(jointPlan.skipped,0);
+    assert.ok(jointPlan.joints.some(joint=>joint.ownerModuleId==='big'&&joint.hostModuleId===modules[1].id));
+    for(const joint of jointPlan.joints){assert.ok(jointPlan.byPart.get(joint.owner).tabs.length);assert.ok(jointPlan.byPart.get(joint.host).sockets.length);}
+    if(modules.length===3){assert.equal(jointPlan.moduleCount,1);const b=jointPlan.byPart.get(JSON.stringify(['b',0,0]));assert.equal(b.tabs.length,1);assert.equal(b.sockets.length,1);}
+    assert.equal(JSON.stringify(p),before);
+  }
+});
+
+test('split stepped modules join neighbours inside a reentrant notch despite overlapping part bounding boxes',()=>{
+  const cells=Array.from({length:4},(_,y)=>Array.from({length:y<2?6:4},(_,x)=>({x,y}))).flat();
+  const p=project([module('step',0,0,252,168,{cells}),module('notch',168,84,84,84)],[],{bedWidth:150,bedHeight:150}),before=JSON.stringify(p),{jointPlan}=planPrintBatch(p);
+  const shared=jointPlan.joints.filter(joint=>joint.ownerModuleId==='step'&&joint.hostModuleId==='notch');
+  assert.ok(shared.some(joint=>joint.axis==='x'&&joint.at.x===168&&joint.at.y<126));
+  assert.ok(shared.some(joint=>joint.axis==='y'&&joint.at.y===84));
+  assert.equal(JSON.stringify(p),before);
 });

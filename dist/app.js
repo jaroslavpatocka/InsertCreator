@@ -8,7 +8,8 @@ import {mountLibraryFolders} from './catalog-ui.js';
 import {CATEGORIES,toolCategory} from './tool-categories.js';
 import {addToolGroup,scaleTool} from './set-module.js';
 import {photoLayout} from './photo-layout.js';
-import {planJoints} from './module-joints.js';
+import {planPrintBatch} from './print-batch.js';
+import {prepareJointFitTest} from './joint-fit.js';
 import {getToolDimensions,resizeToolDimensions} from './tool-dimensions.js';
 import {openContextMenu,closeContextMenu} from './context-menu.js';
 import {createEditorGeometryCache} from './editor-cache.js';
@@ -734,7 +735,7 @@ function renderBoard(){
   }
   if(!project.modules.length&&showGrid)html+=`<text x="${project.width/2}" y="${project.height-14}" text-anchor="middle" font-size="7" fill="#b2bca5">${tr('{cols} × {rows} polí · {grid}',{cols:Math.floor(project.width/project.grid),rows:Math.floor(project.height/project.grid),grid:fmtLen(project.grid)})}</text>`;
   else if(project.modules.length&&showLabels){const unusedY=Math.max(...project.modules.map(m=>m.y+m.height));if(project.height-unusedY>36)html+=`<text x="${project.width/2}" y="${unusedY+(project.height-unusedY)/2}" text-anchor="middle" font-size="8" fill="#b0bca1" letter-spacing=".8">${tr('PROSTOR PRO DALŠÍ NÁPADY')}</text>`;}
-  if(project.sizeLabels){const plan=planSizeLabels(project);for(const label of plan.labels)html+=`<g class="model-size-label" data-tool-label="${esc(label.toolId)}" aria-label="${esc(label.text)}" pointer-events="none">${label.polygons.map(poly=>`<path d="${paths(poly)}" fill="#4c613c"/>`).join('')}</g>`;}
+  if(project.sizeLabels){const plan=planSizeLabels(project);for(const label of plan.labels)html+=`<g class="model-size-label" data-tool-label="${esc(label.toolId)}" aria-label="${esc(label.text)}" pointer-events="none">${label.screenPolygons.map(poly=>`<path d="${paths(poly)}" fill="#4c613c"/>`).join('')}</g>`;}
   html+=resizeHandles(svg,w,h);
   svg.innerHTML=html;
   if(!viewControls)viewControls=createViewControls2D(svg,{getCamera:()=>({zoom,panX:pan2D.x,panY:pan2D.y}),setCamera:value=>{zoom=value.zoom;pan2D={x:value.panX,y:value.panY};},getFrame:()=>({width:w/zoom,height:h/zoom}),render:renderCameraFrame});
@@ -992,7 +993,9 @@ async function exportPrintBatch(ids){
     }});
     if(controller.signal.aborted||!modal.el.isConnected)return;
     if(same(project)!==key)throw i18nError('Sestava se mezitím změnila. Spusťte export znovu.');
-    const files=[...result.files,{name:'projekt.json',data:JSON.stringify({schemaVersion:1,app:'InsertCreator',project:snapshot},null,2)},{name:'README.txt',data:'InsertCreator\n\n'+tr('Tiskové díly sestavte podle assembly.json. Souřadnice jsou v mm. Dělení je pouze pro tisk; rozvržení šuplíku zůstává původní.')}];
+    const jointNote=result.joints?'\n\n'+jointFitInstructions(snapshot.jointClearance??.2):'';
+    const unjoined=result.manifest?.joints?.unjoined?.length||0;
+    const files=[...result.files,{name:'projekt.json',data:JSON.stringify({schemaVersion:1,app:'InsertCreator',project:snapshot},null,2)},{name:'README.txt',data:'InsertCreator\n\n'+tr('Tiskové díly sestavte podle assembly.json. Souřadnice jsou v mm. Dělení je pouze pro tisk; rozvržení šuplíku zůstává původní.')+jointNote+(unjoined?'\n'+tr('Na {n} společných hranách není bezpečné místo pro spojku. Podrobnosti jsou v assembly.json.',{n:unjoined}):'')}];
     const zip=zipFiles(files);if(controller.signal.aborted||same(project)!==key)return;
     download(slug(snapshot.name)+'-tiskove-dily.zip',zip,'application/zip');finished=true;modal.close();toast(tr('ZIP s tiskovými díly je připravený.'));
   }catch(error){
@@ -1027,16 +1030,33 @@ function setConnectors(on){
   else toast(tr('Větší moduly by se do šuplíku nevešly, rozložení zůstává. Spojky vzniknou jen tam, kde je místo.'));
   persist();render();
 }
-// Optional puzzle joints: the switch, what the current selection gets, and how the printed modules go together.
+function jointFitInstructions(clearance){
+  return tr('Vůle v XY: {side} na každé straně, zdířka je o {total} širší. Svislá vůle se tímto nastavením nemění.',{side:fmtLen(clearance,{unit:'mm',digits:2}),total:fmtLen(2*clearance,{unit:'mm',digits:2})})+' '+tr('Nejprve vytiskněte zkušební spojku stejným materiálem a nastavením jako finální díly. Pokud jde ztuha, vůli zvětšete; pokud je volná, zmenšete ji. Zkontrolujte také rozšíření první vrstvy. Díly spojujte nasazením shora.');
+}
+async function exportJointFit(button,modal){
+  const snapshot=clone(project),key=same(project);button.disabled=true;
+  try{
+    const result=await prepareJointFitTest(snapshot);
+    if(!modal.el.isConnected||same(project)!==key)return;
+    const files=[...result.files,{name:'README.txt',data:'InsertCreator\n\n'+tr('Zkušební tisk spojky')+'\n'+jointFitInstructions(result.clearance)}];
+    download('InsertCreator-joint-fit-'+result.clearance.toFixed(2).replace('.','-')+'.zip',zipFiles(files),'application/zip');
+  }catch(error){if(modal.el.isConnected)toast(errorText(error));}
+  finally{if(button.isConnected)button.disabled=false;}
+}
+// Plan the same printable parts as the ZIP so cut seams and bed margins agree with this summary.
 function jointStatus(source,entries){
   const unsupported=project.bottomMode==='grid'||project.bottomMode==='magnet';
-  const toggle=`<label class="check-row"><input id="export-connectors" type="checkbox" ${project.connectors&&!unsupported?'checked':''} ${unsupported?'disabled':''}>${tr('Spojky mezi moduly (puzzle)')}</label>`;
+  const toggle=`<label class="check-row"><input id="export-connectors" type="checkbox" ${project.connectors&&!unsupported?'checked':''} ${unsupported?'disabled':''}>${tr('Spojky mezi tiskovými díly (puzzle)')}</label>`;
   if(unsupported)return toggle+`<p class="muted-note">${tr('U Gridfinity a magnetů se spojky nepřidávají, moduly drží základna nebo magnety.')}</p>`;
   if(!project.connectors)return toggle;
-  let plan;try{plan=planJoints(source,entries,source.tools);}catch(error){return toggle+`<p class="muted-note">${esc(errorText(error))}</p>`;}
+  const clearance=source.jointClearance??.2;
+  const settings=`<label class="field"><span>${tr('Boční vůle spoje v XY na každé straně')}</span><div class="input-wrap"><input id="export-joint-clearance" type="text" inputmode="decimal" value="${inputValue(clearance,{unit:'mm',digits:4})}" aria-describedby="joint-clearance-help"><em>mm</em></div></label><p class="muted-note" id="joint-clearance-help">${esc(tr('Výchozí hodnota je 0,20 mm na stranu. Povolený rozsah je 0–1 mm. Vhodná vůle závisí na tiskárně, materiálu a první vrstvě.'))} ${esc(tr('Aktuálně {side} na stranu = {total} navíc přes šířku zdířky.',{side:fmtLen(clearance,{unit:'mm',digits:4}),total:fmtLen(2*clearance,{unit:'mm',digits:4})}))}</p><button type="button" class="btn btn-light" id="export-joint-fit">${icon('cube')}${tr('Zkušební tisk spojky')}</button>`;
+  let plan;try{plan=planPrintBatch(source,entries,source.tools).jointPlan;}catch(error){return toggle+settings+`<p class="muted-note">${esc(errorText(error))}</p>`;}
   const count=plan.joints.length?plural(plan.joints.length,['Vznikne {n} spojka.','Vzniknou {n} spojky.','Vznikne {n} spojek.']):tr('Vybrané moduly nemají společnou hranu s místem pro spojku.');
   const skipped=plan.skipped?' '+plural(plan.skipped,['{n} spojka se nevešla: u hrany leží kapsa nástroje, nebo by díl přesáhl tiskovou plochu.','{n} spojky se nevešly: u hrany leží kapsa nástroje, nebo by díl přesáhl tiskovou plochu.','{n} spojek se nevešlo: u hrany leží kapsa nástroje, nebo by díl přesáhl tiskovou plochu.']):'';
-  return toggle+`<p class="muted-note" data-joint-status>${esc(count+skipped)} ${tr('Skládejte zleva doprava a shora dolů, další modul vždy nasaďte shora. Moduly exportujte společně, aby výstupky a zdířky seděly. Se spojkami mají moduly větší okraj, ruční a zamčené moduly se nemění.')}</p>`;
+  const cuts=plan.cutCount?' '+tr('Z toho {n} spojek propojuje díly rozdělené podle podložky.',{n:plan.cutCount}):'';
+  const unjoined=plan.unjoined?.length?' '+tr('Na {n} společných hranách není bezpečné místo pro spojku. Podrobnosti jsou v assembly.json.',{n:plan.unjoined.length}):'';
+  return toggle+settings+`<p class="muted-note" data-joint-status>${esc(count+cuts+skipped+unjoined)} ${tr('Skládejte zleva doprava a shora dolů, další modul vždy nasaďte shora. Moduly exportujte společně, aby výstupky a zdířky seděly. Se spojkami mají moduly větší okraj, ruční a zamčené moduly se nemění.')}</p>`;
 }
 function openExport(){
   const m=moduleFor(),selectedId=m?.id||null;
@@ -1061,6 +1081,12 @@ function openExport(){
   modal.el.querySelectorAll('[data-export-select]').forEach(button=>button.onclick=()=>{exportModuleChoice.all=button.dataset.exportSelect==='all';exportModuleChoice.ids=new Set(exportModuleChoice.all?project.modules.map(module=>module.id):[]);exportScope=exportModuleChoice.all?'all':'custom';redraw();});
   modal.el.querySelector('#export-size-labels')?.addEventListener('change',e=>setting('sizeLabels',e.target.checked));
   modal.el.querySelector('#export-connectors')?.addEventListener('change',e=>{setConnectors(e.target.checked);redraw();});
+  modal.el.querySelector('#export-joint-clearance')?.addEventListener('change',e=>{
+    const value=parseLength(e.target.value,'mm');
+    if(!Number.isFinite(value)||value<0||value>1){toast(tr('Zadejte vůli spojky od 0 do 1 mm na každé straně.'));e.target.value=inputValue(project.jointClearance??.2,{unit:'mm',digits:4});return;}
+    if(value!==(project.jointClearance??.2))setting('jointClearance',value);
+  });
+  modal.el.querySelector('#export-joint-fit')?.addEventListener('click',e=>exportJointFit(e.currentTarget,modal));
   modal.el.querySelector('#print-light')?.addEventListener('change',e=>setting('printMode',e.target.checked?'light':'solid'));
   modal.el.querySelector('#print-bottom')?.addEventListener('change',e=>setting('bottomMode',e.target.value));
   modal.el.querySelector('#limit-bed')?.addEventListener('change',e=>setting('limitToBed',e.target.checked));

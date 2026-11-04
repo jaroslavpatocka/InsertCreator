@@ -86,7 +86,7 @@ export const SIZE_LABEL_REASONS={
   'invalid-pocket':'Bez platného obrysu kapsy nelze popisek bezpečně umístit.'
 };
 
-/** Millimetre polygons; strokes are at least 0.5 mm wide and characters 3.5 mm high. */
+/** Font-row (Y-down) millimetre polygons; strokes are at least 0.5 mm wide and characters 3.5 mm high. */
 export function sizeLabelGlyphs(input){
   const text=normalize(input),pixels=[];let cursor=0;
   if(!text||text.length>24)return null;
@@ -101,6 +101,8 @@ export function sizeLabelGlyphs(input){
 
 /**
  * A shared plan for 2D, preview and STL. Coordinates are absolute drawer millimetres.
+ * `polygons` engrave readable text on the +Z face in the STL's right-handed XY plane;
+ * `screenPolygons` retain readable font rows in the editor's Y-down SVG plane.
  * Solid labels remove only the top .35 mm. Light labels receive an integral 1 mm plaque above the
  * existing base; engraving stays entirely above that base. All plaques avoid every pocket + wall.
  */
@@ -143,8 +145,12 @@ export function planSizeLabels(project,modules=project.modules||[],tools=project
       }
       if(!chosen){failure('no-space');continue;}
       const {x,y,width,height:labelHeight,rotation,plate}=chosen;
-      const polygons=glyphs.polygons.map(poly=>poly.map(p=>rotation?{x:round(x+PAD+glyphs.height-p.y),y:round(y+PAD+p.x)}:{x:round(x+PAD+p.x),y:round(y+PAD+p.y)}));
-      labels.push({toolId:tool.id,moduleId:module.id,text,x,y,width,height:labelHeight,rotation,polygons,plate,top:round(top),depth:DEPTH,baseTop:round(baseTop),light});
+      const screenPolygons=glyphs.polygons.map(poly=>poly.map(p=>rotation?{x:round(x+PAD+glyphs.height-p.y),y:round(y+PAD+p.x)}:{x:round(x+PAD+p.x),y:round(y+PAD+p.y)}));
+      // Font rows run downwards, but physical +Y runs upwards when seen from +Z.
+      // Reflect the glyph locally before its proper 0/90 degree rotation, then restore
+      // contour winding (including holes). Neither module nor pocket placement changes.
+      const polygons=glyphs.polygons.map(poly=>poly.map(p=>rotation?{x:round(x+PAD+p.y),y:round(y+PAD+p.x)}:{x:round(x+PAD+p.x),y:round(y+PAD+glyphs.height-p.y)}).reverse());
+      labels.push({toolId:tool.id,moduleId:module.id,text,x,y,width,height:labelHeight,rotation,polygons,screenPolygons,plate,top:round(top),depth:DEPTH,baseTop:round(baseTop),light});
       for(const poly of offset(plate,CLEAR))blocked.push({poly,bounds:box(poly)});
     }
   }
