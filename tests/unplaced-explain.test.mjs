@@ -18,7 +18,7 @@ globalThis.setTimeout=(callback,delay,...args)=>{const timer=nativeSetTimeout(ca
 const $=selector=>win.document.querySelector(selector);
 const click=selector=>{const el=$(selector);assert.ok(el,'Missing '+selector);el.click();};
 const action=name=>click(`#app [data-action="${name}"]`);
-async function arrange(){action('smart-layout');const start=performance.now();while(!$('[data-smart-close]')){if(performance.now()-start>20000)throw Error('Arrangement did not finish');await new Promise(resolve=>setTimeout(resolve,5));}assert.doesNotMatch($('.smart-layout-result h3').textContent,/nepodařilo|failed|couldn.t/i,$('.smart-layout-result').textContent);click('[data-smart-close]');}
+async function arrange(){action('smart-layout');click('[data-smart-default]');const start=performance.now();while(!$('[data-smart-close]')){if(performance.now()-start>20000)throw Error('Arrangement did not finish');await new Promise(resolve=>setTimeout(resolve,5));}assert.doesNotMatch($('.smart-layout-result h3').textContent,/nepodařilo|failed|couldn.t/i,$('.smart-layout-result').textContent);click('[data-smart-close]');}
 const saved=()=>JSON.parse(localStorage.getItem('suplik-studio-projects-v1')).find(p=>p.id===JSON.parse(localStorage.getItem('suplik-studio-current')));
 const change=(selector,value)=>{const element=$(selector);assert.ok(element,'Missing '+selector);element.value=String(value);element.dispatchEvent(new win.Event('change',{bubbles:true}));};
 const closeModals=()=>{while($('#modal-root [data-modal-close]'))click('#modal-root [data-modal-close]');};
