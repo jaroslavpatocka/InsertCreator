@@ -101,6 +101,8 @@ Navigace mění pouze kameru. Nepřesouvá moduly, neotáčí nástroje a nepři
 
 Hloubka kapes zohledňuje také barevnou vložku dna. Pokud po změně provedení chybí místo, 3D náhled i výrobní dialog nabídnou potřebné zvýšení výšky vložky. Tato výslovná úprava zachová hloubky kapes a lze ji vrátit jedním krokem Zpět.
 
+Příprava ZIPu čeká na opravu nedostatečné výšky. Kontrola zahrnuje právě vybrané moduly a platí i pro jejich jednotlivá tlačítka „Stáhnout tiskové díly“.
+
 ## Katalog a sady nářadí
 
 Inzert lze navrhnout i bez fotografování. **Knihovna nástrojů** má složky **Moje nástroje** a **Katalog**. Katalog obsahuje 247 hotových obrysů ve skupinách klíče, imbusy a torxy, nástrčné hlavice a bity, šroubováky, kleště, měření, řezání a kladiva. Obě složky mají stejné filtry: hledání česky i anglicky, volbu Vše / Sady / Jednotlivé, metrické a palcové velikosti a výběr více kategorií najednou. Výsledky jsou v rozbalovacích sekcích podle kategorií; dlouhý nefiltrovaný seznam začíná sbalený. Sady uložené z katalogu se v Mých nástrojích zobrazí jako rozbalovací skupiny, starší nástroje se zařadí podle názvu. Kategorii lze změnit přímo na kartě nástroje; u nástroje ze sady se přesune celá sada. Většina obrysů je vygenerovaná podle rozměrů norem DIN/ISO (štítek *podle normy*) nebo představuje typický tvar (*typický tvar*). 17 obrysů pochází z modelů skutečných nástrojů z otevřených knihoven Poly Haven (CC0) a FreeCAD-library (CC-BY-3.0, autor hasecilu). Originály a licence jsou v `dist/catalog/sources/`.

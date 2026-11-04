@@ -5,7 +5,7 @@ import {pocketOutline} from './finger-grip.js';
 import {planSizeLabels} from './size-labels.js';
 import {planJoints,planCutJoints,JOINT_BED_RESERVE,jointClearance} from './module-joints.js';
 import {buildColorZones,buildPrintTriangles,encodeSTL,printConfig,trianglesVolume,validatePrintMesh,weldPrintVertices,finalizePrintTriangles} from './print-geometry.js';
-import {materialConfig,materialSlots} from './print-material.js';
+import {FLOOR_RESERVE,materialConfig,materialSlots} from './print-material.js';
 import {encodeColor3MF} from './three-mf.js';
 import {i18nError,t} from './i18n.js';
 import {layoutMeshToPhysical} from './manufacturing-coordinates.js';
@@ -116,13 +116,20 @@ export async function preparePrintBatch(project,{moduleIds,signal,onProgress}={}
   // Unselected geometry must not block an otherwise valid independent export.
   const normalized=validateProject({...snapshot,modules:selected,tools:selectedTools,toolSets:[]});
   const source={...snapshot,...normalized},bedWidth=Number(source.bedWidth),bedHeight=Number(source.bedHeight);
-  printConfig(source);
+  const cfg=printConfig(source),colors=materialConfig(source);
   const issue=validateLayout(source)[0];if(issue)throw Object.assign(Error(issue.message),{i18n:issue.i18n});
+  // Reject a known floor-depth conflict before planning joints or cutting parts.
+  // In solid magnetic models the exact reserve is pocket-position dependent.
+  if(colors.enabled&&colors.floor&&(cfg.printMode==='light'||cfg.bottomMode!=='magnet')){
+    const reserve=cfg.printMode==='light'?cfg.base+colors.floorThickness:Math.max(cfg.base,colors.floorThickness+FLOOR_RESERVE);
+    const deep=source.tools.find(tool=>tool.depth>cfg.height-reserve+EPS);
+    if(deep)throw i18nError('Kapsa „{name}“ je pro vložku dna příliš hluboká. Zmenšete hloubku kapsy nebo tloušťku vložky.',{name:deep.name});
+  }
   if(source.bottomMode==='grid')for(const module of source.modules)if([module.x,module.y,module.width,module.height].some(value=>Math.abs(value/42-Math.round(value/42))>.0001))throw i18nError('Modul „{name}“ musí mít rozměry i polohu v násobcích 42 mm pro Gridfinity patky.',{name:module.name||module.id});
   progress({stage:'planning',progress:0,completed:0,total:0});await pause();
   const {plans,total,jointPlan}=planPrintBatch(source);
   if(total>MAX_PARTS)throw i18nError('Pro jeden export lze připravit nejvýše 400 tiskových dílů. Vyberte méně modulů nebo větší tiskovou plochu.');
-  const files=[],parts=[],splitSummary=[],colors=materialConfig(source),slots=colors.enabled?materialSlots({...colors,floor:colors.floor&&source.tools.length>0,text:colors.text&&planSizeLabels(source).labels.length>0}):null,zoneColor={body:colors.bodyColor,floor:colors.floorColor,text:colors.textColor};let completed=0,bytes=0;
+  const files=[],parts=[],splitSummary=[],slots=colors.enabled?materialSlots({...colors,floor:colors.floor&&source.tools.length>0,text:colors.text&&planSizeLabels(source).labels.length>0}):null,zoneColor={body:colors.bodyColor,floor:colors.floorColor,text:colors.textColor};let completed=0,bytes=0;
   for(const [moduleIndex,{module,tiles}] of plans.entries()){
     const own=source.tools.filter(tool=>tool.moduleId===module.id).map(tool=>({...tool,poly:pocketOutline(tool,source.clearance)})),labelPlan=planSizeLabels(source,[module],own),moduleParts=[];
     for(const tile of tiles){
