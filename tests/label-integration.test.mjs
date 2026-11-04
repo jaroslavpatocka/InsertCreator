@@ -29,6 +29,8 @@ const click=selector=>{const element=$(selector);assert.ok(element,'Missing '+se
 const action=name=>click(`#app [data-action="${name}"]`);
 const change=(selector,value)=>{const element=$(selector);assert.ok(element,'Missing '+selector);element.value=value;element.dispatchEvent(new win.Event('change',{bubbles:true}));};
 const saved=()=>JSON.parse(localStorage.getItem('suplik-studio-projects-v1')).find(project=>project.id==='label-scope');
+async function analysisReady(){const start=performance.now();while($('[data-export-analysis]')?.getAttribute('aria-busy')==='true'){if(performance.now()-start>5000)assert.fail('Export analysis did not finish');await new Promise(resolve=>nativeTimeout(resolve,5));}}
+
 
 test('the 2D board and raw engraving share one Y-down layout before the whole STL conversion',()=>{
   const label=planSizeLabels(saved()).labels.find(label=>label.toolId==='ta');assert.ok(label);
@@ -66,14 +68,14 @@ test('new catalogue PH0, PZ2 and Torx labels keep the same code labels',()=>{
   }
 });
 
-test('English selected-module export reports only its labels, while all-module and drawer views retain all warnings',()=>{
-  const before=saved();click('[data-select="ta"]');action('export');
+test('English selected-module export reports only its labels, while all-module and drawer views retain all warnings',async()=>{
+  const before=saved();click('[data-select="ta"]');action('export');await analysisReady();
   assert.equal($('#export-scope').value,'all');assert.match($('.modal .label-warning').textContent,/Model labels: 1; skipped: 1\./);assert.match($('.modal .label-warning').textContent,/unsupported character/);
-  change('#export-scope','selected');
+  change('#export-scope','selected');await analysisReady();
   assert.equal($('.modal .label-warning'),null,'An unrelated module cannot add a skipped-label warning to the selected export');
   assert.match($('.modal-body').textContent,/Model labels: 1\./);assert.doesNotMatch($('.modal-body').textContent,/unsupported character/);assert.equal($('[data-do-export]').disabled,false);
-  change('#export-scope','all');assert.match($('.modal .label-warning').textContent,/Model labels: 1; skipped: 1\./);
-  change('#export-scope','selected');click('[data-modal-close]');click('[data-select="tb"]');action('export');
+  change('#export-scope','all');await analysisReady();assert.match($('.modal .label-warning').textContent,/Model labels: 1; skipped: 1\./);
+  change('#export-scope','selected');await analysisReady();click('[data-modal-close]');click('[data-select="tb"]');action('export');await analysisReady();
   assert.equal($('#export-scope').value,'selected');assert.match($('.modal .label-warning').textContent,/Model labels: 0; skipped: 1\./);assert.match($('.modal .label-warning').textContent,/unsupported character/);
   click('[data-modal-close]');action('drawer-tab');assert.match($('#drawer-settings .label-warning').textContent,/Model labels: 1; skipped: 1\./,'The drawer view always summarizes the complete project');
   assert.deepEqual(saved(),before,'Viewing scoped warnings does not change labels, geometry or project data');

@@ -6,6 +6,18 @@ import {blankProject,validateProject} from '../dist/model.js';
 import {autoArrange,pocketOutline,validateLayout} from '../dist/geometry.js';
 import {catalogItems} from '../dist/catalog/index.js';
 import {catalogTool} from '../dist/catalog-ui.js';
+import {Worker as NodeWorker} from 'node:worker_threads';
+
+const manufacturingWorkers=new Set();
+class ManufacturingWorker{
+  constructor(url){
+    this.native=new NodeWorker(new URL('./worker-adapter.mjs',import.meta.url),{workerData:{url:String(url)}});manufacturingWorkers.add(this);
+    this.native.on('message',data=>this.onmessage?.({data}));this.native.on('error',error=>this.onerror?.({message:error.message,preventDefault(){}}));
+    this.native.on('messageerror',()=>this.onmessageerror?.());this.native.unref();
+  }
+  postMessage(data,transfer){this.native.postMessage(data,transfer);}
+  terminate(){manufacturingWorkers.delete(this);return this.native.terminate();}
+}
 
 const win=new Window({url:'http://localhost:5173'}),html=await fs.readFile(new URL('../dist/index.html',import.meta.url),'utf8');
 win.document.write(html.replace(/<script[^>]*>[\s\S]*?<\/script>/g,''));
@@ -32,7 +44,7 @@ for(const project of projects)assert.deepEqual(validateLayout(project).filter(is
 localStorage.setItem('suplik-studio-projects-v1',JSON.stringify(projects));localStorage.setItem('suplik-studio-current','"worse"');
 const created=[];
 class ControlledWorker{
-  constructor(url){this.url=String(url);this.terminated=false;created.push(this);}
+  constructor(url){if(String(url).endsWith('/manufacturing-worker.js'))return new ManufacturingWorker(url);this.url=String(url);this.terminated=false;created.push(this);}
   postMessage(message){this.request=copy(message);}
   terminate(){this.terminated=true;}
   reply(result,handler=this.onmessage){assert.ok(this.request);handler?.({data:{type:'result',id:this.request.id,result:copy(result)}});}
@@ -55,7 +67,7 @@ function assertPreserved(before,after){
   const manual=after.modules.find(module=>module.id==='manual');assert.deepEqual([manual.width,manual.height,manual.sizeMode,manual.unit],[84,84,'manual','in']);assert.deepEqual(validateLayout(after),[]);
 }
 function assertSmallCells(project){for(const tool of project.tools.filter(tool=>tool.id.startsWith('socket-'))){const module=project.modules.find(module=>module.id===tool.moduleId),pocket=pocketOutline(tool,project.clearance),width=Math.max(...pocket.map(point=>point.x))-Math.min(...pocket.map(point=>point.x)),height=Math.max(...pocket.map(point=>point.y))-Math.min(...pocket.map(point=>point.y)),padding=2*project.wall+.5;assert.equal(module.width,Math.ceil((width+padding-1e-7)/42)*42);assert.equal(module.height,Math.ceil((height+padding-1e-7)/42)*42);}}
-after(()=>{delete globalThis.Worker;return win.happyDOM.abort();});
+after(async()=>{delete globalThis.Worker;await Promise.all([...manufacturingWorkers].map(worker=>worker.terminate()));return win.happyDOM.abort();});
 
 test('the toolbar exposes one primary layout action without a separate Auto choice',()=>{
   const buttons=[...win.document.querySelectorAll('.board-toolbar [data-action="smart-layout"]')];assert.equal(buttons.length,1);assert.equal(buttons[0].textContent.trim(),'Rozložit nástroje');assert.equal($('.board-toolbar [data-action="auto"]'),null);
@@ -86,5 +98,5 @@ test('switching drawers while layout is pending ignores both its baseline and a 
 test('issue-list, background context and export-repack entries all start the same provisional Auto-plus-Smart pipeline',async()=>{
   open('issue');const issueButton=[...win.document.querySelectorAll('.workspace-col .issue-box [data-action]')].find(button=>/Rozložit|Přepočítat/.test(button.textContent));assert.ok(issueButton);let run=await start(()=>click(issueButton));run.worker.reply(resultFor(baseline(run.before)));await waitFor(()=>$('[data-smart-close]'));assertSmallCells(state());assertPreserved(run.before,state());click('[data-smart-close]');action('undo');assert.deepEqual(state(),run.before);
   open('context');$('#board-svg').dispatchEvent(new win.MouseEvent('contextmenu',{button:2,buttons:0,clientX:400,clientY:300,bubbles:true,cancelable:true}));const entry=$('[data-context-action="smart-layout"]');assert.ok(entry);assert.equal(entry.textContent.trim(),'Rozložit nástroje');run=await start(()=>click(entry));run.worker.reply(resultFor(baseline(run.before)));await waitFor(()=>$('[data-smart-close]'));assertSmallCells(state());assertPreserved(run.before,state());click('[data-smart-close]');action('undo');assert.deepEqual(state(),run.before);
-  open('export-issue');action('export');const repack=$('.modal [data-repack]');assert.ok(repack);run=await start(()=>click(repack));run.worker.reply(resultFor(baseline(run.before)));await waitFor(()=>$('[data-smart-close]'));assertSmallCells(state());assertPreserved(run.before,state());click('[data-smart-close]');action('undo');assert.deepEqual(state(),run.before);
+  open('export-issue');action('export');await waitFor(()=>$('[data-export-analysis]')?.getAttribute('aria-busy')!=='true');const repack=$('.modal [data-repack]');assert.ok(repack);run=await start(()=>click(repack));run.worker.reply(resultFor(baseline(run.before)));await waitFor(()=>$('[data-smart-close]'));assertSmallCells(state());assertPreserved(run.before,state());click('[data-smart-close]');action('undo');assert.deepEqual(state(),run.before);
 });

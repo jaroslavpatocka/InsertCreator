@@ -1,23 +1,21 @@
 import {FLOOR_THICKNESS,materialConfig,materialSlots} from './print-material.js';
-import {bounds,transformedPoints,autoArrange,resizeModule,validateLayout,exportSVG,exportDXF,exportSTL,exportFitSTL,printStats,zipFiles,createDemoProject} from './geometry.js';
-import {printPreview,createCamera3D,normalizeCamera3D} from './preview3d.js';
+import {createManufacturingClient} from './manufacturing-client.js';
+import {bounds,transformedPoints,autoArrange,resizeModule,validateLayout,createDemoProject} from './geometry.js';
+import {previewGeometryKey,createCamera3D,normalizeCamera3D} from './preview3d.js';
 import {validatePrintBed} from './print-geometry.js';
 import {createViewControls,createViewControls2D} from './view-controls.js';
-import {exportFitPDF} from './fit-sheet.js';
 import {openCapture} from './capture.js';
 import {mountLibraryFolders} from './catalog-ui.js';
 import {CATEGORIES,toolCategory} from './tool-categories.js';
 import {addToolGroup,scaleTool} from './set-module.js';
 import {photoLayout} from './photo-layout.js';
-import {planPrintBatch} from './print-batch.js';
-import {prepareJointFitTest} from './joint-fit.js';
 import {getToolDimensions,resizeToolDimensions} from './tool-dimensions.js';
 import {openContextMenu,closeContextMenu} from './context-menu.js';
 import {createEditorGeometryCache} from './editor-cache.js';
 import {moduleOutline,moduleArea,moduleIntersects,modulePadding} from './module-footprint.js';
-import {gridfinityLayout,planBaseplateTiles,exportBaseplateSTL} from './gridfinity-baseplate.js';
+import {gridfinityLayout,planBaseplateTiles} from './gridfinity-baseplate.js';
 import {sizeText} from './tool-size.js';
-import {planSizeLabels,SIZE_LABEL_REASONS} from './size-labels.js';
+import {SIZE_LABEL_REASONS} from './size-labels.js';
 import * as bulk from './bulk-edit.js';
 import * as moduleEdit from './module-edit.js';
 import {esc,icon,openModal,closeModal,toast,download} from './ui.js';
@@ -92,6 +90,34 @@ function persist(){
 function commit(fn,message){remember();fn();persist();render();if(message)toast(message);}
 function smartMessage(message){const text=String(message||'Porovnávám rozvržení…'),match=text.match(/^Hledám místo pro celé kapsy včetně prstů \((\d+) vhodných dvojic\)…$/);return match?tr('Hledám místo pro celé kapsy včetně prstů ({n} vhodných dvojic)…',{n:match[1]}):tr(text);}
 const same=value=>JSON.stringify(value);
+const analysisClient=createManufacturingClient(),previewClient=createManufacturingClient(),fileClient=createManufacturingClient();
+let fileBusy=false,fileJobId=0,exportSession=null,editorNeedsRefresh=false,labelJob=null,previewSequence=0,previewSource='',previewValue=null,previewSignature='';
+const backgroundOptions=()=>({lang:getLang(),unit:unit()});
+const labelKey=p=>JSON.stringify([p.sizeLabels,p.printMode,p.bottomMode,p.grid,p.wall,p.base,p.insertHeight,p.clearance,p.magnetDepth,p.modules,p.tools,getLang(),unit()]);
+const labelCache=new Map();
+function cachedLabels(){return !project.sizeLabels?{labels:[],skipped:[]}:labelCache.get(labelKey(project));}
+function ensureLabels(){
+  const key=labelKey(project),known=cachedLabels();if(known)return Promise.resolve(known);
+  if(exportSession||fileBusy)return Promise.resolve(null);
+  if(labelJob?.key===key)return labelJob.promise;
+  const snapshot=clone(project),job={key};
+  job.promise=analysisClient.run('labels',snapshot,backgroundOptions()).then(plan=>{
+    if(labelJob!==job||key!==labelKey(project))return null;
+    labelCache.set(key,plan);while(labelCache.size>3)labelCache.delete(labelCache.keys().next().value);
+    document.querySelectorAll('[data-label-status]').forEach(element=>{const ids=new Set(JSON.parse(element.dataset.labelStatus));element.innerHTML=labelStatusContent({labels:plan.labels.filter(label=>ids.has(label.moduleId)),skipped:plan.skipped.filter(label=>ids.has(label.moduleId))});});
+    if(view==='2d'&&!drag&&!resizeDrag&&!exportSession&&!fileBusy)renderBoard();return plan;
+  }).catch(error=>{
+    if(error.name!=='AbortError'&&labelJob===job)document.querySelectorAll('[data-label-status]').forEach(element=>element.textContent=errorText(error));return null;
+  }).finally(()=>{if(labelJob===job)labelJob=null;});
+  labelJob=job;return job.promise;
+}
+function resumeEditor(){if(editorNeedsRefresh){editorNeedsRefresh=false;setTimeout(()=>render(),0);}else if(view==='3d')setTimeout(()=>renderBoard(),0);else ensureLabels();}
+function labelStatusContent(plan){
+  const count=Array.isArray(plan.labels)?plan.labels.length:plan.count??0,skipped=plan.skipped||[];
+  if(!skipped.length)return `<p class="muted-note">${tr('Popisky v modelu: {n}.',{n:count})}</p>`;
+  return `<div class="issue-box label-warning" role="status"><p>${tr('Popisky v modelu: {n}, vynecháno: {skipped}.',{n:count,skipped:skipped.length})}</p>${[...new Set(skipped.map(s=>s.reason))].map(reason=>`<p>${esc(tr(SIZE_LABEL_REASONS[reason]||reason))}</p>`).join('')}</div>`;
+}
+const paintOpportunity=()=>new Promise(resolve=>requestAnimationFrame(()=>setTimeout(resolve,0)));
 const modulePhysicalArea=(m,grid)=>{if(!m.cells)return(m.width-.5)*(m.height-.5);const points=moduleOutline(m,grid,{inset:.25});return Math.abs(points.reduce((sum,p,i)=>{const q=points[(i+1)%points.length];return sum+p.x*q.y-q.x*p.y;},0)/2);};
 const layoutArea=p=>p.modules.reduce((sum,m)=>sum+modulePhysicalArea(m,p.grid),0);
 const placedTools=p=>{const ids=new Set(p.modules.filter(m=>m.x>=0&&m.y>=0&&m.x+m.width<=p.width+1e-6&&m.y+m.height<=p.height+1e-6).map(m=>m.id));return new Set(p.tools.filter(t=>ids.has(t.moduleId)).map(t=>t.id));};
@@ -574,11 +600,12 @@ function duplicateCurrentModule(){
   commit(()=>{project=next;selected=null;selectedModule=copied?.id||m.id;inspectorTab='tool';},tr('Modul zkopírován.'));
 }
 function sizeLabelPanel(t){return `<div class="size-label-editor">${input(tr('Popisek velikosti'),t.sizeLabel??sizeText(t),'sizeLabel',{type:'text',scope:'tool'})}<p class="muted-note">${tr('Například 13 mm nebo 1/2 in. U nástroje z fotografie zadejte skutečnou velikost. Tisk popisků zapnete pro celý šuplík.')}</p><button class="btn btn-light" data-action="toggle-size-labels">${tr(project.sizeLabels?'Vypnout popisky v modelu':'Zapnout popisky v modelu')}</button></div>`;}
-function labelStatus(modules=project.modules){
+function labelStatus(modules=project.modules,summary=null){
   if(!project.sizeLabels)return '';
-  const moduleIds=new Set(modules.map(module=>module.id)),ownTools=project.tools.filter(tool=>moduleIds.has(tool.moduleId));
-  const plan=planSizeLabels(project,modules,ownTools),skipped=plan.skipped;if(!skipped.length)return `<p class="muted-note">${tr('Popisky v modelu: {n}.',{n:plan.labels.length})}</p>`;
-  return `<div class="issue-box label-warning" role="status"><p>${tr('Popisky v modelu: {n}, vynecháno: {skipped}.',{n:plan.labels.length,skipped:skipped.length})}</p>${[...new Set(skipped.map(s=>s.reason))].map(reason=>`<p>${esc(tr(SIZE_LABEL_REASONS[reason]||reason))}</p>`).join('')}</div>`;
+  const ids=new Set(modules.map(module=>module.id)),known=cachedLabels();
+  const plan=summary||known&&{labels:known.labels.filter(label=>ids.has(label.moduleId)),skipped:known.skipped.filter(label=>ids.has(label.moduleId))};
+  if(!plan)ensureLabels();
+  return '<div data-label-status="'+esc(JSON.stringify([...ids]))+'">'+(plan?labelStatusContent(plan):'<p class="muted-note" role="status">'+tr('Připravuji popisky…')+'</p>')+'</div>';
 }
 function inspectorSection(key,title,body){return `<details class='inspector-section' data-inspector-section='${key}'><summary>${title}</summary><div class='inspector-section-body'>${body}</div></details>`;}
 function bulkSelectionPanel(){
@@ -746,7 +773,7 @@ function renderBoard(){
   }
   if(!project.modules.length&&showGrid)html+=`<text x="${project.width/2}" y="${project.height-14}" text-anchor="middle" font-size="7" fill="#b2bca5">${tr('{cols} × {rows} polí · {grid}',{cols:Math.floor(project.width/project.grid),rows:Math.floor(project.height/project.grid),grid:fmtLen(project.grid)})}</text>`;
   else if(project.modules.length&&showLabels){const unusedY=Math.max(...project.modules.map(m=>m.y+m.height));if(project.height-unusedY>36)html+=`<text x="${project.width/2}" y="${unusedY+(project.height-unusedY)/2}" text-anchor="middle" font-size="8" fill="#b0bca1" letter-spacing=".8">${tr('PROSTOR PRO DALŠÍ NÁPADY')}</text>`;}
-  if(project.sizeLabels){const plan=planSizeLabels(project);for(const label of plan.labels)html+=`<g class="model-size-label" data-tool-label="${esc(label.toolId)}" aria-label="${esc(label.text)}" pointer-events="none">${label.screenPolygons.map(poly=>`<path d="${paths(poly)}" fill="#4c613c"/>`).join('')}</g>`;}
+  if(project.sizeLabels){const plan=cachedLabels();if(!plan)ensureLabels();for(const label of plan?.labels||[])html+=`<g class="model-size-label" data-tool-label="${esc(label.toolId)}" aria-label="${esc(label.text)}" pointer-events="none">${label.screenPolygons.map(poly=>`<path d="${paths(poly)}" fill="#4c613c"/>`).join('')}</g>`;}
   html+=resizeHandles(svg,w,h);
   svg.innerHTML=html;
   if(!viewControls)viewControls=createViewControls2D(svg,{getCamera:()=>({zoom,panX:pan2D.x,panY:pan2D.y}),setCamera:value=>{zoom=value.zoom;pan2D={x:value.panX,y:value.panY};},getFrame:()=>({width:w/zoom,height:h/zoom}),render:renderCameraFrame});
@@ -771,11 +798,33 @@ function resizeHandles(svg,w,h){
   }
   return out;
 }
+function previewNotice(svg,text,busy=false){
+  let notice=svg.parentElement?.querySelector('[data-preview-state]');
+  if(!notice){notice=document.createElement('div');notice.dataset.previewState='';notice.className='preview-state';notice.setAttribute('role','status');notice.setAttribute('aria-live','polite');svg.parentElement?.append(notice);}
+  notice.hidden=!text;notice.setAttribute('aria-busy',String(busy));notice.textContent=text;
+}
+function applyPreviewFrame(svg,result,signature,viewport){
+  const aspect=viewport.width/viewport.height,fit=result.frame.fitSize;
+  const width=fit*Math.max(1,aspect)/camera3D.zoom,height=fit*Math.max(1,1/aspect)/camera3D.zoom;
+  svg.setAttribute('viewBox',[(camera3D.panX||0)-width/2,(camera3D.panY||0)-height/2,width,height].join(' '));
+  if(svg.dataset.previewSignature!==signature){svg.innerHTML=result.html;svg.dataset.previewSignature=signature;}
+  cameraFrame={...result.frame,width,height,zoom:camera3D.zoom};
+  const font=height/70,hudY=(camera3D.panY||0)+height/2-font;
+  svg.querySelectorAll('[data-preview-hud],[data-preview-warning]').forEach(text=>{text.setAttribute('x',camera3D.panX||0);text.setAttribute('y',text.hasAttribute('data-preview-warning')?hudY-font*1.5:hudY);text.setAttribute('font-size',font);});
+  previewNotice(svg,(result.warnings||[]).join(' '));
+}
 function render3D(svg){
+  if(fileBusy||exportSession){previewNotice(svg,tr('Náhled obnovím po dokončení výpočtu.'));return;}
   const rect=svg.getBoundingClientRect(),viewport={width:rect.width||svg.clientWidth||1000,height:rect.height||svg.clientHeight||600};
-  const preview=printPreview(project,bulkSelection.size?null:selected,bulkSelection.size?null:selectedModule,camera3D,viewport,[...bulkSelection]);
-  camera3D=preview.camera;cameraFrame={...preview.frame,zoom:camera3D.zoom};
-  svg.setAttribute('viewBox',preview.viewBox);svg.innerHTML=preview.html;
+  const source=same(project),geometrySource=previewGeometryKey(project),signature=JSON.stringify([source,camera3D.yaw,camera3D.pitch,bulkSelection.size?null:selected,bulkSelection.size?null:selectedModule,[...bulkSelection],getLang()]);
+  const sequence=++previewSequence;
+  if(previewValue&&signature===previewSignature){applyPreviewFrame(svg,previewValue,signature,viewport);return;}
+  if(previewSource!==geometrySource){previewClient.cancel();previewSource=geometrySource;}
+  previewNotice(svg,tr('Připravuji 3D náhled…'),true);
+  previewClient.run('preview',project,{...backgroundOptions(),queueLatest:true,selected:bulkSelection.size?null:selected,selectedModule:bulkSelection.size?null:selectedModule,camera:camera3D,viewport,selectedToolIds:[...bulkSelection]}).then(result=>{
+    if(sequence!==previewSequence||view!=='3d'||!svg.isConnected||same(project)!==source)return;
+    previewValue=result;previewSignature=signature;applyPreviewFrame(svg,result,signature,viewport);
+  }).catch(error=>{if(error.name!=='AbortError'&&sequence===previewSequence&&svg.isConnected)previewNotice(svg,errorText(error));});
 }
 function renderCameraFrame(){
   const svg=$('#board-svg');if(!svg)return;if(view==='3d')render3D(svg);else{
@@ -792,7 +841,7 @@ function renderCameraFrame(){
   const label=$('[data-zoom-value]');if(label)label.textContent=Math.round((view==='3d'?camera3D.zoom:zoom)*100)+' %';
 }
 
-function switchProject(p){persist();project=clone(p);selected=project.tools[0]?.id||null;selectedModule=null;inspectorTab='drawer';undoStack=[];redoStack=[];bulkSelection.clear();zoom=1;pan2D={x:0,y:0};camera3D=createCamera3D();persist();closeModal();render();}
+function switchProject(p){labelJob=null;analysisClient.cancel();previewClient.cancel();fileClient.cancel();previewSequence++;persist();project=clone(p);selected=project.tools[0]?.id||null;selectedModule=null;inspectorTab='drawer';undoStack=[];redoStack=[];bulkSelection.clear();zoom=1;pan2D={x:0,y:0};camera3D=createCamera3D();persist();closeModal();render();}
 function addTools(tools,opts={}){
   if(project.tools.length+tools.length>300)throw i18nError('V jednom projektu může být nejvýše 300 nástrojů. Založte další projekt.');
   if(project.insertHeight-project.base<.5)throw i18nError('Výška inzertu musí být alespoň o {gap} větší než tloušťka dna.',{gap:fmtLen(.5)});
@@ -995,109 +1044,109 @@ function exportModulePicker(){
   const ids=exportModuleIds();
   return `<section class='export-module-picker' aria-label='${tr('Moduly pro tisk')}'><div class='export-module-controls'><strong>${tr('Vybráno {n} z {total}',{n:ids.size,total:project.modules.length})}</strong><button type='button' class='btn btn-light' data-export-select='all'>${tr('Označit vše')}</button><button type='button' class='btn btn-light' data-export-select='none'>${tr('Zrušit označení')}</button></div><div class='export-module-list'>${project.modules.map(module=>`<label class='export-module-row'><input type='checkbox' data-export-module='${esc(module.id)}' ${ids.has(module.id)?'checked':''}><span><strong>${esc(module.name)}</strong><small>${fmtSize(module.width-.5,module.height-.5)} · ${tr(fitsExportBed(module)?'Vejde se na podložku':'Model se rozřeže na tiskové díly')}</small></span></label>`).join('')||`<p>${tr('Zatím žádné moduly.')}</p>`}</div><p class='muted-note'>${tr('Řeže se pouze 3D model. Moduly, nástroje ani jejich poloha v šuplíku se nemění.')}</p></section>`;
 }
-async function exportPrintBatch(ids){
-  const snapshot=clone(project),key=same(project),controller=new AbortController();let finished=false;
-  const modal=openModal({title:tr('Příprava tiskových dílů'),body:`<p>${tr('Řeže se pouze 3D model. Moduly, nástroje ani jejich poloha v šuplíku se nemění.')}</p><progress data-print-batch-progress max='1' value='0'></progress><p data-print-batch-status role='status'></p>`,footer:`<button class='btn btn-light' data-print-batch-cancel>${tr('Zrušit')}</button>`,onClose:()=>{if(!finished)controller.abort();}});
+async function runFileTask(operation,snapshot,options,title,delivery,success=''){
+  analysisClient.cancel();previewClient.cancel();previewSequence++;fileBusy=true;const jobId=++fileJobId,key=same(project),controller=new AbortController();let finished=false;
+  const release=()=>{if(jobId!==fileJobId)return;fileBusy=false;if(view==='3d')setTimeout(()=>renderBoard(),0);else ensureLabels();};
+  const modal=openModal({title,body:'<progress data-print-batch-progress max="1" value="0"></progress><p data-print-batch-status data-baseplate-progress role="status" aria-live="polite">'+tr('Připravuji…')+'</p>',footer:'<button class="btn btn-light" data-print-batch-cancel data-baseplate-cancel>'+tr('Zrušit')+'</button>',onClose:()=>{if(!finished)controller.abort();release();}});
   modal.el.querySelector('[data-print-batch-cancel]').onclick=modal.close;
   try{
-    await new Promise(resolve=>requestAnimationFrame(resolve));if(controller.signal.aborted||!modal.el.isConnected)return;
-    const {preparePrintBatch}=await import('./print-batch.js');
-    const result=await preparePrintBatch(snapshot,{moduleIds:[...ids],signal:controller.signal,onProgress:event=>{
-      if(controller.signal.aborted||!modal.el.isConnected)return;
-      modal.body.querySelector('[data-print-batch-progress]').value=Math.max(0,Math.min(1,Number(event?.progress)||0));
-      modal.body.querySelector('[data-print-batch-status]').textContent=event?.message?tr(event.message):tr('Připravuji…');
+    await paintOpportunity();if(controller.signal.aborted||!modal.el.isConnected)return null;
+    const result=await fileClient.run(operation,snapshot,{...backgroundOptions(),...options,signal:controller.signal,onProgress:event=>{
+      if(!modal.el.isConnected||controller.signal.aborted)return;
+      modal.el.querySelector('[data-print-batch-progress]').value=Math.max(0,Math.min(1,Number(event?.progress)||0));
+      modal.el.querySelector('[data-print-batch-status]').textContent=event?.message?tr(event.message):tr('Připravuji…');
     }});
-    if(controller.signal.aborted||!modal.el.isConnected)return;
+    if(controller.signal.aborted||!modal.el.isConnected)return null;
     if(same(project)!==key)throw i18nError('Sestava se mezitím změnila. Spusťte export znovu.');
-    const colorNote=result.manifest?.colors?'\n\n'+tr('Vícebarevný tisk: otevřete soubory 3MF a nastavte filamenty podle čísel:')+'\n'+result.manifest.colors.filaments.map((color,index)=>`${index+1}: ${color} (${Object.entries({body:'Tělo',floor:'Dno kapes',text:'Text'}).filter(([zone])=>result.manifest.colors.zones[zone]===index+1).map(([,label])=>tr(label)).join(', ')})`).join('\n'):'';
-    const jointNote=result.joints?'\n\n'+jointFitInstructions(snapshot.jointClearance??.2):'';
-    const unjoined=result.manifest?.joints?.unjoined?.length||0;
-    const files=[...result.files,{name:'projekt.json',data:JSON.stringify({schemaVersion:1,app:'InsertCreator',project:snapshot},null,2)},{name:'README.txt',data:'InsertCreator\n\n'+tr('Tiskové díly sestavte podle assembly.json. Souřadnice jsou v mm. Dělení je pouze pro tisk; rozvržení šuplíku zůstává původní.')+colorNote+jointNote+(unjoined?'\n'+tr('Na {n} společných hranách není bezpečné místo pro spojku. Podrobnosti jsou v assembly.json.',{n:unjoined}):'')}];
-    const zip=zipFiles(files);if(controller.signal.aborted||same(project)!==key)return;
-    download(slug(snapshot.name)+'-tiskove-dily.zip',zip,'application/zip');finished=true;modal.close();toast(tr('ZIP s tiskovými díly je připravený.'));
+    const file=delivery(result);download(file.name,file.data,file.type);finished=true;modal.close();if(success)toast(success);return result;
   }catch(error){
-    if(controller.signal.aborted||!modal.el.isConnected)return;
-    finished=true;modal.body.innerHTML=`<div class='issue-box' role='alert'><p>${esc(errorText(error))}</p></div>`;
-    modal.footer.innerHTML=`<button class='btn btn-light' data-print-batch-close>${tr('Zavřít')}</button>`;modal.el.querySelector('[data-print-batch-close]').onclick=modal.close;
+    if(controller.signal.aborted||!modal.el.isConnected)return null;
+    finished=true;release();modal.body.innerHTML='<div class="issue-box" role="alert"><p>'+esc(errorText(error))+'</p></div>';
+    modal.footer.innerHTML='<button class="btn btn-light" data-print-batch-close>'+tr('Zavřít')+'</button>';modal.el.querySelector('[data-print-batch-close]').onclick=modal.close;return null;
   }
 }
-async function exportGridfinityBaseplate(){
-  try{
-    const snapshot=clone(project),plan=planBaseplateTiles(snapshot);let cancelled=false;
-    const modal=openModal({title:tr('Základna Gridfinity'),body:`<p>${tr('Díly základny: {n}',{n:plan.tiles.length})}</p><p data-baseplate-progress role='status'></p>`,footer:`<button class='btn btn-light' data-baseplate-cancel>${tr('Zrušit')}</button>`,onClose:()=>cancelled=true});
-    modal.el.querySelector('[data-baseplate-cancel]').onclick=modal.close;
-    const files=[];
-    for(const [index,tile] of plan.tiles.entries()){
-      if(cancelled)return;modal.body.querySelector('[data-baseplate-progress]').textContent=`${index+1} / ${plan.tiles.length}`;
-      await new Promise(resolve=>requestAnimationFrame(resolve));if(cancelled)return;
-      files.push({name:`gridfinity-${String(index+1).padStart(3,'0')}-${tile.columns}x${tile.rows}.stl`,data:exportBaseplateSTL(snapshot,{tile})});
-    }
-    files.push({name:'assembly.json',data:JSON.stringify({schemaVersion:2,units:'mm',pitch:42,layout:plan.layout,layoutSize:{width:snapshot.width,height:snapshot.height},coordinates:'physical-world',layoutAxes:'X right, Y down',assemblyAxes:'X right, Y up, Z up',rotateForPrinting:plan.rotated,tiles:plan.tiles.map((tile,i)=>({...tile,file:files[i].name,xMm:tile.x*42,yMm:tile.y*42,assemblyTransform:[1,0,0,tile.x*42,0,1,0,snapshot.height-(tile.y+tile.rows)*42,0,0,1,0,0,0,0,1]}))},null,2)});
-    files.push({name:'README.txt',data:'InsertCreator\n\n'+tr('Základna Gridfinity: díly sestavte podle assembly.json. Polohy buněk x/y a xMm/yMm popisují layout od levého horního rohu šuplíku. assemblyTransform umístí STL do fyzické sestavy s X doprava, Y nahoru a Z nahoru. STL jsou v mm; mezi díly nepřidávejte mezeru. Volný okraj šuplíku zůstává bez základny.')+(plan.rotated?'\n'+tr('Díly při tisku otočte o 90° podle podložky tiskárny.'):'')});
-    if(cancelled)return;download(slug(snapshot.name)+'-gridfinity-baseplate.zip',zipFiles(files),'application/zip');modal.close();toast(tr('Základna Gridfinity exportována.'));
-  }catch(error){toast(errorText(error));}
+function exportPrintBatch(ids){
+  const snapshot=clone(project);
+  return runFileTask('export',snapshot,{moduleIds:[...ids],package:true,bundle:true,readme:'InsertCreator\n\n'+tr('Tiskové díly sestavte podle assembly.json. Souřadnice jsou v mm. Dělení je pouze pro tisk; rozvržení šuplíku zůstává původní.'),jointNote:jointFitInstructions(snapshot.jointClearance??.2)},tr('Příprava tiskových dílů'),result=>({name:slug(snapshot.name)+'-tiskove-dily.zip',data:result.zip,type:'application/zip'}),tr('ZIP s tiskovými díly je připravený.'));
 }
+function exportGridfinityBaseplate(){
+  const snapshot=clone(project);let plan;try{plan=planBaseplateTiles(snapshot);}catch(error){toast(errorText(error));return;}
+  const readme='InsertCreator\n\n'+tr('Základna Gridfinity: díly sestavte podle assembly.json. Polohy buněk x/y a xMm/yMm popisují layout od levého horního rohu šuplíku. assemblyTransform umístí STL do fyzické sestavy s X doprava, Y nahoru a Z nahoru. STL jsou v mm; mezi díly nepřidávejte mezeru. Volný okraj šuplíku zůstává bez základny.')+(plan.rotated?'\n'+tr('Díly při tisku otočte o 90° podle podložky tiskárny.'):'');
+  return runFileTask('baseplate',snapshot,{package:true,extraFiles:[{name:'README.txt',data:readme}]},tr('Základna Gridfinity'),result=>({name:slug(snapshot.name)+'-gridfinity-baseplate.zip',data:result.zip,type:'application/zip'}),tr('Základna Gridfinity exportována.'));
+}
+
 // Joints change the smallest module size, so switching them re-packs the drawer as one undoable step.
 // A layout that would leave tools outside the drawer is not applied; joints then appear only where there is room.
-function setConnectors(on){
-  remember();
-  const left=value=>autoArrange({...project,connectors:value}).unplaced.length,fits=left(on)<=left(!on);
-  project.connectors=on;
-  if(fits){arrange(false);toast(on?tr('Moduly jsme upravili, aby se spojky vešly mimo nástroje. Krok lze vrátit.'):tr('Moduly mají zase nejmenší možnou velikost. Krok lze vrátit.'));}
-  else toast(tr('Větší moduly by se do šuplíku nevešly, rozložení zůstává. Spojky vzniknou jen tam, kde je místo.'));
-  persist();render();
+async function setConnectors(on,modal,session,redraw){
+  const snapshot=clone(project),key=same(project),status=modal.el.querySelector('[data-export-analysis]');clearTimeout(session.timer);session.connectorsBusy=true;session.done=false;analysisClient.cancel();
+  status.setAttribute('aria-busy','true');status.textContent=tr('Připravuji spojky…');modal.el.querySelector('[data-do-export]').disabled=true;modal.el.querySelectorAll('[data-fit-pdf],[data-fit-stl],#export-joint-fit').forEach(button=>button.disabled=true);
+  try{
+    const result=await fileClient.run('connectors',snapshot,{...backgroundOptions(),enabled:on,signal:session.controller.signal});
+    if(session.closed||!modal.el.isConnected||same(project)!==key)return;
+    remember();project=result.project;persist();editorNeedsRefresh=true;redraw();
+    toast(result.fits?(on?tr('Moduly jsme upravili, aby se spojky vešly mimo nástroje. Krok lze vrátit.'):tr('Moduly mají zase nejmenší možnou velikost. Krok lze vrátit.')):tr('Větší moduly by se do šuplíku nevešly, rozložení zůstává. Spojky vzniknou jen tam, kde je místo.'));
+  }catch(error){if(error.name!=='AbortError'&&!session.closed){toast(errorText(error));redraw();}}
 }
+
 function jointFitInstructions(clearance){
   return tr('Vůle v XY: {side} na každé straně, zdířka je o {total} širší. Svislá vůle se tímto nastavením nemění.',{side:fmtLen(clearance,{unit:'mm',digits:2}),total:fmtLen(2*clearance,{unit:'mm',digits:2})})+' '+tr('Nejprve vytiskněte zkušební spojku stejným materiálem a nastavením jako finální díly. Pokud jde ztuha, vůli zvětšete; pokud je volná, zmenšete ji. Zkontrolujte také rozšíření první vrstvy. Díly spojujte nasazením shora.');
 }
-async function exportJointFit(button,modal){
-  const snapshot=clone(project),key=same(project);button.disabled=true;
-  try{
-    const result=await prepareJointFitTest(snapshot);
-    if(!modal.el.isConnected||same(project)!==key)return;
-    const files=[...result.files,{name:'README.txt',data:'InsertCreator\n\n'+tr('Zkušební tisk spojky')+'\n'+jointFitInstructions(result.clearance)}];
-    download('InsertCreator-joint-fit-'+result.clearance.toFixed(2).replace('.','-')+'.zip',zipFiles(files),'application/zip');
-  }catch(error){if(modal.el.isConnected)toast(errorText(error));}
-  finally{if(button.isConnected)button.disabled=false;}
+function exportJointFit(){
+  const snapshot=clone(project),clearance=snapshot.jointClearance??.2;
+  return runFileTask('joint-fit',snapshot,{package:true,extraFiles:[{name:'README.txt',data:'InsertCreator\n\n'+tr('Zkušební tisk spojky')+'\n'+jointFitInstructions(clearance)}]},tr('Zkušební tisk spojky'),result=>({name:'InsertCreator-joint-fit-'+result.clearance.toFixed(2).replace('.','-')+'.zip',data:result.zip,type:'application/zip'}));
 }
+
 // Plan the same printable parts as the ZIP so cut seams and bed margins agree with this summary.
-function jointStatus(source,entries){
+function jointStatus(source,entries,summary=null,jointError=""){
   const unsupported=project.bottomMode==='grid';
   const toggle=`<label class="check-row"><input id="export-connectors" type="checkbox" ${project.connectors&&!unsupported?'checked':''} ${unsupported?'disabled':''}>${tr('Spojky mezi tiskovými díly (puzzle)')}</label>`;
   if(unsupported)return toggle+`<p class="muted-note">${tr('U Gridfinity se puzzle spojky nepřidávají, moduly drží základna. S magnety lze puzzle spojky kombinovat.')}</p>`;
   if(!project.connectors)return toggle;
   const clearance=source.jointClearance??.2;
   const settings=`<label class="field"><span>${tr('Boční vůle spoje v XY na každé straně')}</span><div class="input-wrap"><input id="export-joint-clearance" type="text" inputmode="decimal" value="${inputValue(clearance,{unit:'mm',digits:4})}" aria-describedby="joint-clearance-help"><em>mm</em></div></label><p class="muted-note" id="joint-clearance-help">${esc(tr('Výchozí hodnota je 0,20 mm na stranu. Povolený rozsah je 0–1 mm. Vhodná vůle závisí na tiskárně, materiálu a první vrstvě.'))} ${esc(tr('Aktuálně {side} na stranu = {total} navíc přes šířku zdířky.',{side:fmtLen(clearance,{unit:'mm',digits:4}),total:fmtLen(2*clearance,{unit:'mm',digits:4})}))}</p><button type="button" class="btn btn-light" id="export-joint-fit">${icon('cube')}${tr('Zkušební tisk spojky')}</button>`;
-  let plan;try{plan=planPrintBatch(source,entries,source.tools).jointPlan;}catch(error){return toggle+settings+`<p class="muted-note">${esc(errorText(error))}</p>`;}
-  const count=plan.joints.length?plural(plan.joints.length,['Vznikne {n} spojka.','Vzniknou {n} spojky.','Vznikne {n} spojek.']):tr('Vybrané moduly nemají společnou hranu s místem pro spojku.');
-  const skipped=plan.skipped?' '+plural(plan.skipped,['{n} spojka se nevešla: u hrany leží kapsa nástroje, nebo by díl přesáhl tiskovou plochu.','{n} spojky se nevešly: u hrany leží kapsa nástroje, nebo by díl přesáhl tiskovou plochu.','{n} spojek se nevešlo: u hrany leží kapsa nástroje, nebo by díl přesáhl tiskovou plochu.']):'';
-  const cuts=plan.cutCount?' '+tr('Z toho {n} spojek propojuje díly rozdělené podle podložky.',{n:plan.cutCount}):'';
-  const unjoined=plan.unjoined?.length?' '+tr('Na {n} společných hranách není bezpečné místo pro spojku. Podrobnosti jsou v assembly.json.',{n:plan.unjoined.length}):'';
-  return toggle+settings+`<p class="muted-note" data-joint-status>${esc(count+cuts+skipped+unjoined)} ${tr("Spojky jsou ve vrstvě dna. V sestaveném modelu je zkontrolujete pohledem zespodu.")} ${tr('Skládejte zleva doprava a shora dolů, další modul vždy nasaďte shora. Moduly exportujte společně, aby výstupky a zdířky seděly. Se spojkami mají moduly větší okraj, ruční a zamčené moduly se nemění.')}</p>`;
+  return toggle+settings+'<p class="muted-note" data-joint-status>'+jointSummary(summary,jointError)+'</p>';
 }
+function jointSummary(plan,error=''){
+  if(error)return esc(errorText(error));if(!plan)return '<span class="spinner"></span> '+tr('Připravuji spojky…');
+  const n=plan.count??plan.joints?.length??0;
+  const count=n?plural(n,['Vznikne {n} spojka.','Vzniknou {n} spojky.','Vznikne {n} spojek.']):tr('Vybrané moduly nemají společnou hranu s místem pro spojku.');
+  const cuts=plan.cutCount?' '+tr('Z toho {n} spojek propojuje díly rozdělené podle podložky.',{n:plan.cutCount}):'';
+  const skipped=plan.skipped?' '+plural(plan.skipped,['{n} spojka se nevešla: u hrany leží kapsa nástroje, nebo by díl přesáhl tiskovou plochu.','{n} spojky se nevešly: u hrany leží kapsa nástroje, nebo by díl přesáhl tiskovou plochu.','{n} spojek se nevešlo: u hrany leží kapsa nástroje, nebo by díl přesáhl tiskovou plochu.']):'';
+  const unjoined=plan.unjoined?.length?' '+tr('Na {n} společných hranách není bezpečné místo pro spojku. Podrobnosti jsou v assembly.json.',{n:plan.unjoined.length}):'';
+  return esc(count+cuts+skipped+unjoined)+' '+tr('Spojky jsou ve vrstvě dna. V sestaveném modelu je zkontrolujete pohledem zespodu.')+' '+tr('Skládejte zleva doprava a shora dolů, další modul vždy nasaďte shora. Moduly exportujte společně, aby výstupky a zdířky seděly. Se spojkami mají moduly větší okraj, ruční a zamčené moduly se nemění.');
+}
+const exportAnalysisCache=new Map();
+function printSummary(stats){
+  if(!stats)return '';
+  return '<div class="print-summary"><strong>'+tr('{volume} modelu',{volume:volumeText(stats.volumeCm3)})+(stats.savingPercent>0?'<em>'+tr('−{n} % proti plnému bloku',{n:fmt(stats.savingPercent,0)})+'</em>':'')+'</strong><span>'+tr('Výška nejvyššího dílu {height} · dno {base}',{height:fmtLen(stats.heightMm),base:fmtLen(stats.effectiveBaseMm)})+'</span><small>'+tr('Objem geometrie. Skutečnou spotřebu a čas určí slicer podle výplně a nastavení.')+'</small>'+(stats.notes||[]).map(note=>'<small>'+esc(errorText(note))+'</small>').join('')+'</div>';
+}
+function exportIssues(issues,printError){return issues.length||printError?'<div class="issue-box">'+issues.slice(0,3).map(issue=>'<p>'+esc(errorText(issue))+'</p>').join('')+(printError?'<p>'+esc(printError)+'</p>':'')+'<button class="section-link" data-repack>'+tr('Přepočítat rozvržení')+'</button></div>':'';}
+
 function openExport(){
+  previewSequence++;previewClient.cancel();
   const m=moduleFor(),selectedId=m?.id||null;
   if(exportScope==='selected'&&!selectedId)exportScope='all';
   if(exportFormat==='stl'&&exportScope==='selected'&&selectedId){exportModuleIds();exportModuleChoice.all=false;exportModuleChoice.ids=new Set([selectedId]);}
   const chosen=exportModuleIds(),entries=exportFormat==='stl'?project.modules.filter(module=>chosen.has(module.id)):exportScope==='selected'?project.modules.filter(m=>m.id===selectedId):project.modules;
   const opts={moduleId:exportFormat!=='stl'&&exportScope==='selected'?selectedId:null};
-  const exportProject=exportFormat==='stl'?{...project,modules:entries,tools:project.tools.filter(tool=>chosen.has(tool.moduleId))}:project;
-  const issues=exportFormat==='stl'?validateLayout(exportProject):exportScope==='selected'?validateLayout({...project,modules:entries,tools:project.tools.filter(t=>t.moduleId===selectedId)}):errors();
+  const exportProject=exportFormat==='stl'||exportScope==='selected'?{...project,modules:entries,tools:project.tools.filter(tool=>entries.some(module=>module.id===tool.moduleId))}:project;
+  const cacheKey=JSON.stringify([{...exportProject,updatedAt:undefined},exportFormat,exportScope,getLang(),unit()]),cached=exportAnalysisCache.get(cacheKey);
+  const issues=cached?.issues||[];
+  const session={controller:new AbortController(),timer:null,done:!!cached,closed:false};exportSession=session;
   const formats={stl:['STL',tr('3D tisk')],svg:['SVG',tr('Pěna · laser')],dxf:['DXF','CAD · CNC'],json:['JSON',tr('Záloha projektu')]};
-  let stats=null,printError='',bedError='';
-  if(exportFormat==='stl'&&!issues.length&&entries.length&&entries.every(fitsExportBed)){try{stats=printStats(exportProject,{...opts,checkBed:false});}catch(e){printError=errorText(e);}}
+  let stats=cached?.stats||null,printError=cached?.printError||'',bedError='';
   if(exportFormat==='stl'&&entries.length){try{validatePrintBed({...project,limitToBed:true},entries);}catch(e){bedError=errorText(e);}}
   const bottoms=bottomNames(),mmNote=unit()!=='mm'?`<p class="muted-note">${tr('Exportované soubory jsou vždy v milimetrech, i když editor zobrazuje {unit}.',{unit:unit()})}</p>`:'';
-  const modal=openModal({title:tr('Připraveno k výrobě'),subtitle:tr('Vyberte provedení. Každý modul se stáhne zvlášť v jednom ZIPu.'),body:`<div class="format-grid">${Object.entries(formats).map(([key,[title,desc]])=>`<button class="format ${exportFormat===key?'active':''}" data-format="${key}"><strong>${title}</strong><span>${desc}</span></button>`).join('')}</div>${exportFormat==='stl'?exportModulePicker():''}${exportFormat!=='json'?`<label class="field"><span>${tr('Co exportovat')}</span><select id="export-scope">${exportFormat==='stl'&&exportScope==='custom'?`<option value="custom" selected>${tr('Označené moduly')}</option>`:''}<option value="all" ${exportScope==='all'?'selected':''}>${tr('Celou sestavu')}</option><option value="selected" ${exportScope==='selected'?'selected':''} ${selectedId?'':'disabled'}>${tr('Vybraný modul')}${m?' · '+esc(m.name):''}</option></select></label>`:''}${exportFormat==='stl'?`<label class="print-toggle"><input id="print-light" type="checkbox" ${project.printMode==='light'?'checked':''}><span><strong>${tr('Úsporný tisk')}</strong><small>${tr('Tenké dno a stěny kolem nástroje. Okolí zůstane otevřené.')}</small></span>${icon('spark')}</label><label class="field"><span>${tr('Dno a uchycení')}</span><select id="print-bottom">${Object.entries(bottoms).map(([key,label])=>`<option value="${key}" ${project.bottomMode===key?'selected':''}>${label}</option>`).join('')}</select></label><p class="muted-note">${project.bottomMode==='grid'?tr('Patky pro podložku Gridfinity. Rastr a rozměry modulů musí být v násobcích 42 mm.'):project.bottomMode==='magnet'?tr('Čtyři kapsy zespodu pro magnety 6 × 2 mm. Strop nad magnetem se automaticky zesílí.'):project.bottomMode==='adhesive'?tr('Rovné spodní plochy pro lepidlo či tenkou oboustrannou pásku. Tloušťku pásky přičtěte k výšce sestavy.'):tr('Rovné dno pro volné položení do šuplíku.')}</p>${stats?`<div class="print-summary"><strong>${tr('{volume} modelu',{volume:volumeText(stats.volumeCm3)})}${stats.savingPercent>0?`<em>${tr('−{n} % proti plnému bloku',{n:fmt(stats.savingPercent,0)})}</em>`:''}</strong><span>${tr('Výška nejvyššího dílu {height} · dno {base}',{height:fmtLen(stats.heightMm),base:fmtLen(stats.effectiveBaseMm)})}</span><small>${tr('Objem geometrie. Skutečnou spotřebu a čas určí slicer podle výplně a nastavení.')}</small>${(stats.notes||[]).map(note=>`<small>${esc(errorText(note))}</small>`).join('')}</div>`:''}<section class="export-printer"><h3>${tr('Tisková podložka')}</h3><div class="fields-row">${input(tr('Tisková plocha · šířka'),project.bedWidth,'bedWidth',{min:50,max:2000})}${input(tr('Tisková plocha · hloubka'),project.bedHeight,'bedHeight',{min:50,max:2000})}</div>${project.bottomMode==='magnet'?`<div class="fields-row">${input(tr('Průměr kapsy'),project.magnetDiameter,'magnetDiameter',{min:3,max:20})}${input(tr('Hloubka kapsy'),project.magnetDepth,'magnetDepth',{min:1,max:8})}</div>`:''}<p class="muted-note">${tr('Rozměry podložky se kontrolují pouze při exportu STL. Rozvržení šuplíku neovlivňují.')}</p></section><label class="check-row"><input id="export-size-labels" type="checkbox" ${project.sizeLabels?'checked':''}>${tr('Popisky velikostí v modelu')}</label>${labelStatus(entries)}${colorPrintPanel()}${jointStatus(exportProject,entries)}${gridfinitySummary()}<div id="bed-warnings"></div>`:''}${(issues.length||printError)&&exportFormat!=='json'?`<div class="issue-box">${issues.slice(0,3).map(i=>`<p>${esc(errorText(i))}</p>`).join('')}${printError?`<p>${esc(printError)}</p>`:''}<button class="section-link" data-repack>${tr('Přepočítat rozvržení')}</button></div>`:''}${exportFormat==='svg'||exportFormat==='dxf'?`<p class="muted-note">${tr('Černá / MODULES = obrys modulu, červená / POCKETS = kapsa včetně vůle. Všechny rozměry jsou v mm.')}</p>`:''}${exportFormat!=='json'?mmNote:''}${exportFormat==='json'?`<p class="muted-note">${tr('Uloží kontury, rozměry, provedení a polohy modulů. Na jiném zařízení otevřete JSON přes Moje šuplíky.')}</p>`:`<details class="advanced fit-check"><summary>${tr('Nejdřív ověřit velikost')}</summary><p>${tr('Přiložte nástroj na papír nebo zkuste tenký rámeček. Nemusíte hned tisknout celý inzert.')}</p><div class="test-actions"><button class="btn btn-light" data-fit-pdf ${issues.length||!entries.length?'disabled':''}>${icon('print')}${tr('PDF v měřítku 1:1')}</button><button class="btn btn-light" data-fit-stl ${issues.length||!entries.length?'disabled':''}>${icon('cube')}${tr('Tenká zkouška STL')}</button></div><p class="muted-note">${tr('PDF tiskněte na 100 % a přeměřte kontrolní úsečku 100 mm. Fotografie nemusí zachytit nejširší část vysokého nástroje.')}</p></details>`}`,footer:`<span class="footnote">${exportFormat==='stl'?tr('STL v mm · samostatné uzavřené díly'):tr('Soubory vznikají ve vašem zařízení')}</span><button class="btn btn-primary" data-do-export ${exportFormat!=='json'&&(issues.length||!entries.length||(exportFormat!=='stl'&&(printError||bedError)))?'disabled':''}>${icon('download')}${exportFormat==='stl'?tr('Připravit a stáhnout ZIP'):tr('Stáhnout {format}',{format:exportFormat.toUpperCase()})}</button>`});
-  const redraw=()=>{const scroll=modal.body.scrollTop;openExport();const body=document.querySelector('.modal-body');if(body)body.scrollTop=scroll;};
+  const modal=openModal({title:tr('Připraveno k výrobě'),subtitle:tr('Vyberte provedení. Každý modul se stáhne zvlášť v jednom ZIPu.'),body:`<p data-export-analysis role="status" aria-live="polite" aria-busy="${!cached&&exportFormat!=='json'}">${!cached&&exportFormat!=='json'?'<span class="spinner"></span> '+tr('Kontroluji tiskové díly na pozadí…'):''}</p><div class="format-grid">${Object.entries(formats).map(([key,[title,desc]])=>`<button class="format ${exportFormat===key?'active':''}" data-format="${key}"><strong>${title}</strong><span>${desc}</span></button>`).join('')}</div>${exportFormat==='stl'?exportModulePicker():''}${exportFormat!=='json'?`<label class="field"><span>${tr('Co exportovat')}</span><select id="export-scope">${exportFormat==='stl'&&exportScope==='custom'?`<option value="custom" selected>${tr('Označené moduly')}</option>`:''}<option value="all" ${exportScope==='all'?'selected':''}>${tr('Celou sestavu')}</option><option value="selected" ${exportScope==='selected'?'selected':''} ${selectedId?'':'disabled'}>${tr('Vybraný modul')}${m?' · '+esc(m.name):''}</option></select></label>`:''}${exportFormat==='stl'?`<label class="print-toggle"><input id="print-light" type="checkbox" ${project.printMode==='light'?'checked':''}><span><strong>${tr('Úsporný tisk')}</strong><small>${tr('Tenké dno a stěny kolem nástroje. Okolí zůstane otevřené.')}</small></span>${icon('spark')}</label><label class="field"><span>${tr('Dno a uchycení')}</span><select id="print-bottom">${Object.entries(bottoms).map(([key,label])=>`<option value="${key}" ${project.bottomMode===key?'selected':''}>${label}</option>`).join('')}</select></label><p class="muted-note">${project.bottomMode==='grid'?tr('Patky pro podložku Gridfinity. Rastr a rozměry modulů musí být v násobcích 42 mm.'):project.bottomMode==='magnet'?tr('Čtyři kapsy zespodu pro magnety 6 × 2 mm. Strop nad magnetem se automaticky zesílí.'):project.bottomMode==='adhesive'?tr('Rovné spodní plochy pro lepidlo či tenkou oboustrannou pásku. Tloušťku pásky přičtěte k výšce sestavy.'):tr('Rovné dno pro volné položení do šuplíku.')}</p><div data-export-stats>${printSummary(stats)}</div><section class="export-printer"><h3>${tr('Tisková podložka')}</h3><div class="fields-row">${input(tr('Tisková plocha · šířka'),project.bedWidth,'bedWidth',{min:50,max:2000})}${input(tr('Tisková plocha · hloubka'),project.bedHeight,'bedHeight',{min:50,max:2000})}</div>${project.bottomMode==='magnet'?`<div class="fields-row">${input(tr('Průměr kapsy'),project.magnetDiameter,'magnetDiameter',{min:3,max:20})}${input(tr('Hloubka kapsy'),project.magnetDepth,'magnetDepth',{min:1,max:8})}</div>`:''}<p class="muted-note">${tr('Rozměry podložky se kontrolují pouze při exportu STL. Rozvržení šuplíku neovlivňují.')}</p></section><label class="check-row"><input id="export-size-labels" type="checkbox" ${project.sizeLabels?'checked':''}>${tr('Popisky velikostí v modelu')}</label><div data-export-labels>${labelStatus(entries,cached?.labels)}</div>${colorPrintPanel()}${jointStatus(exportProject,entries,cached?.joints,cached?.jointError)}${gridfinitySummary()}<div id="bed-warnings"></div>`:''}<div data-export-issues>${exportFormat!=='json'?exportIssues(issues,printError):''}</div>${exportFormat==='svg'||exportFormat==='dxf'?`<p class="muted-note">${tr('Černá / MODULES = obrys modulu, červená / POCKETS = kapsa včetně vůle. Všechny rozměry jsou v mm.')}</p>`:''}${exportFormat!=='json'?mmNote:''}${exportFormat==='json'?`<p class="muted-note">${tr('Uloží kontury, rozměry, provedení a polohy modulů. Na jiném zařízení otevřete JSON přes Moje šuplíky.')}</p>`:`<details class="advanced fit-check"><summary>${tr('Nejdřív ověřit velikost')}</summary><p>${tr('Přiložte nástroj na papír nebo zkuste tenký rámeček. Nemusíte hned tisknout celý inzert.')}</p><div class="test-actions"><button class="btn btn-light" data-fit-pdf ${issues.length||!entries.length?'disabled':''}>${icon('print')}${tr('PDF v měřítku 1:1')}</button><button class="btn btn-light" data-fit-stl ${issues.length||!entries.length?'disabled':''}>${icon('cube')}${tr('Tenká zkouška STL')}</button></div><p class="muted-note">${tr('PDF tiskněte na 100 % a přeměřte kontrolní úsečku 100 mm. Fotografie nemusí zachytit nejširší část vysokého nástroje.')}</p></details>`}`,footer:`<span class="footnote">${exportFormat==='stl'?tr('STL v mm · samostatné uzavřené díly'):tr('Soubory vznikají ve vašem zařízení')}</span><button class="btn btn-primary" data-do-export ${exportFormat!=='json'&&(issues.length||!entries.length||(exportFormat!=='stl'&&(printError||bedError)))?'disabled':''}>${icon('download')}${exportFormat==='stl'?tr('Připravit a stáhnout ZIP'):tr('Stáhnout {format}',{format:exportFormat.toUpperCase()})}</button>`,onClose:()=>{session.closed=true;clearTimeout(session.timer);session.controller.abort();if(exportSession===session){exportSession=null;resumeEditor();}}});
+  const redraw=()=>{const scroll=modal.body.scrollTop,focused=document.activeElement?.id;openExport();const body=document.querySelector('.modal-body');if(body)body.scrollTop=scroll;if(focused)document.getElementById(focused)?.focus();};
   modal.el.querySelector('[data-action="export-baseplate"]')?.addEventListener('click',exportGridfinityBaseplate);
-  const setting=(key,value)=>{remember();project[key]=value;persist();render();redraw();};
+  const setting=(key,value)=>{remember();project[key]=value;persist();editorNeedsRefresh=true;redraw();};
   modal.el.querySelectorAll('[data-format]').forEach(b=>b.onclick=()=>{exportFormat=b.dataset.format;redraw();});
   modal.el.querySelector('#export-scope')?.addEventListener('change',e=>{exportScope=e.target.value;if(exportFormat==='stl'){exportModuleChoice.all=exportScope==='all';exportModuleChoice.ids=new Set(exportScope==='selected'?[selectedId]:exportScope==='all'?project.modules.map(m=>m.id):chosen);}redraw();});
   modal.el.querySelectorAll('[data-export-module]').forEach(input=>input.onchange=()=>{const ids=exportModuleIds();exportModuleChoice.all=false;if(input.checked)ids.add(input.dataset.exportModule);else ids.delete(input.dataset.exportModule);exportModuleChoice.ids=ids;exportScope=ids.size===project.modules.length?'all':'custom';exportModuleChoice.all=exportScope==='all';redraw();});
   modal.el.querySelectorAll('[data-export-select]').forEach(button=>button.onclick=()=>{exportModuleChoice.all=button.dataset.exportSelect==='all';exportModuleChoice.ids=new Set(exportModuleChoice.all?project.modules.map(module=>module.id):[]);exportScope=exportModuleChoice.all?'all':'custom';redraw();});
   modal.el.querySelector('#export-size-labels')?.addEventListener('change',e=>setting('sizeLabels',e.target.checked));
-  const material=(key,value)=>{remember();project.multiMaterial={...materialConfig(project),[key]:value};persist();render();redraw();};
+  const material=(key,value)=>{remember();project.multiMaterial={...materialConfig(project),[key]:value};persist();editorNeedsRefresh=true;redraw();};
   modal.el.querySelector('#print-colors')?.addEventListener('change',e=>material('enabled',e.target.checked));
   modal.el.querySelectorAll('[data-zone-on]').forEach(input=>input.onchange=()=>material(input.dataset.zoneOn,input.checked));
   modal.el.querySelectorAll('[data-zone-color]').forEach(input=>input.onchange=()=>material(input.dataset.zoneColor,input.value));
@@ -1106,7 +1155,7 @@ function openExport(){
     if(!Number.isFinite(value)||value<FLOOR_THICKNESS.min||value>FLOOR_THICKNESS.max){toast(tr('Zadejte tloušťku vložky od {min} do {max} mm.',FLOOR_THICKNESS));e.target.value=inputValue(materialConfig(project).floorThickness,{unit:'mm',digits:2});return;}
     material('floorThickness',value);
   });
-  modal.el.querySelector('#export-connectors')?.addEventListener('change',e=>{setConnectors(e.target.checked);redraw();});
+  modal.el.querySelector('#export-connectors')?.addEventListener('change',e=>setConnectors(e.target.checked,modal,session,redraw));
   modal.el.querySelector('#export-joint-clearance')?.addEventListener('change',e=>{
     const value=parseLength(e.target.value,'mm');
     if(!Number.isFinite(value)||value<0||value>1){toast(tr('Zadejte vůli spojky od 0 do 1 mm na každé straně.'));e.target.value=inputValue(project.jointClearance??.2,{unit:'mm',digits:4});return;}
@@ -1122,40 +1171,55 @@ function openExport(){
     bed.innerHTML=`<div class="issue-box export-bed-warning" role="status"><p>${tr('Vybraný 3D model se nevejde na podložku vcelku. Při exportu se rozřeže na tisknutelné díly.')}</p><p>${tr('Vybrané 3D modely se automaticky rozřežou podle podložky. Rozvržení šuplíku se nemění.')}</p><ul>${oversized.map(m=>{
       return `<li><span>${esc(m.name)} · ${fmtSize(m.width-.5,m.height-.5)}</span><button type="button" class="btn btn-light" data-export-split-module="${esc(m.id)}">${tr('Stáhnout tiskové díly')}</button></li>`;
     }).join('')}</ul></div>`;
-    modal.el.querySelector('[data-do-export]').disabled=!!issues.length||!entries.length;
+    modal.el.querySelector('[data-do-export]').disabled=!cached||!!issues.length||!entries.length;
   }
   modal.el.querySelectorAll('[data-export-split-module]').forEach(button=>button.onclick=()=>splitModuleForExport(button.dataset.exportSplitModule));
   modal.el.querySelectorAll('[data-repack]').forEach(b=>b.onclick=()=>{modal.close();smartArrangeProject();});
-  const fitFiles=()=>entries.map((m,i)=>({name:`${String(i+1).padStart(2,'0')}-${slug(m.name)}-zkouska.stl`,data:exportFitSTL(exportProject,{moduleId:m.id})}));
-  modal.el.querySelector('[data-fit-pdf]')?.addEventListener('click',()=>{try{download(slug(project.name)+'-meritko-1-1.pdf',exportFitPDF(exportProject,opts),'application/pdf');toast(tr('PDF připraveno. Tiskněte na 100 % bez přizpůsobení stránce.'));}catch(e){toast(errorText(e));}});
-  modal.el.querySelector('[data-fit-stl]')?.addEventListener('click',()=>{try{const files=fitFiles();if(files.length===1)download(files[0].name,files[0].data,'model/stl');else download(slug(project.name)+'-zkousky.zip',zipFiles(files),'application/zip');toast(tr('Tenké zkoušky jsou připravené. Mají stejnou vůli jako finální kapsy.'));}catch(e){toast(errorText(e));}});
-  modal.el.querySelector('[data-do-export]').onclick=async e=>{
-    if(exportFormat==='stl'){exportPrintBatch([...chosen]);return;}
-    const button=e.currentTarget;button.disabled=true;button.innerHTML=`<span class="spinner"></span> ${tr('Připravuji…')}`;
-    await new Promise(r=>requestAnimationFrame(()=>setTimeout(r,30)));
-    try{
-      const name=slug(project.name);
-      if(exportFormat==='stl')validatePrintBed(project,entries);
-      if(exportFormat==='json')saveJSON();
-      else if(exportFormat==='svg')download(name+'.svg',exportSVG(project,opts),'image/svg+xml');
-      else if(exportFormat==='dxf')download(name+'.dxf',exportDXF(project,opts),'application/dxf');
-      else if(exportScope==='selected')download(slug(m.name)+'.stl',exportSTL(project,opts),'model/stl');
-      else{
-        // Manufacturing files and the bundled read-me are always in millimetres.
-        const files=entries.map((m,i)=>({name:`${String(i+1).padStart(2,'0')}-${slug(m.name)}.stl`,data:exportSTL(project,{moduleId:m.id})}));
-        files.push({name:'sestava.svg',data:exportSVG(project)},{name:'projekt.json',data:JSON.stringify({schemaVersion:1,app:'InsertCreator',project},null,2)},{name:tr('CTETE-ME.txt'),data:`InsertCreator
-${project.name}
-${project.printMode==='light'?tr('Úsporná otevřená konstrukce'):tr('Plný blok s kapsami')} · ${bottoms[project.bottomMode]}
-${tr('Rastr {grid} mm · vůle {clearance} mm',{grid:project.grid,clearance:project.clearance})}
-${tr('Všechny STL jsou v milimetrech. Vložte dnem na tiskovou podložku.')}
-${(stats?.notes||[]).map(note=>errorText(note)).join('\n')}
-${tr('Nejprve ověřte vůli pomocí PDF 1:1 nebo tenké zkoušky STL v aplikaci.')}
-
-${entries.map((m,i)=>`${i+1}. ${m.name}: ${tr('{w} × {h} mm, poloha {x},{y} mm',{w:m.width-.5,h:m.height-.5,x:m.x,y:m.y})}${m.locked?' '+tr('(zamčeno)'):''}`).join('\n')}`});
-        download(name+'-moduly.zip',zipFiles(files),'application/zip');
+  const analysisStatus=modal.el.querySelector('[data-export-analysis]'),exportButton=modal.el.querySelector('[data-do-export]');
+  function applyAnalysis(result){
+    if(session.closed||session.connectorsBusy||!modal.el.isConnected)return;
+    session.done=true;analysisStatus.setAttribute('aria-busy','false');analysisStatus.textContent='';
+    const statsSlot=modal.el.querySelector('[data-export-stats]');if(statsSlot){
+      statsSlot.innerHTML=printSummary(result.stats);
+      if(!result.stats&&!result.issues?.length&&!result.printError&&entries.length&&entries.every(fitsExportBed)){
+        const button=document.createElement('button');button.type='button';button.className='btn btn-light';button.dataset.computeVolume='';button.textContent=tr('Vypočítat objem modelu');
+        button.onclick=()=>{button.disabled=true;analysisStatus.setAttribute('aria-busy','true');analysisStatus.textContent=tr('Počítám objem modelu…');analyze(true);};statsSlot.append(button);
       }
-      modal.close();toast(tr('Soubor je připravený ve stažených souborech.'));
-    }catch(error){toast(errorText(error));button.disabled=false;button.innerHTML=icon('download')+' '+tr('Zkusit znovu');}
+    }
+    const labels=modal.el.querySelector('[data-export-labels]');if(labels)labels.innerHTML=labelStatus(entries,result.labels);
+    const joints=modal.el.querySelector('[data-joint-status]');if(joints)joints.innerHTML=jointSummary(result.joints,result.jointError);
+    const issueBox=modal.el.querySelector('[data-export-issues]');issueBox.innerHTML=exportIssues(result.issues||[],result.printError);
+    issueBox.querySelector('[data-repack]')?.addEventListener('click',()=>{modal.close();smartArrangeProject();});
+    exportButton.disabled=!!result.issues?.length||!entries.length||(exportFormat!=='stl'&&!!(result.printError||bedError));
+  }
+  async function analyze(forceStats=false){
+    if(session.closed||!modal.el.isConnected||exportFormat==='json')return;
+    const snapshot=clone(exportProject),key=same(project);
+    try{
+      const result=await analysisClient.run('analyze',snapshot,{...backgroundOptions(),signal:session.controller.signal,stats:exportFormat==='stl'&&(forceStats||snapshot.tools.length<=24&&snapshot.tools.reduce((sum,tool)=>sum+tool.points.length,0)<=4000)});
+      if(session.closed||same(project)!==key)return;
+      exportAnalysisCache.set(cacheKey,result);while(exportAnalysisCache.size>5)exportAnalysisCache.delete(exportAnalysisCache.keys().next().value);
+      applyAnalysis(result);
+    }catch(error){
+      if(error.name==='AbortError'||session.closed)return;
+      analysisStatus.setAttribute('aria-busy','false');analysisStatus.textContent=errorText(error)+' ';
+      const retry=document.createElement('button');retry.type='button';retry.className='section-link';retry.textContent=tr('Zkusit znovu');retry.onclick=()=>{analysisStatus.setAttribute('aria-busy','true');analysisStatus.textContent=tr('Kontroluji tiskové díly na pozadí…');analyze();};analysisStatus.append(retry);
+    }
+  }
+  if(exportFormat!=='json'){
+    if(cached)applyAnalysis(cached);else{exportButton.disabled=true;session.timer=setTimeout(analyze,90);}
+  }
+  modal.el.querySelector('[data-fit-pdf]')?.addEventListener('click',()=>{
+    const snapshot=clone(exportProject);runFileTask('fit-pdf',snapshot,{moduleId:opts.moduleId},tr('PDF v měřítku 1:1'),result=>({name:slug(snapshot.name)+'-meritko-1-1.pdf',data:result.data,type:'application/pdf'}),tr('PDF připraveno. Tiskněte na 100 % bez přizpůsobení stránce.'));
+  });
+  modal.el.querySelector('[data-fit-stl]')?.addEventListener('click',()=>{
+    const snapshot=clone(exportProject);runFileTask('fit-stl',snapshot,{moduleId:opts.moduleId,package:entries.length>1},tr('Tenká zkouška STL'),result=>entries.length>1?{name:slug(snapshot.name)+'-zkousky.zip',data:result.zip,type:'application/zip'}:{name:result.files[0].name,data:result.files[0].data,type:'model/stl'},tr('Tenké zkoušky jsou připravené. Mají stejnou vůli jako finální kapsy.'));
+  });
+  modal.el.querySelector('[data-do-export]').onclick=()=>{
+    if(exportFormat==='stl'){exportPrintBatch([...chosen]);return;}
+    if(exportFormat==='json'){saveJSON();modal.close();return;}
+    const format=exportFormat,snapshot=clone(exportProject);
+    runFileTask(format,snapshot,{moduleId:opts.moduleId},tr('Připravuji…'),result=>({name:slug(snapshot.name)+'.'+format,data:result.data,type:format==='svg'?'image/svg+xml':'application/dxf'}),tr('Soubor je připravený ve stažených souborech.'));
   };
 }
 
@@ -1209,7 +1273,7 @@ const actions={
  auto:smartArrangeProject,'smart-layout':smartArrangeProject,'split-module':splitModule,'tool-sets':openToolSets,'tool-set-current':editSelectedToolSet,
  undo,redo,
  snap:()=>{snap=!snap;render();},grid:()=>{showGrid=!showGrid;render();},labels:()=>{showLabels=!showLabels;render();},
- '2d':()=>{view='2d';render();},'3d':()=>{view='3d';render();},
+ '2d':()=>{previewSequence++;previewClient.cancel();view='2d';render();},'3d':()=>{view='3d';render();},
  'zoom-in':()=>{if(view==='3d')camera3D=normalizeCamera3D({...camera3D,zoom:camera3D.zoom*1.25});else zoom=Math.min(3,zoom+.25);render();},'zoom-out':()=>{if(view==='3d')camera3D=normalizeCamera3D({...camera3D,zoom:camera3D.zoom/1.25});else zoom=Math.max(.5,zoom-.25);render();},fit:()=>{if(view==='3d')camera3D=createCamera3D();else{zoom=1;pan2D={x:0,y:0};}render();},
  'hide-tip':()=>{tipVisible=false;writeLocal('suplik-hide-tip',true);render();},
  rotate:()=>rotateCurrentTool(90),'rotate-module':()=>applyModuleEdit(moduleEdit.rotateModule,90,tr('Modul otočen.')),'duplicate-module':duplicateCurrentModule,
@@ -1427,6 +1491,9 @@ window.addEventListener('resize',scheduleEditorViewport);
 window.addEventListener('scroll',scheduleEditorViewport,{passive:true});
 window.visualViewport?.addEventListener('resize',scheduleEditorViewport);
 document.fonts?.ready?.then(scheduleEditorViewport);
-onLangChange(()=>{applyDocumentText();render();});
+onLangChange(()=>{labelJob=null;analysisClient.cancel();previewClient.cancel();previewSequence++;applyDocumentText();render();if(exportSession)openExport();});
 applyDocumentText();persist();render();
-if('serviceWorker'in navigator)window.addEventListener('load',()=>navigator.serviceWorker.register('./sw.js').catch(()=>{}));
+if(project.sizeLabels)await ensureLabels();
+window.addEventListener('pagehide',()=>{closeModal();labelJob=null;analysisClient.cancel();previewClient.cancel();fileClient.cancel();});
+window.addEventListener('pageshow',event=>{if(event.persisted)render();});
+if('serviceWorker'in navigator){const register=()=>navigator.serviceWorker.register('./sw.js').catch(()=>{});if(document.readyState==='complete')register();else window.addEventListener('load',register,{once:true});}

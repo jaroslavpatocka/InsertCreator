@@ -35,8 +35,9 @@ const pause=ms=>new Promise(resolve=>nativeTimeout(resolve,ms));
 async function waitFor(predicate){const started=performance.now();while(!predicate()){if(performance.now()-started>10000)assert.fail('UI did not finish: '+$('#modal-root').textContent+' '+$('#toast').textContent);await pause(2);}}
 function change(selector,value){const element=$(selector);assert.ok(element,'Missing '+selector);element.value=String(value);element.dispatchEvent(new win.Event('change',{bubbles:true}));}
 function close(){if($('[data-modal-close]'))click('[data-modal-close]');}
-async function open(id){close();action('projects');click(`[data-open="${id}"]`);action('export');click('[data-format="stl"]');await pause(0);}
-async function downloadedFrom(selector){const count=downloads.length;click(selector);await waitFor(()=>downloads.length===count+1);assert.ok(downloads.at(-1).blob);return downloads.at(-1);}
+const analysisReady=()=>waitFor(()=>$('[data-export-analysis]')?.getAttribute('aria-busy')!=='true');
+async function open(id){close();action('projects');click(`[data-open="${id}"]`);action('export');click('[data-format="stl"]');await analysisReady();}
+async function downloadedFrom(selector){await analysisReady();const count=downloads.length;click(selector);await waitFor(()=>downloads.length===count+1);assert.ok(downloads.at(-1).blob);return downloads.at(-1);}
 function assertReadOnly(before,undo){assert.equal(store(),before,'this action must preserve the whole persisted project, including updatedAt');assert.deepEqual(history(),undo,'this action must not add undo history');}
 async function unzip(blob){
   const bytes=new Uint8Array(await blob.arrayBuffer()),view=new DataView(bytes.buffer),files=new Map();let offset=0;
@@ -90,7 +91,10 @@ test('export status counts joints between bed-cut pieces even when the drawer ha
 });
 
 test('the joint fit-test button downloads a small two-piece STL ZIP without editing the user drawer',async()=>{
-  await open('coupon');change('#export-joint-clearance','0,35');const before=store(),undo=history();
+  await open('coupon');change('#export-joint-clearance','0,35');await analysisReady();
+  // The editor is deliberately not redrawn behind an open manufacturing form.
+  // Reopen once so the undo controls reflect the preceding preference change.
+  close();await waitFor(()=>history()[0]===false);action('export');await analysisReady();const before=store(),undo=history();
   assert.equal($('#export-joint-fit').disabled,false);const download=await downloadedFrom('#export-joint-fit');assert.match(download.name,/\.zip$/);
   const files=await unzip(download.blob),models=[...files.keys()].filter(name=>name.endsWith('.stl'));assert.equal(models.length,2);
   const assembly=JSON.parse(new TextDecoder().decode(files.get('assembly.json')));assert.equal(assembly.joints.clearance,.35,'the actual downloaded coupon uses the chosen millimetre clearance');

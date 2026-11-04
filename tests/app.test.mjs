@@ -1,10 +1,27 @@
-import {test} from 'node:test';
+import {test,after} from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import {Window} from 'happy-dom';
 import {createCanvas,ImageData} from '@napi-rs/canvas';
 import {bounds,validateLayout} from '../dist/geometry.js';
 import {validateProject} from '../dist/model.js';
+import {Worker as NodeWorker} from 'node:worker_threads';
+
+// Browser workers stay real in this integration test. The final
+// project has nine tools, so the intentionally bounded UI-thread fallback must
+// not be enlarged just to make a DOM harness pass.
+const manufacturingWorkers=new Set();
+globalThis.Worker=class{
+  constructor(url){
+    const native=new NodeWorker(new URL('./worker-adapter.mjs',import.meta.url),{workerData:{url:String(url)}});this.native=native;manufacturingWorkers.add(this);
+    native.on('message',data=>this.onmessage?.({data}));
+    native.on('error',error=>this.onerror?.({message:error.message,preventDefault(){}}));
+    native.on('messageerror',()=>this.onmessageerror?.());native.unref();
+  }
+  postMessage(data,transfer){this.native.postMessage(data,transfer);}
+  terminate(){manufacturingWorkers.delete(this);return this.native.terminate();}
+};
+after(async()=>{await Promise.all([...manufacturingWorkers].map(worker=>worker.terminate()));});
 
 const win=new Window({url:'http://localhost:5173'});
 const html=await fs.readFile(new URL('../dist/index.html',import.meta.url),'utf8');
@@ -48,7 +65,8 @@ async function arrange(){
 }
 const change=(selector,value)=>{const element=$(selector);assert.ok(element,'Missing '+selector);if(element.type==='checkbox')element.checked=Boolean(value);else element.value=String(value);element.dispatchEvent(new win.Event('change',{bubbles:true}));};
 const createDrawerFromUI=(name,width,height)=>{action('projects');click('[data-new]');change('[data-field=drawerName]',name);change('[data-field=drawerWidth]',width);change('[data-field=drawerHeight]',height);click('[data-create-drawer]');return saved();};
-const downloadFrom=async selector=>{const count=downloads.length;click(selector);await waitFor(()=>downloads.length>count);assert.ok(downloads.at(-1).blob,'A generated file Blob must be present');return downloads.at(-1);};
+const exportReady=()=>waitFor(()=>$('[data-export-analysis]')?.getAttribute('aria-busy')!=='true');
+const downloadFrom=async selector=>{await exportReady();const count=downloads.length;click(selector);await waitFor(()=>downloads.length>count);assert.ok(downloads.at(-1).blob,'A generated file Blob must be present');return downloads.at(-1);};
 function storedZip(bytes){
   const view=new DataView(bytes.buffer,bytes.byteOffset,bytes.byteLength),files=[];let offset=0;
   while(offset+30<=bytes.length&&view.getUint32(offset,true)===0x04034b50){
@@ -376,7 +394,7 @@ test('editor workflows and actual photo pipeline integrate with persistent proje
   assert.equal(win.document.querySelectorAll('.tool-row').length,6);
   assert.equal(win.document.querySelectorAll('#board-svg .module').length,6);
   assert.match($('#app').textContent,/Dílna · ruční nářadí/);
-  action('3d');assert.ok(win.document.querySelectorAll('#board-svg polygon').length>6);action('2d');
+  action('3d');await waitFor(()=>win.document.querySelectorAll('#board-svg polygon').length>6);assert.ok(win.document.querySelectorAll('#board-svg polygon').length>6);action('2d');
   action('expand');const expandWidth=$('[data-field=expandWidth]');expandWidth.value='588';click('[data-confirm]');
   assert.equal(saved().width,588);assert.ok(saved().modules.every(m=>m.locked));
   action('library');click('[data-library-add="0"]');assert.equal(saved().tools.length,7);
@@ -401,17 +419,19 @@ test('editor workflows and actual photo pipeline integrate with persistent proje
   change('#print-light',true);assert.equal(saved().printMode,'light');assert.equal($('#print-light').checked,true);
   change('#print-bottom','adhesive');assert.equal(saved().bottomMode,'adhesive');assert.ok($('#print-bottom option[value=adhesive][selected]'),'The saved bottom must be marked in the re-rendered select');
   const bedWidth=saved().bedWidth;change('.modal [data-field=bedWidth]',49);assert.equal(saved().bedWidth,bedWidth,'Invalid printer width must not persist');
-  change('.modal [data-field=bedWidth]',50);change('.modal [data-field=bedHeight]',50);assert.equal($('[data-do-export]').disabled,false,'Valid oversized models export as automatically cut mesh parts');
+  change('.modal [data-field=bedWidth]',50);change('.modal [data-field=bedHeight]',50);await exportReady();assert.equal($('[data-do-export]').disabled,false,'Valid oversized models export as automatically cut mesh parts');
   assert.ok(!$('#limit-bed'),'The print batch always fits its printer without a legacy-limit bypass');assert.equal(saved().limitToBed,true,'The stored legacy flag is retained');
   change('.modal [data-field=bedWidth]',180);change('.modal [data-field=bedHeight]',256);
-  assert.equal(saved().bedWidth,180);assert.equal(saved().bedHeight,256);assert.equal(saved().limitToBed,true);assert.equal($('[data-do-export]').disabled,false);
+  await exportReady();assert.equal(saved().bedWidth,180);assert.equal(saved().bedHeight,256);assert.equal(saved().limitToBed,true);assert.equal($('[data-do-export]').disabled,false);
 
   const pdf=await downloadFrom('[data-fit-pdf]'),pdfText=await pdf.blob.text();
   assert.match(pdf.name,/-meritko-1-1\.pdf$/);assert.equal(pdf.blob.type,'application/pdf');assert.match(pdfText,/^%PDF-1\.4/);assert.match(pdfText,/\/PrintScaling \/None/);assert.match(pdfText,/presne 100 mm/);assert.match(pdfText,/%%EOF/);
+  action('export');await exportReady();
   const thin=await downloadFrom('[data-fit-stl]');assert.match(thin.name,/-zkousky\.zip$/);assert.equal(thin.blob.type,'application/zip');
   const thinFiles=storedZip(new Uint8Array(await thin.blob.arrayBuffer()));assert.equal(thinFiles.length,saved().modules.length);
   for(const file of thinFiles){assert.match(file.name,/-zkouska\.stl$/);assert.ok(Math.abs(stlHeight(file.bytes)-1)<1e-5,'A fit test must be a genuine 1mm high model');}
 
+  action('export');await exportReady();
   const beforePrint=localStorage.getItem('suplik-studio-projects-v1'),printHistory=[$('#app [data-action=undo]').disabled,$('#app [data-action=redo]').disabled];
   const full=await downloadFrom('[data-do-export]');await waitFor(()=>!$('#modal-root').children.length);assert.match(full.name,/-tiskove-dily\.zip$/);assert.equal(full.blob.type,'application/zip');
   const fullFiles=storedZip(new Uint8Array(await full.blob.arrayBuffer())),fullModels=fullFiles.filter(file=>file.name.endsWith('.stl'));
