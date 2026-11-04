@@ -41,7 +41,7 @@ const libraryStore=()=>JSON.parse(localStorage.getItem('suplik-studio-library-v1
 const openLibrary=()=>click('#app [data-action="library"]');
 const tab=id=>$(`[data-library-folder="${id}"]`);
 const ids=()=>$$('[data-catalog-item]').map(el=>el.dataset.catalogItem);
-async function openCatalog(){openLibrary();if(tab('catalog').getAttribute('aria-selected')!=='true')click(tab('catalog'));await waitFor(()=>$('.catalog-grid')||$('.catalog-empty'));}
+async function openCatalog(){openLibrary();if(tab('catalog').getAttribute('aria-selected')!=='true')click(tab('catalog'));await waitFor(()=>$('.catalog-section')||$('.catalog-empty'));}
 async function search(text){const input=$('[data-catalog-search]');input.value=text;input.dispatchEvent(new win.Event('input',{bubbles:true}));await new Promise(r=>setTimeout(r,170));}
 
 after(()=>{setLang('cs');setAppUnit('mm');setCatalogSource(null);});
@@ -166,7 +166,7 @@ test('the real catalogue module loads lazily through the default source',async()
   setCatalogSource(null);
   try{
     await openCatalog();
-    assert.ok($('.catalog-grid')||$('.catalog-empty'),'catalogue renders either items or the empty state');
+    assert.ok($('.catalog-section')||$('.catalog-empty'),'catalogue renders either sections or the empty state');
     assert.ok($('[role=alert]')===null,'loading the real catalogue must not fail');
     click('[data-modal-close]');
   }finally{setCatalogSource(async()=>({categories:CATEGORIES,items}));}

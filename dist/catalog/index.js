@@ -15,18 +15,9 @@
 import parametric from './parametric.js';
 import imported from './imported.js';
 import sets from './sets.js';
+import {CATEGORIES} from '../tool-categories.js';
 
-export const CATEGORIES=[
-  {id:'wrenches',cs:'Klíče',en:'Wrenches'},
-  {id:'hex-keys',cs:'Imbusy a torxy',en:'Hex & Torx keys'},
-  {id:'sockets',cs:'Nástrčné hlavice a bity',en:'Sockets & bits'},
-  {id:'screwdrivers',cs:'Šroubováky',en:'Screwdrivers'},
-  {id:'pliers',cs:'Kleště',en:'Pliers'},
-  {id:'measuring',cs:'Měření a značení',en:'Measuring & marking'},
-  {id:'cutting',cs:'Řezání a nože',en:'Cutting & knives'},
-  {id:'striking',cs:'Kladiva a průbojníky',en:'Hammers & punches'},
-  {id:'other',cs:'Ostatní',en:'Other'}
-];
+export {CATEGORIES};
 
 // Tool sets ('Sady nářadí'): ready-made groups of catalogue items, e.g. a 6–32 mm wrench set.
 // Shape: {id:'combination-wrench-set-6-32mm', category:'wrenches' (the category of its contents),

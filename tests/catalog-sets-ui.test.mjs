@@ -60,23 +60,24 @@ const setIds=()=>$$('[data-catalog-set]').map(el=>el.dataset.catalogSet);
 const itemIds=()=>$$('[data-catalog-item]').map(el=>el.dataset.catalogItem);
 const card=id=>$(`[data-catalog-set="${id}"]`);
 const chipText=()=>$$('[data-catalog-category]').filter(b=>b.classList.contains('catalog-chip')).map(b=>b.textContent.replace(/\s+/g,' ').trim());
-async function openCatalog(){click('#app [data-action="library"]');if(tab('catalog').getAttribute('aria-selected')!=='true')click(tab('catalog'));await waitFor(()=>$('.catalog-grid')||$('.catalog-empty'));}
+async function openCatalog(){click('#app [data-action="library"]');if(tab('catalog').getAttribute('aria-selected')!=='true')click(tab('catalog'));await waitFor(()=>$('.catalog-section')||$('.catalog-empty'));}
 async function search(text){const input=$('[data-catalog-search]');input.value=text;input.dispatchEvent(new win.Event('input',{bubbles:true}));await new Promise(r=>setTimeout(r,170));}
 const chooseCategory=id=>click(`.catalog-chip[data-catalog-category="${id}"]`);
+const chooseKind=id=>click(`[data-catalog-kind="${id}"]`);
 const untick=(setId,index)=>{const box=$(`[data-set-member="${setId}"][data-index="${index}"]`);box.checked=false;box.dispatchEvent(new win.Event('change',{bubbles:true}));};
 const undoCount=()=>{let n=0;const undo=()=>$('#app [data-action="undo"]');while(undo()&&!undo().disabled&&n<100){undo().click();n++;}return n;};
 const placedInDrawer=(p,t)=>{const m=p.modules.find(m=>m.id===t.moduleId);return !!m&&m.x>=-.001&&m.y>=-.001&&m.x+m.width<=p.width+.001&&m.y+m.height<=p.height+.001;};
 
 after(()=>{setLang('cs');setAppUnit('mm');setCatalogSource(null);});
 
-test('"Sady nářadí" is the first chip and groups sets under the categories of their contents',async()=>{
+test('the "Sady" filter lists sets in sections of their contents, incomplete sets dropped',async()=>{
   await openCatalog();
-  assert.deepEqual(chipText(),['Sady nářadí 4','Vše 21','Klíče 6','Imbusy a torxy 3','Nástrčné hlavice a bity 11','Kleště 1'],'sets chip first, incomplete set dropped');
-  assert.ok($('.catalog-chip').classList.contains('catalog-chip-sets'));
-  chooseCategory('sets');
-  assert.equal($('.catalog-chip[data-catalog-category="sets"]').getAttribute('aria-pressed'),'true');
-  assert.deepEqual($$('[data-catalog-set-group]').map(g=>g.dataset.catalogSetGroup),['wrenches','hex-keys','sockets'],'groups follow CATEGORIES order');
-  assert.deepEqual($$('.catalog-set-group > .catalog-group-title').map(h=>h.textContent.replace(/\s+/g,' ').trim()),['Klíče 2','Imbusy a torxy 1','Nástrčné hlavice a bity 1']);
+  assert.deepEqual(chipText(),['Vše 25','Klíče 8','Imbusy a torxy 4','Nástrčné hlavice a bity 12','Kleště 1'],'cards per category: sets and outlines');
+  assert.deepEqual($$('[data-catalog-kind]').map(b=>b.textContent.replace(/\s+/g,' ').trim()),['Vše 25','Sady 4','Jednotlivé 21']);
+  chooseKind('sets');
+  assert.equal($('[data-catalog-kind="sets"]').getAttribute('aria-pressed'),'true');
+  assert.deepEqual($$('[data-catalog-section]').map(g=>g.dataset.catalogSection),['wrenches','hex-keys','sockets'],'sections follow CATEGORIES order');
+  assert.deepEqual($$('.catalog-section-toggle').map(h=>h.querySelector('.catalog-section-title').textContent+' '+h.querySelector('.catalog-section-count').textContent),['Klíče 2 sady','Imbusy a torxy 1 sada','Nástrčné hlavice a bity 1 sada']);
   assert.deepEqual(setIds(),['wrench-set-8-17','sae-wrench-set','hex-set','socket-set']);
   assert.equal(itemIds().length,0,'single outlines are not mixed into the sets view');
   assert.match($('.catalog-count').textContent,/4 sady/);
@@ -101,7 +102,7 @@ test('"Sady nářadí" is the first chip and groups sets under the categories of
 
 test('search and measurement filter apply to sets; matching sets are surfaced above single outlines',async()=>{
   await openCatalog();
-  chooseCategory('sets');
+  chooseKind('sets');
   await search('sada klicu');assert.deepEqual(setIds(),['wrench-set-8-17','sae-wrench-set'],'by set name without diacritics');
   await search('17');assert.deepEqual(setIds(),['wrench-set-8-17','socket-set'],'by the size of a contained tool');
   await search('hex keys');assert.deepEqual(setIds(),['hex-set'],'English name/description in Czech UI');
@@ -109,16 +110,12 @@ test('search and measurement filter apply to sets; matching sets are surfaced ab
   await search('nic-takoveho');assert.equal(setIds().length,0);assert.ok($('.catalog-results .catalog-empty'));
   await search('');
   click('[data-catalog-system="imperial"]');assert.deepEqual(setIds(),['sae-wrench-set']);
-  assert.match($('.catalog-chip[data-catalog-category="sets"]').textContent,/1/);
+  assert.match($('[data-catalog-kind="sets"]').textContent,/1/);
   click('[data-catalog-system="metric"]');assert.ok(!setIds().includes('sae-wrench-set'));
   click('[data-catalog-system="all"]');
-  // "Vše": a short "Sady" row above the outlines with a link to all sets.
-  chooseCategory('all');
-  assert.ok($('.catalog-sets-preview'));assert.equal(setIds().length,3,'preview shows a few sets');
-  assert.equal(itemIds().length,21);
-  click('.catalog-sets-preview [data-catalog-category="sets"]');
-  assert.equal(setIds().length,4);
-  chooseCategory('all');
+  // "Vše": every set next to the outlines of its category.
+  chooseKind('all');
+  assert.equal(setIds().length,4);assert.equal(itemIds().length,21);
   await search('13');
   assert.deepEqual(setIds(),['wrench-set-8-17','socket-set'],'search in Vše shows matching sets too');
   assert.deepEqual(itemIds(),['wrench-13','socket-13']);
@@ -134,7 +131,7 @@ test('search and measurement filter apply to sets; matching sets are surfaced ab
 
 test('"Přidat sadu" adds every tool of the set in one step (one undo, one arrangement)',async()=>{
   const previous=saved(),before=previous.tools.length;
-  await openCatalog();chooseCategory('sets');
+  await openCatalog();chooseKind('sets');
   click('[data-set-add="wrench-set-8-17"]');
   const needsFit=!!$('.modal');
   if(needsFit){
@@ -163,7 +160,7 @@ test('"Přidat sadu" adds every tool of the set in one step (one undo, one arran
 
 test('unticked members are left out; the add button counts the selection',async()=>{
   const before=saved().tools.length;
-  await openCatalog();chooseCategory('sets');
+  await openCatalog();chooseKind('sets');
   const toggle=$('[data-set-toggle="wrench-set-8-17"]');
   assert.equal(toggle.getAttribute('aria-expanded'),'false');assert.equal(toggle.textContent.trim(),'Zobrazit obsah');
   click(toggle);
@@ -193,7 +190,7 @@ test('unticked members are left out; the add button counts the selection',async(
 });
 
 test('a whole set can be saved to my tools without duplicates',async()=>{
-  await openCatalog();chooseCategory('sets');
+  await openCatalog();chooseKind('sets');
   const count=libraryStore().length;
   click('[data-set-save="hex-set"]');
   const lib=libraryStore();assert.equal(lib.length,count+3);
@@ -206,12 +203,12 @@ test('a whole set can be saved to my tools without duplicates',async()=>{
 
 test('whole sets can be multi-selected together with single outlines',async()=>{
   const before=saved().tools.length;
-  await openCatalog();chooseCategory('sets');
+  await openCatalog();chooseKind('sets');
   const pick=sel=>{const b=$(sel);b.checked=true;b.dispatchEvent(new win.Event('change',{bubbles:true}));};
   pick('[data-catalog-select-set="hex-set"]');
   assert.ok(card('hex-set').classList.contains('selected'));
   assert.match($('[data-catalog-add-selected]').textContent,/\(3\)/);
-  chooseCategory('pliers');pick('[data-catalog-select="pliers-combi"]');
+  chooseKind('all');chooseCategory('pliers');pick('[data-catalog-select="pliers-combi"]');
   assert.match($('[data-catalog-add-selected]').textContent,/\(4\)/);
   click('[data-catalog-add-selected]');
   assert.equal(saved().tools.length,before+4);
@@ -223,7 +220,7 @@ test('a large set that does not fit keeps every tool and the app reports what is
   setCatalogSource(async()=>({categories:CATEGORIES,items:big,sets:[{id:'big-set',category:'wrenches',name:{cs:'Velká sada',en:'Big set'},items:big.map(b=>b.id),unit:'mm'}]}));
   try{
     const before=saved().tools.length,oldIds=new Set(saved().tools.map(t=>t.id));
-    await openCatalog();chooseCategory('sets');
+    await openCatalog();chooseKind('sets');
     click('[data-set-add="big-set"]');
     const p=saved();assert.equal(p.tools.length,before+30,'nothing is dropped');
     const added=p.tools.filter(t=>!oldIds.has(t.id)),unplaced=added.filter(t=>!placedInDrawer(p,t)).length;
@@ -247,9 +244,9 @@ test('English labels for the sets view',async()=>{
   setLang('en');
   try{
     await openCatalog();
-    assert.equal(chipText()[0],'Tool sets 4');
-    chooseCategory('sets');
-    assert.equal($('.catalog-set-group .catalog-group-title').firstChild.textContent.trim(),'Wrenches');
+    chooseKind('all');assert.equal(chipText()[0],'All 25');
+    chooseKind('sets');assert.match($('[data-catalog-kind="sets"]').textContent,/^Sets 4/);
+    assert.equal($('.catalog-section-title').textContent,'Wrenches');
     assert.match($('.catalog-count').textContent,/4 sets/);
     const w=card('wrench-set-8-17');
     assert.equal(w.querySelector('.catalog-name').textContent,'Combination wrench set 8–17 mm');
@@ -299,8 +296,8 @@ test('real set data loads through catalogSets() and the default source without e
     await openCatalog();
     assert.ok($('[role=alert]')===null,'loading the real catalogue must not fail');
     if(real.length){
-      assert.match(chipText()[0],/^Sady nářadí \d+/);
-      chooseCategory('sets');assert.equal(setIds().length,real.length);
+      assert.match($('[data-catalog-kind="sets"]').textContent,/^Sady \d+/);
+      chooseKind('sets');assert.equal(setIds().length,real.length);
     }
     click('[data-modal-close]');
   }finally{setCatalogSource(source);}

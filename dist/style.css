@@ -93,11 +93,31 @@
 .catalog-chip.active{background:var(--ink);border-color:var(--ink);color:#fff}
 .catalog-chip.active span{color:#d5dbd2}
 .catalog-chip.empty:not(.active){opacity:.5}
-.catalog-count{font-size:11px;color:var(--muted);margin:0 0 8px}
+.catalog-count{font-size:11px;color:var(--muted);margin:0}
+.catalog-toggles{display:flex;flex-wrap:wrap;gap:8px}
+.catalog-kind button span{font-size:10px;font-weight:500;opacity:.75}
+.catalog-bar{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:6px 14px;margin-bottom:8px}
+.catalog-bar-actions{display:flex;flex-wrap:wrap;gap:4px 14px}
+.catalog-bar-actions .section-link{padding:4px 0}
+.catalog-section{border:1px solid var(--line);border-radius:8px;background:#fff;margin-bottom:8px}
+.catalog-section h3{margin:0;font:inherit}
+.catalog-section-toggle{display:flex;align-items:center;gap:8px;width:100%;min-height:42px;padding:9px 12px;border:0;border-radius:8px;background:none;font:inherit;color:var(--ink);text-align:left;cursor:pointer}
+.catalog-section-toggle:hover{background:var(--green-soft)}
+.catalog-section-toggle:focus-visible,.library-set-toggle:focus-visible{outline:2px solid var(--amber);outline-offset:-2px}
+.catalog-section-toggle .icon,.library-set-toggle .icon{width:14px;height:14px;flex-shrink:0;transition:transform .15s}
+.catalog-section-toggle[aria-expanded=true] .icon,.library-set-toggle[aria-expanded=true] .icon{transform:rotate(90deg)}
+.catalog-section-title{font-size:13px;font-weight:700}
+.catalog-section-count{margin-left:auto;font-size:11px;font-weight:500;color:var(--muted);white-space:nowrap}
+.catalog-section-body{display:flex;flex-direction:column;gap:10px;padding:4px 10px 12px}
+.library-sets{display:flex;flex-direction:column;gap:6px}
+.library-set{border:1px solid var(--line);border-left:3px solid #e2c48e;border-radius:7px}
+.library-set-toggle{display:flex;align-items:center;gap:7px;width:100%;min-height:38px;padding:7px 10px;border:0;border-radius:6px;background:none;font:inherit;font-size:12px;color:var(--ink);text-align:left;cursor:pointer}
+.library-set-toggle span{margin-left:auto;font-size:11px;color:var(--muted);white-space:nowrap}
+.library-set .library-grid{padding:4px 8px 8px}
 .catalog-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:10px}
 .catalog-item{position:relative;background:#fff;border:1px solid var(--line);border-radius:8px;padding:12px;display:flex;flex-direction:column;gap:6px;min-width:0}
 .catalog-item.selected{border-color:var(--amber);box-shadow:0 0 0 1px var(--amber) inset;background:#fffbf3}
-.catalog-check{position:absolute;top:8px;left:8px;display:flex}
+.catalog-check{position:absolute;top:8px;left:8px;z-index:1;display:flex}
 .catalog-check input{width:16px;height:16px;accent-color:var(--green);cursor:pointer}
 .catalog-item .catalog-thumb{width:100%;height:84px;align-self:stretch}
 .catalog-item .catalog-thumb svg{width:86%;height:72px}
@@ -123,7 +143,8 @@
   .catalog-chips{flex-wrap:nowrap;overflow-x:auto;padding-bottom:4px;scrollbar-width:thin;-webkit-overflow-scrolling:touch}
   .catalog-chip{flex-shrink:0;min-height:36px}
   .catalog-search input{font-size:16px;min-height:44px}
-  .catalog-system{width:100%}.catalog-system button{flex:1;min-height:44px}
+  .catalog-toggles,.catalog-system{width:100%}.catalog-system button{flex:1;min-height:44px}
+  .catalog-section-toggle,.library-set-toggle{min-height:44px}
   .catalog-grid{grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px}
   .catalog-actions .btn,.catalog-actions .icon-btn{min-height:44px}.catalog-actions .icon-btn{width:44px;height:44px}
   .modal-foot:has(.catalog-foot-actions){flex-direction:column;align-items:stretch}
@@ -131,17 +152,6 @@
 }
 
 /* Tool sets in the catalogue ("Sady nářadí", catalog-ui.js) */
-.catalog-chip-sets{border-color:var(--amber);background:#fff6e5;color:#7a5a22;font-weight:700}
-.catalog-chip-sets .icon{width:13px;height:13px}
-.catalog-chip-sets.active{background:#8b672a;border-color:#8b672a;color:#fff}
-.catalog-sets-preview{margin-bottom:16px;padding-bottom:14px;border-bottom:1px dashed var(--line)}
-.catalog-section-head{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:8px}
-.catalog-section-head .section-link{padding:4px 0}
-.catalog-group-title{display:flex;align-items:center;gap:6px;font-size:13px;font-weight:700;margin:14px 0 8px}
-.catalog-section-head .catalog-group-title{margin:0}
-.catalog-group-title .icon{width:15px;height:15px;color:#8b672a}
-.catalog-group-title span{font-size:11px;font-weight:500;color:var(--muted)}
-.catalog-set-group:first-of-type .catalog-group-title{margin-top:4px}
 .catalog-set-grid{grid-template-columns:repeat(auto-fill,minmax(250px,1fr))}
 .catalog-set{border-left:3px solid #e2c48e}
 .catalog-set.expanded{grid-column:1/-1}
@@ -368,3 +378,4 @@
   .inspector{height:320px}
   .inspector-selection{--selection-max:240px}
 }
+.calibration-preview{min-width:0;align-self:start}.calibration-toolbar{display:flex;align-items:center;justify-content:flex-end;gap:6px;flex-wrap:wrap;margin-top:9px}.calibration-toolbar output{min-width:54px;text-align:center;font-size:11px;font-variant-numeric:tabular-nums;color:var(--muted)}.calibration-toolbar .btn{min-height:34px;padding:7px 10px;font-size:11px}.modal p.calibration-view-hint{font-size:10px;line-height:1.6;color:var(--muted);margin:7px 0 0}

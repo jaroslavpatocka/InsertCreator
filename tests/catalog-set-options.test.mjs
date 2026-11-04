@@ -52,8 +52,8 @@ const click=s=>{const el=typeof s==='string'?$(s):s;assert.ok(el,'Missing '+s);e
 const waitFor=async fn=>{const start=Date.now();while(!fn()){if(Date.now()-start>5000)throw Error('Timed out waiting for UI');await new Promise(r=>setTimeout(r,10));}};
 const saved=()=>JSON.parse(localStorage.getItem('suplik-studio-projects-v1')).find(p=>p.id===JSON.parse(localStorage.getItem('suplik-studio-current')));
 const tab=id=>$(`[data-library-folder="${id}"]`);
-async function openSets(){click('#app [data-action="library"]');if(tab('catalog').getAttribute('aria-selected')!=='true')click(tab('catalog'));await waitFor(()=>$('.catalog-grid')||$('.catalog-empty'));click('.catalog-chip[data-catalog-category="sets"]');}
-async function openItems(){click('#app [data-action="library"]');if(tab('catalog').getAttribute('aria-selected')!=='true')click(tab('catalog'));await waitFor(()=>$('.catalog-grid')||$('.catalog-empty'));click('.catalog-chip[data-catalog-category="all"]');}
+async function openSets(){click('#app [data-action="library"]');if(tab('catalog').getAttribute('aria-selected')!=='true')click(tab('catalog'));await waitFor(()=>$('.catalog-section')||$('.catalog-empty'));click('[data-catalog-kind="sets"]');}
+async function openItems(){click('#app [data-action="library"]');if(tab('catalog').getAttribute('aria-selected')!=='true')click(tab('catalog'));await waitFor(()=>$('.catalog-section')||$('.catalog-empty'));click('.catalog-chip[data-catalog-category="all"]');click('[data-catalog-kind="all"]');}
 const chooseLayout=(setId,value)=>{const s=$(`[data-set-layout="${setId}"]`);s.value=value;s.dispatchEvent(new win.Event('change',{bubbles:true}));};
 const type=(sel,value)=>{const el=$(sel);assert.ok(el,'Missing '+sel);el.value=value;el.dispatchEvent(new win.Event('input',{bubbles:true}));};
 const bbox=points=>{const xs=points.map(p=>p.x),ys=points.map(p=>p.y);return{w:Math.max(...xs)-Math.min(...xs),h:Math.max(...ys)-Math.min(...ys)};};
@@ -125,9 +125,9 @@ test('"Samostatný modul pro každý nástroj" adds individually minimal modules
 test('footer batch passes exact collection ranges and scales once, and rejects an invalid scale atomically',async()=>{
   const calls=[];
   const modal=openModal({title:'Batch contract',wide:true});
-  mountLibraryFolders(modal,{mine:()=>({body:'',footer:''}),onAdd:(tools,options)=>calls.push({tools,options}),onSave:()=>0});
+  mountLibraryFolders(modal,{mine:()=>({tools:[],card:()=>'',empty:'',footer:''}),onAdd:(tools,options)=>calls.push({tools,options}),onSave:()=>0});
   if(tab('catalog').getAttribute('aria-selected')!=='true')click(tab('catalog'));
-  await waitFor(()=>$('[data-catalog-category="all"]'));
+  await waitFor(()=>$('[data-catalog-kind="all"]'));click('[data-catalog-kind="all"]');
   click('[data-catalog-category="all"]');
   await waitFor(()=>$('[data-catalog-select="hex-4"]'));
   const check=selector=>{const el=$(selector);assert.ok(el,selector);el.checked=!el.checked;el.dispatchEvent(new win.Event('change',{bubbles:true}));};
@@ -279,7 +279,7 @@ test('real combination wrench set in the demo drawer: placed or an explicit choi
   try{
     const before=saved(),old=ids(before),size=[before.width,before.height];
     click('#app [data-action="library"]');if(tab('catalog').getAttribute('aria-selected')!=='true')click(tab('catalog'));
-    await waitFor(()=>$('[data-catalog-category="sets"]'));click('.catalog-chip[data-catalog-category="sets"]');
+    await waitFor(()=>$('[data-catalog-kind="sets"]'));click('[data-catalog-kind="sets"]');
     click('[data-set-add="combination-wrench-set-8-19mm"]');
     let p=saved(),added=newOf(old,p),addedIds=new Set(added.map(t=>t.id));
     assert.equal(added.length,12);
@@ -323,7 +323,7 @@ test('real combination wrench set in the demo drawer: placed or an explicit choi
 function chooseLayoutReset(){click('#app [data-action="library"]');const s=$('[data-set-layout]');if(s){s.value='group';s.dispatchEvent(new win.Event('change',{bubbles:true}));}click('[data-modal-close]');}
 
 // Saved printer dimensions belong to export, never to catalogue insertion.
-async function openRealSets(){click('#app [data-action="library"]');if(tab('catalog').getAttribute('aria-selected')!=='true')click(tab('catalog'));await waitFor(()=>$('.catalog-chip[data-catalog-category="sets"]'));click('.catalog-chip[data-catalog-category="sets"]');}
+async function openRealSets(){click('#app [data-action="library"]');if(tab('catalog').getAttribute('aria-selected')!=='true')click(tab('catalog'));await waitFor(()=>$('[data-catalog-kind="sets"]'));click('[data-catalog-kind="sets"]');}
 const freshDrawer=()=>{
   click('#app [data-action="projects"]');click('[data-new]');
   for(const [key,value] of [['drawerName','Export bed regression'],['drawerWidth',672],['drawerHeight',420]]){const el=$('[data-field="'+key+'"]');el.value=value;el.dispatchEvent(new win.Event('input',{bubbles:true}));}

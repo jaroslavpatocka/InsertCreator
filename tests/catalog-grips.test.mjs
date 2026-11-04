@@ -45,7 +45,7 @@ test('each-tool catalogue storage requests individual automatic modules in both 
   try{
     win.document.body.innerHTML='<main></main><footer></footer>';
     const body=win.document.querySelector('main'),footer=win.document.querySelector('footer');
-    mountLibraryFolders({body,footer},{mine:()=>({body:'',footer:''}),onAdd:(tools,opts)=>added.push({tools,opts}),onSave:()=>0});
+    mountLibraryFolders({body,footer},{mine:()=>({tools:[],card:()=>'',empty:'',footer:''}),onAdd:(tools,opts)=>added.push({tools,opts}),onSave:()=>0});
     body.querySelector('[data-library-folder="catalog"]').click();
     for(let attempt=0;attempt<30&&!body.querySelector('[data-set-layout]');attempt++)await new Promise(resolve=>setTimeout(resolve,5));
     const layout=body.querySelector('[data-set-layout]');assert.ok(layout);layout.value='each';layout.dispatchEvent(new win.Event('change',{bubbles:true}));

@@ -10,6 +10,8 @@ export const clone=value=>JSON.parse(JSON.stringify(value));
 const range=(min,max,length)=>length?`${fmtLen(min,{suffix:false})}–${fmtLen(max)}`:`${min}–${max}`;
 const finite=(value,min,max,label,length=true)=>{const n=Number(value);if(!Number.isFinite(n)||n<min||n>max)throw i18nError('Neplatná hodnota: {label} ({range}).',{label:t(label),range:range(min,max,length)});return n;};
 const text=(s,max=100)=>String(s??'').slice(0,max);
+// Helper metadata is never worth rejecting a project over: unusable values are dropped silently.
+const metaText=(s,max)=>typeof s==='string'?s.replace(/[\u0000-\u001f\u007f-\u009f]/g,'').trim().slice(0,max).trim():'';
 export function validateProject(input){
   const p=input?.project||input;
   if(!p||typeof p!=='object'||!Array.isArray(p.tools)||!Array.isArray(p.modules))throw i18nError('Soubor neobsahuje projekt Šuplík Studia.');
@@ -50,6 +52,8 @@ export function validateProject(input){
       if(!size||typeof size.value!=='number'||!Number.isFinite(size.value)||size.value<=0||size.value>3000||!['mm','in'].includes(size.unit))throw i18nError('Zadejte platnou jmenovitou velikost nástroje.');
       sizeFields.nominalSize={value:size.value,unit:size.unit};
     }
+    const category=metaText(t.category,40);if(category)sizeFields.category=category;
+    if(Array.isArray(t.setNames)){const setNames=[...new Set(t.setNames.map(s=>metaText(s,100)).filter(Boolean))].slice(0,12);if(setNames.length)sizeFields.setNames=setNames;}
     return{id,name:text(t.name||tr('Nástroj')),...(['mm','in'].includes(t.unit)?{unit:t.unit}:{}),...sizeFields,points,x:finite(t.x??0,-1000000,1000000,'X nástroje'),y:finite(t.y??0,-1000000,1000000,'Y nástroje'),rotation:finite(t.rotation??0,-3600,3600,'otočení',false),depth:finite(t.depth??12,.5,99,'hloubka kapsy'),locked:!!t.locked,moduleId:ids.has(t.moduleId)?t.moduleId:null,...(Object.hasOwn(t,'fingerGrips')?{fingerGrips:validateFingerGrips(t.fingerGrips,{minX,minY})}:{})};
   });
   if(Object.hasOwn(p,'toolSets'))out.toolSets=validateToolSets(p.toolSets,toolIds);
