@@ -7,6 +7,9 @@ import {moduleOutline,validateModuleFootprint,containsPocketWalls} from './modul
 import {FLOOR_RESERVE,materialConfig} from './print-material.js';
 import {magnetPocketCenters} from './magnet-pockets.js';
 
+// A memory guard for one module: its binary STL stays around 25 MB.
+const MAX_MESH_TRIANGLES=500000,MAX_CONTOUR_POINTS=80000;
+
 const SCALE=10000,EPS=1e-7;
 const number=(value,fallback)=>Number.isFinite(+value)?+value:fallback;
 const signedArea=p=>p.reduce((s,a,i)=>{const b=p[(i+1)%p.length];return s+a.x*b.y-b.x*a.y;},0)/2;
@@ -119,9 +122,9 @@ export function buildPrintTriangles(project,modules,tools,origin={x:0,y:0},{fit=
     let count=0;for(let y=0;y<m.height-1;y+=42)for(let x=0;x<m.width-1;x+=42)if(cellInClip(m,x,y))count++;return sum+count;
   },0):0;
   if(!fit&&cfg.bottomMode==='grid'&&cellCount>400)throw i18nError('Najednou lze vytvořit nejvýše 400 Gridfinity patek. Exportujte sestavu po jednotlivých modulech.');
-  if(relevantTools.reduce((sum,t)=>sum+t.poly.length,0)>20000)throw i18nError('Kontury jsou pro jeden export příliš složité. Exportujte jednotlivé moduly.');
+  if(relevantTools.reduce((sum,t)=>sum+t.poly.length,0)>MAX_CONTOUR_POINTS)throw i18nError('Kontury jsou pro jeden export příliš složité. Exportujte jednotlivé moduly.');
   const v=(p,z)=>[round(p.x-origin.x),round(p.y-origin.y),round(z)];
-  const add=(a,b,c)=>{if(triangles.length>=120000)throw i18nError('Model je pro jeden export příliš složitý. Exportujte jednotlivé moduly.');const u=b.map((x,i)=>x-a[i]),w=c.map((x,i)=>x-a[i]);if(Math.hypot(u[1]*w[2]-u[2]*w[1],u[2]*w[0]-u[0]*w[2],u[0]*w[1]-u[1]*w[0])>1e-9)triangles.push([a,b,c]);};
+  const add=(a,b,c)=>{if(triangles.length>=MAX_MESH_TRIANGLES)throw i18nError('Model je pro jeden export příliš složitý. Exportujte jednotlivé moduly.');const u=b.map((x,i)=>x-a[i]),w=c.map((x,i)=>x-a[i]);if(Math.hypot(u[1]*w[2]-u[2]*w[1],u[2]*w[0]-u[0]*w[2],u[0]*w[1]-u[1]*w[0])>1e-9)triangles.push([a,b,c]);};
   function face(paths,z,up){
     if(clip)paths=paths.map(poly=>cleanCapBacktracks(poly,kernel.scale));
     for(const region of regions(paths)){
@@ -269,7 +272,7 @@ export function buildPrintTriangles(project,modules,tools,origin={x:0,y:0},{fit=
     slabs(z,sections,feet,barriers,[],!!(joint&&clip));
     }
     const stitched=stitchBoundaryEdges(triangles.splice(start),{canonical:!!clip});for(const triangle of stitched)triangles.push(triangle);
-    if(triangles.length>120000)throw i18nError('Model je pro jeden export příliš složitý. Exportujte jednotlivé moduly.');
+    if(triangles.length>MAX_MESH_TRIANGLES)throw i18nError('Model je pro jeden export příliš složitý. Exportujte jednotlivé moduly.');
   }
   const result=fit?stitchBoundaryEdges(triangles,{canonical:!!clip}):triangles;
   validatePrintMesh(result);

@@ -1,6 +1,9 @@
 import {FLOOR_THICKNESS,materialConfig,materialSlots} from './print-material.js';
 import {bounds,transformedPoints,autoArrange,resizeModule,validateLayout,exportSVG,exportDXF,exportSTL,exportFitSTL,printStats,zipFiles,createDemoProject} from './geometry.js';
 import {printPreview,createCamera3D,normalizeCamera3D} from './preview3d.js';
+import {createLivePreview} from './preview-live.js';
+import {createMeshPool,meshKeys} from './mesh-client.js';
+import {mergePrintStats} from './preview-mesh.js';
 import {validatePrintBed} from './print-geometry.js';
 import {createViewControls,createViewControls2D} from './view-controls.js';
 import {exportFitPDF} from './fit-sheet.js';
@@ -62,6 +65,7 @@ library=library.flatMap(t=>{try{return[validateProject({...blankProject(),tools:
 let selected=project.tools[0]?.id||null,selectedModule=null,inspectorTab='drawer',view='2d',zoom=1,snap=true,showGrid=true,showLabels=true,tipVisible=!readLocal('suplik-hide-tip',false);
 let bulkSelection=new Set();
 let undoStack=[],redoStack=[],drag=null,storageFailed=false,moveMode=false,boardSelectionGesture=null;
+let livePreview,meshPool;
 let camera3D=createCamera3D(),cameraFrame={width:1000,height:600,zoom:1},viewControls=null,pan2D={x:0,y:0};
 let smartLayoutRun=null;
 const smartModeKey='suplik-studio-smart-mode';
@@ -771,14 +775,39 @@ function resizeHandles(svg,w,h){
   }
   return out;
 }
-function render3D(svg){
-  const rect=svg.getBoundingClientRect(),viewport={width:rect.width||svg.clientWidth||1000,height:rect.height||svg.clientHeight||600};
-  const preview=printPreview(project,bulkSelection.size?null:selected,bulkSelection.size?null:selectedModule,camera3D,viewport,[...bulkSelection]);
+// One pool serves both the 3D view and the export dialog, so neither repeats the other's work.
+function sharedMeshPool(){if(meshPool===undefined)meshPool=typeof Worker==='function'?createMeshPool():null;return meshPool;}
+function liveEngine(){
+  if(livePreview===undefined){
+    let queued=false;
+    const onChange=()=>{if(queued)return;queued=true;requestAnimationFrame(()=>{queued=false;const svg=$('#board-svg');if(svg&&view==='3d')render3D(svg,false);});};
+    try{const pool=sharedMeshPool();livePreview=pool?createLivePreview({onChange,pool}):null;}catch{livePreview=null;}
+  }
+  return livePreview&&!livePreview.broken?livePreview:null;
+}
+function render3D(svg,refresh=true){
+  const rect=svg.getBoundingClientRect(),viewport={width:rect.width||svg.clientWidth||1000,height:rect.height||svg.clientHeight||600},live=liveEngine();
+  let preview;
+  if(live){
+    if(live.canvas.parentNode!==svg.parentNode)svg.before(live.canvas);
+    const chosen=new Set(bulkSelection),current=bulkSelection.size?null:selected,activeIds=new Set([bulkSelection.size?null:selectedModule,...project.tools.filter(tool=>tool.id===current||chosen.has(tool.id)).map(tool=>tool.moduleId)]);
+    preview=live.render(project,{activeIds,camera:camera3D,viewport,refresh});
+    svg.dataset.renderer='webgl';svg.dataset.meshReady=preview.stats.ready+'/'+preview.stats.total;svg.dataset.meshTriangles=preview.stats.triangles;
+  }else{
+    livePreview?.canvas.remove();delete svg.dataset.renderer;
+    preview=printPreview(project,bulkSelection.size?null:selected,bulkSelection.size?null:selectedModule,camera3D,viewport,[...bulkSelection]);
+  }
   camera3D=preview.camera;cameraFrame={...preview.frame,zoom:camera3D.zoom};
   svg.setAttribute('viewBox',preview.viewBox);svg.innerHTML=preview.html;
 }
+/** The module under a pointer; in the WebGL view the faces are not DOM elements. */
+function boardModuleId(event){
+  const group=event.target.closest('[data-module]');if(group)return group.dataset.module;
+  const svg=view==='3d'?event.target.closest('#board-svg'):null;
+  return svg&&livePreview&&!livePreview.broken?livePreview.pick(event.clientX,event.clientY,svg.getBoundingClientRect()):null;
+}
 function renderCameraFrame(){
-  const svg=$('#board-svg');if(!svg)return;if(view==='3d')render3D(svg);else{
+  const svg=$('#board-svg');if(!svg)return;if(view==='3d')render3D(svg,false);else{
     const pad=34,w=project.width+pad*2,h=project.height+pad*2;
     svg.setAttribute('viewBox',`${-pad+(w-w/zoom)/2+pan2D.x} ${-pad+(h-h/zoom)/2+pan2D.y} ${w/zoom} ${h/zoom}`);
   }
@@ -1075,6 +1104,21 @@ function jointStatus(source,entries){
   const unjoined=plan.unjoined?.length?' '+tr('Na {n} společných hranách není bezpečné místo pro spojku. Podrobnosti jsou v assembly.json.',{n:plan.unjoined.length}):'';
   return toggle+settings+`<p class="muted-note" data-joint-status>${esc(count+cuts+skipped+unjoined)} ${tr("Spojky jsou ve vrstvě dna. V sestaveném modelu je zkontrolujete pohledem zespodu.")} ${tr('Skládejte zleva doprava a shora dolů, další modul vždy nasaďte shora. Moduly exportujte společně, aby výstupky a zdířky seděly. Se spojkami mají moduly větší okraj, ruční a zamčené moduly se nemění.')}</p>`;
 }
+/** Totals per module: never blocks the dialog and never hits the limit of one whole-drawer mesh. */
+function exportStats(exportProject){
+  const pool=sharedMeshPool(),ids=exportProject.modules.map(module=>module.id);
+  if(!pool||pool.broken){
+    try{return{stats:mergePrintStats(ids.map(moduleId=>printStats(exportProject,{moduleId,checkBed:false})))};}catch(e){return{error:errorText(e)};}
+  }
+  // The notes are translated text, so a language change needs its own results.
+  const {modules:hashes}=meshKeys(exportProject,{sharedLayout:false}),key=id=>getLang()+hashes.get(id),found=ids.map(id=>pool.peek('stats',key(id)));pool.keep('stats',ids.map(key));
+  if(found.every(Boolean))return{stats:mergePrintStats(found)};
+  const pending=Promise.all(exportProject.modules.map(module=>pool.run('stats',key(module.id),exportProject,module.id,{weight:module.width*module.height}))).then(mergePrintStats);
+  return{pending};
+}
+function printSummary(stats){
+  return `<div class="print-summary"><strong>${tr('{volume} modelu',{volume:volumeText(stats.volumeCm3)})}${stats.savingPercent>0?`<em>${tr('−{n} % proti plnému bloku',{n:fmt(stats.savingPercent,0)})}</em>`:''}</strong><span>${tr('Výška nejvyššího dílu {height} · dno {base}',{height:fmtLen(stats.heightMm),base:fmtLen(stats.effectiveBaseMm)})}</span><small>${tr('Objem geometrie. Skutečnou spotřebu a čas určí slicer podle výplně a nastavení.')}</small>${(stats.notes||[]).map(note=>`<small>${esc(errorText(note))}</small>`).join('')}</div>`;
+}
 function openExport(){
   const m=moduleFor(),selectedId=m?.id||null;
   if(exportScope==='selected'&&!selectedId)exportScope='all';
@@ -1084,11 +1128,12 @@ function openExport(){
   const exportProject=exportFormat==='stl'?{...project,modules:entries,tools:project.tools.filter(tool=>chosen.has(tool.moduleId))}:project;
   const issues=exportFormat==='stl'?validateLayout(exportProject):exportScope==='selected'?validateLayout({...project,modules:entries,tools:project.tools.filter(t=>t.moduleId===selectedId)}):errors();
   const formats={stl:['STL',tr('3D tisk')],svg:['SVG',tr('Pěna · laser')],dxf:['DXF','CAD · CNC'],json:['JSON',tr('Záloha projektu')]};
-  let stats=null,printError='',bedError='';
-  if(exportFormat==='stl'&&!issues.length&&entries.length&&entries.every(fitsExportBed)){try{stats=printStats(exportProject,{...opts,checkBed:false});}catch(e){printError=errorText(e);}}
+  let stats=null,printError='',bedError='',statsPending=null;
+  if(exportFormat==='stl'&&!issues.length&&entries.length&&entries.every(fitsExportBed)){const job=exportStats(clone(exportProject));stats=job.stats||null;printError=job.error||'';statsPending=job.pending||null;}
   if(exportFormat==='stl'&&entries.length){try{validatePrintBed({...project,limitToBed:true},entries);}catch(e){bedError=errorText(e);}}
   const bottoms=bottomNames(),mmNote=unit()!=='mm'?`<p class="muted-note">${tr('Exportované soubory jsou vždy v milimetrech, i když editor zobrazuje {unit}.',{unit:unit()})}</p>`:'';
-  const modal=openModal({title:tr('Připraveno k výrobě'),subtitle:tr('Vyberte provedení. Každý modul se stáhne zvlášť v jednom ZIPu.'),body:`<div class="format-grid">${Object.entries(formats).map(([key,[title,desc]])=>`<button class="format ${exportFormat===key?'active':''}" data-format="${key}"><strong>${title}</strong><span>${desc}</span></button>`).join('')}</div>${exportFormat==='stl'?exportModulePicker():''}${exportFormat!=='json'?`<label class="field"><span>${tr('Co exportovat')}</span><select id="export-scope">${exportFormat==='stl'&&exportScope==='custom'?`<option value="custom" selected>${tr('Označené moduly')}</option>`:''}<option value="all" ${exportScope==='all'?'selected':''}>${tr('Celou sestavu')}</option><option value="selected" ${exportScope==='selected'?'selected':''} ${selectedId?'':'disabled'}>${tr('Vybraný modul')}${m?' · '+esc(m.name):''}</option></select></label>`:''}${exportFormat==='stl'?`<label class="print-toggle"><input id="print-light" type="checkbox" ${project.printMode==='light'?'checked':''}><span><strong>${tr('Úsporný tisk')}</strong><small>${tr('Tenké dno a stěny kolem nástroje. Okolí zůstane otevřené.')}</small></span>${icon('spark')}</label><label class="field"><span>${tr('Dno a uchycení')}</span><select id="print-bottom">${Object.entries(bottoms).map(([key,label])=>`<option value="${key}" ${project.bottomMode===key?'selected':''}>${label}</option>`).join('')}</select></label><p class="muted-note">${project.bottomMode==='grid'?tr('Patky pro podložku Gridfinity. Rastr a rozměry modulů musí být v násobcích 42 mm.'):project.bottomMode==='magnet'?tr('Čtyři kapsy zespodu pro magnety 6 × 2 mm. Strop nad magnetem se automaticky zesílí.'):project.bottomMode==='adhesive'?tr('Rovné spodní plochy pro lepidlo či tenkou oboustrannou pásku. Tloušťku pásky přičtěte k výšce sestavy.'):tr('Rovné dno pro volné položení do šuplíku.')}</p>${stats?`<div class="print-summary"><strong>${tr('{volume} modelu',{volume:volumeText(stats.volumeCm3)})}${stats.savingPercent>0?`<em>${tr('−{n} % proti plnému bloku',{n:fmt(stats.savingPercent,0)})}</em>`:''}</strong><span>${tr('Výška nejvyššího dílu {height} · dno {base}',{height:fmtLen(stats.heightMm),base:fmtLen(stats.effectiveBaseMm)})}</span><small>${tr('Objem geometrie. Skutečnou spotřebu a čas určí slicer podle výplně a nastavení.')}</small>${(stats.notes||[]).map(note=>`<small>${esc(errorText(note))}</small>`).join('')}</div>`:''}<section class="export-printer"><h3>${tr('Tisková podložka')}</h3><div class="fields-row">${input(tr('Tisková plocha · šířka'),project.bedWidth,'bedWidth',{min:50,max:2000})}${input(tr('Tisková plocha · hloubka'),project.bedHeight,'bedHeight',{min:50,max:2000})}</div>${project.bottomMode==='magnet'?`<div class="fields-row">${input(tr('Průměr kapsy'),project.magnetDiameter,'magnetDiameter',{min:3,max:20})}${input(tr('Hloubka kapsy'),project.magnetDepth,'magnetDepth',{min:1,max:8})}</div>`:''}<p class="muted-note">${tr('Rozměry podložky se kontrolují pouze při exportu STL. Rozvržení šuplíku neovlivňují.')}</p></section><label class="check-row"><input id="export-size-labels" type="checkbox" ${project.sizeLabels?'checked':''}>${tr('Popisky velikostí v modelu')}</label>${labelStatus(entries)}${colorPrintPanel()}${jointStatus(exportProject,entries)}${gridfinitySummary()}<div id="bed-warnings"></div>`:''}${(issues.length||printError)&&exportFormat!=='json'?`<div class="issue-box">${issues.slice(0,3).map(i=>`<p>${esc(errorText(i))}</p>`).join('')}${printError?`<p>${esc(printError)}</p>`:''}<button class="section-link" data-repack>${tr('Přepočítat rozvržení')}</button></div>`:''}${exportFormat==='svg'||exportFormat==='dxf'?`<p class="muted-note">${tr('Černá / MODULES = obrys modulu, červená / POCKETS = kapsa včetně vůle. Všechny rozměry jsou v mm.')}</p>`:''}${exportFormat!=='json'?mmNote:''}${exportFormat==='json'?`<p class="muted-note">${tr('Uloží kontury, rozměry, provedení a polohy modulů. Na jiném zařízení otevřete JSON přes Moje šuplíky.')}</p>`:`<details class="advanced fit-check"><summary>${tr('Nejdřív ověřit velikost')}</summary><p>${tr('Přiložte nástroj na papír nebo zkuste tenký rámeček. Nemusíte hned tisknout celý inzert.')}</p><div class="test-actions"><button class="btn btn-light" data-fit-pdf ${issues.length||!entries.length?'disabled':''}>${icon('print')}${tr('PDF v měřítku 1:1')}</button><button class="btn btn-light" data-fit-stl ${issues.length||!entries.length?'disabled':''}>${icon('cube')}${tr('Tenká zkouška STL')}</button></div><p class="muted-note">${tr('PDF tiskněte na 100 % a přeměřte kontrolní úsečku 100 mm. Fotografie nemusí zachytit nejširší část vysokého nástroje.')}</p></details>`}`,footer:`<span class="footnote">${exportFormat==='stl'?tr('STL v mm · samostatné uzavřené díly'):tr('Soubory vznikají ve vašem zařízení')}</span><button class="btn btn-primary" data-do-export ${exportFormat!=='json'&&(issues.length||!entries.length||(exportFormat!=='stl'&&(printError||bedError)))?'disabled':''}>${icon('download')}${exportFormat==='stl'?tr('Připravit a stáhnout ZIP'):tr('Stáhnout {format}',{format:exportFormat.toUpperCase()})}</button>`});
+  const modal=openModal({title:tr('Připraveno k výrobě'),subtitle:tr('Vyberte provedení. Každý modul se stáhne zvlášť v jednom ZIPu.'),body:`<div class="format-grid">${Object.entries(formats).map(([key,[title,desc]])=>`<button class="format ${exportFormat===key?'active':''}" data-format="${key}"><strong>${title}</strong><span>${desc}</span></button>`).join('')}</div>${exportFormat==='stl'?exportModulePicker():''}${exportFormat!=='json'?`<label class="field"><span>${tr('Co exportovat')}</span><select id="export-scope">${exportFormat==='stl'&&exportScope==='custom'?`<option value="custom" selected>${tr('Označené moduly')}</option>`:''}<option value="all" ${exportScope==='all'?'selected':''}>${tr('Celou sestavu')}</option><option value="selected" ${exportScope==='selected'?'selected':''} ${selectedId?'':'disabled'}>${tr('Vybraný modul')}${m?' · '+esc(m.name):''}</option></select></label>`:''}${exportFormat==='stl'?`<label class="print-toggle"><input id="print-light" type="checkbox" ${project.printMode==='light'?'checked':''}><span><strong>${tr('Úsporný tisk')}</strong><small>${tr('Tenké dno a stěny kolem nástroje. Okolí zůstane otevřené.')}</small></span>${icon('spark')}</label><label class="field"><span>${tr('Dno a uchycení')}</span><select id="print-bottom">${Object.entries(bottoms).map(([key,label])=>`<option value="${key}" ${project.bottomMode===key?'selected':''}>${label}</option>`).join('')}</select></label><p class="muted-note">${project.bottomMode==='grid'?tr('Patky pro podložku Gridfinity. Rastr a rozměry modulů musí být v násobcích 42 mm.'):project.bottomMode==='magnet'?tr('Čtyři kapsy zespodu pro magnety 6 × 2 mm. Strop nad magnetem se automaticky zesílí.'):project.bottomMode==='adhesive'?tr('Rovné spodní plochy pro lepidlo či tenkou oboustrannou pásku. Tloušťku pásky přičtěte k výšce sestavy.'):tr('Rovné dno pro volné položení do šuplíku.')}</p><div data-print-stats aria-live="polite">${stats?printSummary(stats):statsPending?`<p class="muted-note">${tr('Počítám objem modelu…')}</p>`:''}</div><section class="export-printer"><h3>${tr('Tisková podložka')}</h3><div class="fields-row">${input(tr('Tisková plocha · šířka'),project.bedWidth,'bedWidth',{min:50,max:2000})}${input(tr('Tisková plocha · hloubka'),project.bedHeight,'bedHeight',{min:50,max:2000})}</div>${project.bottomMode==='magnet'?`<div class="fields-row">${input(tr('Průměr kapsy'),project.magnetDiameter,'magnetDiameter',{min:3,max:20})}${input(tr('Hloubka kapsy'),project.magnetDepth,'magnetDepth',{min:1,max:8})}</div>`:''}<p class="muted-note">${tr('Rozměry podložky se kontrolují pouze při exportu STL. Rozvržení šuplíku neovlivňují.')}</p></section><label class="check-row"><input id="export-size-labels" type="checkbox" ${project.sizeLabels?'checked':''}>${tr('Popisky velikostí v modelu')}</label>${labelStatus(entries)}${colorPrintPanel()}${jointStatus(exportProject,entries)}${gridfinitySummary()}<div id="bed-warnings"></div>`:''}${(issues.length||printError)&&exportFormat!=='json'?`<div class="issue-box">${issues.slice(0,3).map(i=>`<p>${esc(errorText(i))}</p>`).join('')}${printError?`<p>${esc(printError)}</p>`:''}<button class="section-link" data-repack>${tr('Přepočítat rozvržení')}</button></div>`:''}${exportFormat==='svg'||exportFormat==='dxf'?`<p class="muted-note">${tr('Černá / MODULES = obrys modulu, červená / POCKETS = kapsa včetně vůle. Všechny rozměry jsou v mm.')}</p>`:''}${exportFormat!=='json'?mmNote:''}${exportFormat==='json'?`<p class="muted-note">${tr('Uloží kontury, rozměry, provedení a polohy modulů. Na jiném zařízení otevřete JSON přes Moje šuplíky.')}</p>`:`<details class="advanced fit-check"><summary>${tr('Nejdřív ověřit velikost')}</summary><p>${tr('Přiložte nástroj na papír nebo zkuste tenký rámeček. Nemusíte hned tisknout celý inzert.')}</p><div class="test-actions"><button class="btn btn-light" data-fit-pdf ${issues.length||!entries.length?'disabled':''}>${icon('print')}${tr('PDF v měřítku 1:1')}</button><button class="btn btn-light" data-fit-stl ${issues.length||!entries.length?'disabled':''}>${icon('cube')}${tr('Tenká zkouška STL')}</button></div><p class="muted-note">${tr('PDF tiskněte na 100 % a přeměřte kontrolní úsečku 100 mm. Fotografie nemusí zachytit nejširší část vysokého nástroje.')}</p></details>`}`,footer:`<span class="footnote">${exportFormat==='stl'?tr('STL v mm · samostatné uzavřené díly'):tr('Soubory vznikají ve vašem zařízení')}</span><button class="btn btn-primary" data-do-export ${exportFormat!=='json'&&(issues.length||!entries.length||(exportFormat!=='stl'&&(printError||bedError)))?'disabled':''}>${icon('download')}${exportFormat==='stl'?tr('Připravit a stáhnout ZIP'):tr('Stáhnout {format}',{format:exportFormat.toUpperCase()})}</button>`});
+  statsPending?.then(result=>{const box=modal.el.isConnected&&modal.el.querySelector('[data-print-stats]');if(box)box.innerHTML=printSummary(result);},error=>{const box=!error?.cancelled&&modal.el.isConnected&&modal.el.querySelector('[data-print-stats]');if(box){box.innerHTML=`<div class="issue-box"><p>${esc(errorText(error))}</p><button class="section-link" data-repack>${tr('Přepočítat rozvržení')}</button></div>`;box.querySelector('[data-repack]').onclick=()=>{modal.close();smartArrangeProject();};}});
   const redraw=()=>{const scroll=modal.body.scrollTop;openExport();const body=document.querySelector('.modal-body');if(body)body.scrollTop=scroll;};
   modal.el.querySelector('[data-action="export-baseplate"]')?.addEventListener('click',exportGridfinityBaseplate);
   const setting=(key,value)=>{remember();project[key]=value;persist();render();redraw();};
@@ -1174,7 +1219,7 @@ $('#app').addEventListener('contextmenu',event=>{
   const svg=event.target.closest('#board-svg');if(!svg)return;event.preventDefault();event.stopPropagation();
   if(contextPointer?.moved){contextPointer=null;return;}contextPointer=null;
   if(drag||resizeDrag||boardSelectionGesture)return;
-  const group=event.target.closest('[data-module]'),module=project.modules.find(item=>item.id===group?.dataset.module),hit=boardToolFromTarget(event.target,module);
+  const moduleId=boardModuleId(event),module=project.modules.find(item=>item.id===moduleId),hit=boardToolFromTarget(event.target,module);
   if(module){if(!hit||!bulkSelection.has(hit.id))selectBoardTarget(module,hit);render();}
   else{bulkSelection.clear();selected=null;selectedModule=null;inspectorTab='drawer';render();}
   const many=selectedIds().length>0,locked=module?.locked||hit?.locked;
@@ -1312,13 +1357,13 @@ $('#app').addEventListener('pointerdown',e=>{
   // Selection changes obey the same pointer/button ownership as geometry gestures.
   if(e.button!==0||e.isPrimary===false||resizeDrag||drag||boardSelectionGesture)return;
   if(e.shiftKey||e.ctrlKey||e.metaKey){
-    const group=e.target.closest('[data-module]'),m=project.modules.find(m=>m.id===group?.dataset.module);
+    const moduleId=boardModuleId(e),m=project.modules.find(m=>m.id===moduleId);
     if(m&&!e.target.closest('[data-tool]')){selectBoardTarget(m);render();}
     return;
   }
   // A second finger cannot start anything while a drag or resize is running (one active pointer at a time).
   if(view==='3d'){
-    const group=e.target.closest('[data-module]'),m=project.modules.find(m=>m.id===group?.dataset.module);
+    const moduleId=boardModuleId(e),m=project.modules.find(m=>m.id===moduleId);
     if(e.target.closest('#board-svg'))boardSelectionGesture={pointer:e.pointerId,moduleId:m?.id||null,projectId:project.id,x:e.clientX,y:e.clientY,moved:false};
     return;
   }

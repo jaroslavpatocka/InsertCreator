@@ -3,6 +3,8 @@ import Clipper from './vendor/clipper.js';
 import {pocketOutline} from './finger-grip.js';
 import {sizeText} from './tool-size.js';
 import {containsPocketWalls} from './module-footprint.js';
+import {getLang} from './i18n.js';
+import {hashText} from './mesh-client.js';
 
 const SCALE=10000,DEPTH=.35,PAD=.8,CELL=.5,CLEAR=.6;
 const round=v=>Math.round(v*SCALE)/SCALE;
@@ -108,50 +110,61 @@ export function sizeLabelGlyphs(input){
  */
 export function planSizeLabels(project,modules=project.modules||[],tools=project.tools||[]){
   const labels=[],skipped=[];if(!project.sizeLabels)return{labels,skipped};
+  const settings=JSON.stringify([getLang(),project.wall,project.base,project.insertHeight,project.printMode,project.bottomMode,project.magnetDepth,project.clearance,project.grid]);
+  for(const module of modules){
+    const own=tools.filter(t=>t.moduleId===module.id),key=hashText(settings+JSON.stringify(module)+JSON.stringify(own));
+    let plan=moduleLabels.get(key);
+    if(plan)moduleLabels.delete(key);else plan=planModuleLabels(project,module,own);
+    moduleLabels.set(key,plan);if(moduleLabels.size>MODULE_LABEL_CACHE)moduleLabels.delete(moduleLabels.keys().next().value);
+    labels.push(...plan.labels);skipped.push(...plan.skipped);
+  }
+  return{labels,skipped};
+}
+// Labels depend only on their own module, and every redraw asks for them.
+const MODULE_LABEL_CACHE=200,moduleLabels=new Map();
+function planModuleLabels(project,module,own){
+  const labels=[],skipped=[];
   const wall=number(project.wall,2.4),base=number(project.base,2.4),height=number(project.insertHeight,20),light=project.printMode==='light';
   const effectiveBase=project.bottomMode==='magnet'?Math.max(base,number(project.magnetDepth,2.2)+1.2):base;
   const foot=project.bottomMode==='grid'?4.75:0,baseTop=foot+effectiveBase,top=light?baseTop+Math.min(1,height-base):foot+height+effectiveBase-base;
-  const available=height-base;
-  for(const module of modules){
-    const own=tools.filter(t=>t.moduleId===module.id),obstacles=[];let invalid=false;
-    for(const tool of own){try{const poly=tool.poly||pocketOutline(tool,number(project.clearance,.8));if(poly.length<3)throw Error();obstacles.push(...offset(poly,wall+CLEAR));}catch{invalid=true;}}
-    const blocked=obstacles.map(poly=>({poly,bounds:box(poly)})),margin=Math.max(wall+.25,project.bottomMode==='grid'?4.1:1.25),inner={x:module.x+margin,y:module.y+margin,maxX:module.x+module.width-margin,maxY:module.y+module.height-margin};
-    for(const tool of own){
-      const raw=sizeText(tool),text=normalize(raw),failure=reason=>skipped.push({toolId:tool.id,moduleId:module.id,text,reason});
-      if(!text){failure('missing-size');continue;}
-      const glyphs=sizeLabelGlyphs(text);if(!glyphs){failure('unsupported-character');continue;}
-      if(available<.8){failure('insufficient-height');continue;}
-      if(invalid){failure('invalid-pocket');continue;}
-      const pocket=box(tool.poly||pocketOutline(tool,number(project.clearance,.8))),candidates=[];
-      for(const rotation of [0,90]){
-        const width=(rotation?glyphs.height:glyphs.width)+2*PAD,depth=(rotation?glyphs.width:glyphs.height)+2*PAD,maxX=inner.maxX-width,maxY=inner.maxY-depth;
-        if(maxX<inner.x||maxY<inner.y)continue;
-        const xs=[inner.x,maxX,(inner.x+maxX)/2,pocket.x,pocket.maxX-width,(pocket.x+pocket.maxX-width)/2,pocket.maxX+wall+CLEAR,pocket.x-width-wall-CLEAR];
-        const ys=[inner.y,maxY,(inner.y+maxY)/2,pocket.y,pocket.maxY-depth,(pocket.y+pocket.maxY-depth)/2,pocket.maxY+wall+CLEAR,pocket.y-depth-wall-CLEAR];
-        for(let i=0;i<=10;i++){xs.push(inner.x+(maxX-inner.x)*i/10);ys.push(inner.y+(maxY-inner.y)*i/10);}
-        for(const x of new Set(xs.map(round)))for(const y of new Set(ys.map(round))){
-          if(x<inner.x-1e-6||x>maxX+1e-6||y<inner.y-1e-6||y>maxY+1e-6)continue;
-          const cx=x+width/2,cy=y+depth/2,dx=Math.max(pocket.x-cx,0,cx-pocket.maxX),dy=Math.max(pocket.y-cy,0,cy-pocket.maxY);
-          candidates.push({x,y,width,height:depth,rotation,score:Math.hypot(dx,dy)+rotation*.0001});
-        }
+  const available=height-base,obstacles=[];let invalid=false;
+  for(const tool of own){try{const poly=tool.poly||pocketOutline(tool,number(project.clearance,.8));if(poly.length<3)throw Error();obstacles.push(...offset(poly,wall+CLEAR));}catch{invalid=true;}}
+  const blocked=obstacles.map(poly=>({poly,bounds:box(poly)})),margin=Math.max(wall+.25,project.bottomMode==='grid'?4.1:1.25),inner={x:module.x+margin,y:module.y+margin,maxX:module.x+module.width-margin,maxY:module.y+module.height-margin};
+  for(const tool of own){
+    const raw=sizeText(tool),text=normalize(raw),failure=reason=>skipped.push({toolId:tool.id,moduleId:module.id,text,reason});
+    if(!text){failure('missing-size');continue;}
+    const glyphs=sizeLabelGlyphs(text);if(!glyphs){failure('unsupported-character');continue;}
+    if(available<.8){failure('insufficient-height');continue;}
+    if(invalid){failure('invalid-pocket');continue;}
+    const pocket=box(tool.poly||pocketOutline(tool,number(project.clearance,.8))),candidates=[];
+    for(const rotation of [0,90]){
+      const width=(rotation?glyphs.height:glyphs.width)+2*PAD,depth=(rotation?glyphs.width:glyphs.height)+2*PAD,maxX=inner.maxX-width,maxY=inner.maxY-depth;
+      if(maxX<inner.x||maxY<inner.y)continue;
+      const xs=[inner.x,maxX,(inner.x+maxX)/2,pocket.x,pocket.maxX-width,(pocket.x+pocket.maxX-width)/2,pocket.maxX+wall+CLEAR,pocket.x-width-wall-CLEAR];
+      const ys=[inner.y,maxY,(inner.y+maxY)/2,pocket.y,pocket.maxY-depth,(pocket.y+pocket.maxY-depth)/2,pocket.maxY+wall+CLEAR,pocket.y-depth-wall-CLEAR];
+      for(let i=0;i<=10;i++){xs.push(inner.x+(maxX-inner.x)*i/10);ys.push(inner.y+(maxY-inner.y)*i/10);}
+      for(const x of new Set(xs.map(round)))for(const y of new Set(ys.map(round))){
+        if(x<inner.x-1e-6||x>maxX+1e-6||y<inner.y-1e-6||y>maxY+1e-6)continue;
+        const cx=x+width/2,cy=y+depth/2,dx=Math.max(pocket.x-cx,0,cx-pocket.maxX),dy=Math.max(pocket.y-cy,0,cy-pocket.maxY);
+        candidates.push({x,y,width,height:depth,rotation,score:Math.hypot(dx,dy)+rotation*.0001});
       }
-      candidates.sort((a,b)=>a.score-b.score||a.rotation-b.rotation||a.y-b.y||a.x-b.x);
-      let chosen=null;
-      for(const candidate of candidates){
-        const plate=rect(candidate.x,candidate.y,candidate.width,candidate.height),bounds=box(plate),near=blocked.filter(item=>overlap(bounds,item.bounds));
-        if(module.cells&&!containsPocketWalls(module,plate,margin,number(project.grid,42),{inset:0}))continue;
-        if(near.length&&clip([plate],near.map(item=>item.poly),Clipper.ClipType.ctIntersection).some(p=>Math.abs(area(p))>1e-7))continue;
-        chosen={...candidate,plate};break;
-      }
-      if(!chosen){failure('no-space');continue;}
-      const {x,y,width,height:labelHeight,rotation,plate}=chosen;
-      const screenPolygons=glyphs.polygons.map(poly=>poly.map(p=>rotation?{x:round(x+PAD+glyphs.height-p.y),y:round(y+PAD+p.x)}:{x:round(x+PAD+p.x),y:round(y+PAD+p.y)}));
-      // Lettering and pockets share one frame. Reflecting only the glyph here
-      // would mirror it a second time when the whole body is exported.
-      const polygons=screenPolygons;
-      labels.push({toolId:tool.id,moduleId:module.id,text,x,y,width,height:labelHeight,rotation,polygons,screenPolygons,plate,top:round(top),depth:DEPTH,baseTop:round(baseTop),light});
-      for(const poly of offset(plate,CLEAR))blocked.push({poly,bounds:box(poly)});
     }
+    candidates.sort((a,b)=>a.score-b.score||a.rotation-b.rotation||a.y-b.y||a.x-b.x);
+    let chosen=null;
+    for(const candidate of candidates){
+      const plate=rect(candidate.x,candidate.y,candidate.width,candidate.height),bounds=box(plate),near=blocked.filter(item=>overlap(bounds,item.bounds));
+      if(module.cells&&!containsPocketWalls(module,plate,margin,number(project.grid,42),{inset:0}))continue;
+      if(near.length&&clip([plate],near.map(item=>item.poly),Clipper.ClipType.ctIntersection).some(p=>Math.abs(area(p))>1e-7))continue;
+      chosen={...candidate,plate};break;
+    }
+    if(!chosen){failure('no-space');continue;}
+    const {x,y,width,height:labelHeight,rotation,plate}=chosen;
+    const screenPolygons=glyphs.polygons.map(poly=>poly.map(p=>rotation?{x:round(x+PAD+glyphs.height-p.y),y:round(y+PAD+p.x)}:{x:round(x+PAD+p.x),y:round(y+PAD+p.y)}));
+    // Lettering and pockets share one frame. Reflecting only the glyph here
+    // would mirror it a second time when the whole body is exported.
+    const polygons=screenPolygons;
+    labels.push({toolId:tool.id,moduleId:module.id,text,x,y,width,height:labelHeight,rotation,polygons,screenPolygons,plate,top:round(top),depth:DEPTH,baseTop:round(baseTop),light});
+    for(const poly of offset(plate,CLEAR))blocked.push({poly,bounds:box(poly)});
   }
   return{labels,skipped};
 }

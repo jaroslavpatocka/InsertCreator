@@ -877,4 +877,6 @@ export default {
   "U Gridfinity se puzzle spojky nepřidávají, moduly drží základna. S magnety lze puzzle spojky kombinovat.":"Gridfinity modules are held by the baseplate, so puzzle joints are omitted. Magnets can be combined with puzzle joints.",
   "Základna Gridfinity: díly sestavte podle assembly.json. Polohy buněk x/y a xMm/yMm popisují layout od levého horního rohu šuplíku. assemblyTransform umístí STL do fyzické sestavy s X doprava, Y nahoru a Z nahoru. STL jsou v mm; mezi díly nepřidávejte mezeru. Volný okraj šuplíku zůstává bez základny.":"Gridfinity baseplate: assemble the parts using assembly.json. Cell positions x/y and xMm/yMm describe the layout from the drawer’s upper-left corner. assemblyTransform places the STL in the physical assembly with X right, Y up and Z up. STL units are mm; do not add a gap between tiles. The unused drawer margin has no baseplate.",
   "Spojky jsou ve vrstvě dna. V sestaveném modelu je zkontrolujete pohledem zespodu.":"Joints are in the base layer. Check them from underneath in the assembled model.",
+  'Připravuji 3D model: {ready} z {total} modulů':'Preparing the 3D model: {ready} of {total} modules',
+  'Počítám objem modelu…':'Calculating the model volume…',
 };

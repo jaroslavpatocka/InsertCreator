@@ -35,6 +35,8 @@ Aktivní projekt je v tomto adresáři. ZIP se zdroji a dva deployment archivy v
 | Puzzle spoje a zkušební tisk | `dist/module-joints.js`, `dist/joint-fit.js` | Společný plán výstupků a zdířek mezi moduly i tiskovými částmi; malá dvojice se stejnou výrobní geometrií |
 | Podklad Gridfinity | `dist/gridfinity-baseplate.js` | Skutečné průchozí socket profily, rozdělení na tisknutelné díly a samostatné STL základny |
 | Náhled sítě | `dist/preview3d.js` | Ortografická 3D kamera, projekce skutečné STL sítě, viditelnost stěn a cache geometrie |
+| Živý 3D náhled | `dist/preview-live.js`, `dist/webgl-preview.js` | WebGL2 kreslí skutečnou síť, kamera je jen v uniformách; moduly přibývají postupně, výběr modulu čte pixel z 1×1 framebufferu. SVG v `preview3d.js` zůstává nad plátnem pro popisky a obrysy a jako záloha bez WebGL do 60 000 stěn |
+| Stavba sítě | `dist/preview-mesh.js`, `dist/mesh-worker.js`, `dist/mesh-client.js` | Síť a statistiky exportu po modulech ve workerech; mezipaměť podle obsahu modulu, barvy klíč nemění. Spojky a vícebarevný tisk klíčují celou sestavu, protože díly závisí na sousedech |
 | Ovládání kamery | `dist/view-controls.js` | 2D posun pravým tlačítkem, 3D orbit levým tlačítkem a posun pravým, kolečko pro zoom kolem kurzoru |
 | Šablona 1:1 | `dist/fit-sheet.js` | Vektorové PDF A4 s měřítkem a dlaždicovým rozdělením velkého modulu |
 | Offline režim | `dist/sw.js`, `dist/manifest.webmanifest` | Service worker, cache a instalovatelná aplikace |
