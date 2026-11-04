@@ -52,6 +52,9 @@ test('capture A4 flow uses real neural workers without user calibration or conto
     await waitFor(()=>$('#trace-items input[type=checkbox]'),'automatic ready result');
     assert.ok(neuralPhases.includes('inference'),'genuine neural worker must run');assert.equal(win.document.querySelectorAll('#trace-items input[type=checkbox]').length,2);assert.equal($('#capture-add').disabled,false);assert.match($('.recognition-status').textContent,/Rozpoznáno automaticky/);
     assert.ok($('#calibration-canvas')===null);assert.ok(win.document.querySelector('input[type=range]')===null);assert.ok($('#trace-threshold')===null);assert.ok($('#trace-smoothing')===null);assert.ok($('#contour-svg')===null);
+    assert.equal($('#capture-layout').querySelector('option[selected]').value,'auto','space decides by default');assert.equal($('#capture-layout-field').hidden,false);
+    const first=$('#trace-items input[type=checkbox]');first.checked=false;first.dispatchEvent(new win.Event('change',{bubbles:true}));assert.equal($('#capture-layout-field').hidden,true,'one tool has nothing to choose');
+    first.checked=true;first.dispatchEvent(new win.Event('change',{bubbles:true}));assert.equal($('#capture-layout-field').hidden,false);
     click('#capture-add');await waitFor(()=>!$('#modal-root').children.length,'capture closes after adding');assert.equal(added.length,2);
     const sizes=added.map(bounds).sort((a,b)=>b.height-a.height),expected=[{width:46.8,height:203.4},{width:23.5,height:149.6}];
     for(let i=0;i<2;i++){assert.ok(Math.abs(sizes[i].width-expected[i].width)<2,`sample width ${sizes[i].width}mm`);assert.ok(Math.abs(sizes[i].height-expected[i].height)<2,`sample height ${sizes[i].height}mm`);assert.ok(added[i].points.length>10);assert.ok(added[i].points.every(point=>Number.isFinite(point.x)&&Number.isFinite(point.y)&&point.x>=0&&point.y>=0));}

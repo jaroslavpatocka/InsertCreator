@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import {simpleOutline,fittingFingerGrips} from '../dist/finger-grip.js';
 import {automaticFingerGrips,validateFingerGrips,pocketOutline} from '../dist/finger-grip.js';
 import {validateProject,blankProject,clone} from '../dist/model.js';
 
@@ -105,4 +106,36 @@ test('legacy absence and explicit deletion survive JSON and library-style valida
     assert.deepEqual(libraryEntry.fingerGrips,tool.fingerGrips);
   }
   assert.deepEqual(pocketOutline(legacy),rectangle);assert.deepEqual(pocketOutline(deleted),rectangle);
+});
+
+test('an outline that touches itself becomes one simple polygon that can take finger grips',()=>{
+  // A notch whose tip touches the opposite side: the vertex (50,0) is visited twice, as in a pixel contour.
+  const pinched=[{x:0,y:0},{x:50,y:0},{x:50,y:60},{x:52,y:60},{x:50,y:0},{x:100,y:0},{x:100,y:200},{x:0,y:200}];
+  assert.throws(()=>automaticFingerGrips({id:'p',name:'p',points:pinched,x:0,y:0,rotation:0}));
+  const points=simpleOutline(pinched),xs=points.map(p=>p.x),ys=points.map(p=>p.y);
+  assert.deepEqual([Math.min(...xs),Math.max(...xs),Math.min(...ys),Math.max(...ys)],[0,100,0,200],'the size stays the same');
+  assert.equal(automaticFingerGrips({id:'p',name:'p',points,x:0,y:0,rotation:0}).length,2);
+});
+
+test('a simple outline passes through unchanged in shape',()=>{
+  const square=[{x:0,y:0},{x:40,y:0},{x:40,y:40},{x:0,y:40}],points=simpleOutline(square);
+  assert.equal(points.length,4);assert.equal(Math.max(...points.map(p=>p.x)),40);
+});
+
+test('without room in the middle a tool gets a longer pocket at its widest part',()=>{
+  // A fork: in the central band a circle would bridge the slot and enclose it, so the usual grips are impossible.
+  const fork={id:'fork',points:points([[0,-30],[60,-30],[60,-15],[200,-15],[200,-3],[60,-3],[60,3],[200,3],[200,15],[60,15],[60,30],[0,30]]),x:0,y:0,rotation:0};
+  assert.throws(()=>automaticFingerGrips(fork));
+  const grips=fittingFingerGrips(fork);
+  assert.equal(grips.length,6);assert.equal(new Set(grips.map(g=>g.id)).size,6);
+  assert.ok(grips.every(g=>g.x<=75),'the pocket sits at the wide handle, not on the prongs');
+  assert.deepEqual(validateFingerGrips(grips).length,6);
+  assert.ok(pocketOutline({...fork,fingerGrips:grips},.8).length>3,'one connected pocket');
+});
+
+test('the usual grips stay the first choice and a hopeless outline is added without grips',()=>{
+  const tool={id:'plain',points:rectangle};
+  assert.deepEqual(fittingFingerGrips(tool),automaticFingerGrips(tool));
+  const crossed={id:'bow',points:points([[0,0],[100,100],[100,0],[0,100]])};
+  assert.deepEqual(fittingFingerGrips(crossed),[]);
 });

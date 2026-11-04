@@ -7,6 +7,7 @@ import {openCapture} from './capture.js';
 import {mountLibraryFolders} from './catalog-ui.js';
 import {CATEGORIES,toolCategory} from './tool-categories.js';
 import {addToolGroup,scaleTool} from './set-module.js';
+import {photoLayout} from './photo-layout.js';
 import {getToolDimensions,resizeToolDimensions} from './tool-dimensions.js';
 import {openContextMenu,closeContextMenu} from './context-menu.js';
 import {createEditorGeometryCache} from './editor-cache.js';
@@ -18,7 +19,7 @@ import * as bulk from './bulk-edit.js';
 import * as moduleEdit from './module-edit.js';
 import {esc,icon,openModal,closeModal,toast,download} from './ui.js';
 import {uid,clone,validateProject,readLocal,writeLocal,blankProject} from './model.js';
-import {automaticFingerGrips,pocketOutline as calculatePocketOutline,validateFingerGrips} from './finger-grip.js';
+import {automaticFingerGrips,fittingFingerGrips,pocketOutline as calculatePocketOutline,validateFingerGrips} from './finger-grip.js';
 import {runSmartLayout} from './smart-layout-client.js';
 import {findToolSets as calculateToolSets,setCoherence} from './tool-sets.js';
 // `t` is used for tool variables throughout this file, so the translator is imported as `tr`.
@@ -780,10 +781,14 @@ function addTools(tools,opts={}){
   if(project.insertHeight-project.base<.5)throw i18nError('Výška inzertu musí být alespoň o {gap} větší než tloušťka dna.',{gap:fmtLen(.5)});
   const prepared=tools.map(t=>{
     const item=validateProject({...blankProject(),tools:[{...t,id:uid(),depth:Math.min(t.depth||12,project.insertHeight-project.base),locked:false,moduleId:null}]}).tools[0];
-    if(!Object.prototype.hasOwnProperty.call(t,'fingerGrips'))item.fingerGrips=automaticFingerGrips(item,{radius:9});
+    if(!Object.prototype.hasOwnProperty.call(t,'fingerGrips'))item.fingerGrips=fittingFingerGrips(item,{radius:9});
     pocketOutline(item,project.clearance);return item;
   });
   // opts.group={name,unit}: the whole set as ONE module (finger grips are already on the tools, so the packing includes them).
+  if(opts.layout&&prepared.length>1){
+    const info={name:opts.name||tr('Sada z fotky')},plan=photoLayout(project,prepared,opts.layout,info);
+    if(plan.layout==='shared')return addToolSet(prepared,{...info,arrangement:plan.arrangement});
+  }
   if(opts.group&&prepared.length)return addToolSet(prepared,opts.group);
   if(opts.set&&prepared.length>1)return addToolSet(prepared,opts.set,opts.set.layout||'auto');
   if(opts.collections?.length)return addToolCollections(prepared,opts);
@@ -903,7 +908,7 @@ function offerDrawerFit(ids,{name,group}={}){
     if(choice==='new'&&fresh2){try{const next=validateProject(clone(fresh2.project));project=undoStack.pop()||project;persist();switchProject(next);toast(tr('Nástroje přidány do nového šuplíku „{name}“.',{name:next.name}));}catch(error){toast(errorText(error));}}
   });
 }
-function capture(){openCapture({onAdd:addTools,toast});}
+function capture(){openCapture({onAdd:(tools,{layout}={})=>addTools(tools,{layout,offerFit:true,name:tr('Sada z fotky')}),toast});}
 function undo(){if(!undoStack.length)return;redoStack.push(clone(project));project=undoStack.pop();persist();render();}
 function redo(){if(!redoStack.length)return;undoStack.push(clone(project));project=redoStack.pop();persist();render();}
 const invalidLength=()=>toast(tr('Zadejte platnou délku, například 12, 12,5 mm nebo 3 1/2 in.'));
