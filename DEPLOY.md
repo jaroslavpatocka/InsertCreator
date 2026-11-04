@@ -18,7 +18,9 @@ proměnná `DEPLOY_ENABLED=true`, nic na hosting nezapisuje.
    uvádí hlavní FTP účet; samostatný účet omezený na `public_html` použijte,
    pokud jej hosting pro SFTP podporuje. Heslo nevkládejte do chatu,
    zdrojových souborů ani Git historie. Klíč SSH serveru ověřte podle údaje
-   z administrace, podpory hostingu nebo již ověřeného SFTP klienta.
+   z administrace, podpory hostingu nebo již ověřeného SFTP klienta. Případné
+   přijetí klíče při prvním spojení (TOFU) vyžaduje vědomé rozhodnutí správce;
+   následná kontrola změn klíče zůstává zapnutá.
 2. Otevřete [GitHub → Settings → Environments → ftp](https://github.com/jaroslavpatocka/InsertCreator/settings/environments).
    Uživatel má přístupové údaje uložené v prostředí **`ftp`**; oba připojovací
    workflow toto prostředí používají. Přes **Add environment secret** přidejte:
@@ -27,7 +29,7 @@ proměnná `DEPLOY_ENABLED=true`, nic na hosting nezapisuje.
    | --- | --- |
    | `FTP_USERNAME` | Přihlašovací jméno účtu povoleného pro SFTP |
    | `FTP_PASSWORD` | Heslo tohoto účtu |
-   | `FTP_KNOWN_HOSTS` | Ověřený veřejný klíč serveru ve formátu OpenSSH `known_hosts`, pro `[ftp.insertcreator.com]:222` |
+   | `FTP_KNOWN_HOSTS` | Důvěryhodný veřejný klíč serveru ve formátu OpenSSH `known_hosts`, pro `[ftp.insertcreator.com]:222` |
 
    Klíč serveru není heslo ani soukromý klíč. Celý řádek má například tvar
    `[ftp.insertcreator.com]:222 ssh-ed25519 <base64-veřejného-klíče>`;
@@ -62,6 +64,23 @@ hesla. Bez známého klíče nebo při jeho neshodě se přenos zastaví. Nenab�
 přechod na nešifrované FTP ani automatické přijetí neznámého klíče.
 Závislosti nasazovacího nástroje jsou oddělené v `requirements-deploy.txt`,
 s přesnými verzemi a SHA-256; nepatří do webové aplikace v `dist`.
+
+Pro tuto instalaci vlastník dne **4. 11. 2026** výslovně přijal klíč získaný
+při prvním spojení (TOFU), bez čekání na nezávislé potvrzení poskytovatele.
+Připnutý Ed25519 klíč má otisk
+`SHA256:BsxIcHIpMR6j1HUIokAMqXT6OlPIEavnyQnqvJzPa+I`.
+Celý veřejný klíč je uložený v `FTP_KNOWN_HOSTS` prostředí `ftp`.
+Tento záznam nepředstavuje potvrzení původu klíče od Webglobe. Jakákoli
+pozdější změna klíče stále zastaví spojení před odesláním hesla.
+
+Při chybě autentizace ověřte přesný login **hlavního FTP účtu** v administraci
+hostingu a odpovídající heslo v `FTP_USERNAME` a `FTP_PASSWORD`. Přihlášení
+do Webglobe Adminu je samostatné. Pokud jsou údaje správné, zkontrolujte také
+**Upravit → IP ochrana + GeoIP** tohoto FTP účtu. GitHub runner může přicházet
+z jiné IP adresy a země než místní počítač; samotná chyba autentizace
+nerozlišuje nesprávné údaje od omezení účtu. Ochranu nevypínejte plošně bez
+ověření příčiny. [Webglobe – přihlášení a IP ochrana](https://www.webglobe.cz/poradna/pristupy-k-ftp-uctu),
+[omezení IP a zemí](https://www.webglobe.cz/poradna/omezeni-pristupu-na-ftp).
 
 ### Průběh, souběžná práce a obnova
 
