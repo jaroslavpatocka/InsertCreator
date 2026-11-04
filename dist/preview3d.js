@@ -242,7 +242,7 @@ function sceneFor(project){
   if(!reducedDetail&&usesPrintParts(project)){
     try{
       batch=previewBatch(project);
-      if(batch.jointPlan?.unjoined.length)warnings.push(t('Na {n} společných hranách není bezpečné místo pro spojku. Podrobnosti jsou v assembly.json.',{n:batch.jointPlan.unjoined.length}));
+      if(batch.jointPlan?.unjoined.length)warnings.push(t('Na {n} vnitřních hranách mezi díly není bezpečné místo pro spojku. Podrobnosti jsou v assembly.json.',{n:batch.jointPlan.unjoined.length}));
     }catch(error){batchError=error;}
   }
   for(const module of sourceModules){

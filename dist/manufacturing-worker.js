@@ -54,7 +54,7 @@ export async function executeManufacturingTask(operation,input={},options={},con
     if(!options.bundle)return packageResult(result,options);
     const colorNote=result.manifest?.colors?'\n\n'+t('Vícebarevný tisk: otevřete soubory 3MF a nastavte filamenty podle čísel:')+'\n'+result.manifest.colors.filaments.map((color,index)=>`${index+1}: ${color} (${Object.entries({body:'Tělo',floor:'Dno kapes',text:'Text'}).filter(([zone])=>result.manifest.colors.zones[zone]===index+1).map(([,label])=>t(label)).join(', ')})`).join('\n'):'';
     const jointNote=result.joints&&options.jointNote?'\n\n'+options.jointNote:'',unjoined=result.manifest?.joints?.unjoined?.length||0;
-    const readme=(options.readme??'InsertCreator\n\n'+t('Tiskové díly sestavte podle assembly.json. Souřadnice jsou v mm. Dělení je pouze pro tisk; rozvržení šuplíku zůstává původní.'))+colorNote+jointNote+(unjoined?'\n'+t('Na {n} společných hranách není bezpečné místo pro spojku. Podrobnosti jsou v assembly.json.',{n:unjoined}):'');
+    const readme=(options.readme??'InsertCreator\n\n'+t('Tiskové díly sestavte podle assembly.json. Souřadnice jsou v mm. Dělení je pouze pro tisk; rozvržení šuplíku zůstává původní.'))+colorNote+jointNote+(unjoined?'\n'+t('Na {n} vnitřních hranách mezi díly není bezpečné místo pro spojku. Podrobnosti jsou v assembly.json.',{n:unjoined}):'');
     return packageResult(result,{...options,package:true,extraFiles:[...(options.extraFiles||[]),{name:'projekt.json',data:JSON.stringify({schemaVersion:1,app:'InsertCreator',project:input},null,2)},{name:'README.txt',data:readme}]});
   }
   if(operation==='connectors'){

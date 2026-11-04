@@ -2,6 +2,9 @@ import {getLang} from './i18n.js';
 import {unit} from './units.js';
 
 const MAX_CACHE_BYTES=384*1024*1024,MAX_CACHE_ENTRIES=600;
+const validResult=(type,result)=>type==='plan'
+  ?result&&Object.hasOwn(result,'batch')&&(result.batch===null||(typeof result.batch==='object'&&!Array.isArray(result.batch)))
+  :result?.vertices instanceof Float32Array&&Array.isArray(result.ranges);
 
 // Colours are applied at draw time, so changing them must not rebuild a mesh.
 const geometrySettings=({tools,modules,id,name,updatedAt,toolSets,unplaced,multiMaterial,...settings})=>{
@@ -24,8 +27,16 @@ export function meshKeys(project,{sharedLayout=false}={}){
 
 /** Small worker pool with a result cache. Results are shared, jobs nobody wants any more are dropped. */
 export function createMeshPool({factory=()=>new Worker(new URL('./mesh-worker.js',import.meta.url),{type:'module',name:'suplik-mesh'}),size=Math.max(1,Math.min(3,(globalThis.navigator?.hardwareConcurrency||2)-1))}={}){
-  const cache=new Map(),queue=[],idle=[],busy=new Map();let workers=0,nextId=1,bytes=0,broken=null;
+  const cache=new Map(),queue=[],idle=[],busy=new Map(),workers=new Set();let nextId=1,bytes=0,broken=null;
   const fail=(job,error)=>{cache.delete(job.key);job.reject(error);};
+  const failPool=error=>{
+    if(broken)return;
+    broken=error;
+    for(const worker of workers){worker.onmessage=null;worker.onerror=null;worker.onmessageerror=null;worker.terminate?.();}
+    workers.clear();
+    for(const job of [...busy.values(),...queue.splice(0)])fail(job,error);
+    busy.clear();idle.length=0;
+  };
   const trim=()=>{
     for(const [key,entry] of cache){
       if(bytes<=MAX_CACHE_BYTES&&cache.size<=MAX_CACHE_ENTRIES)break;
@@ -33,39 +44,46 @@ export function createMeshPool({factory=()=>new Worker(new URL('./mesh-worker.js
     }
   };
   const spawn=()=>{
-    const worker=factory();workers++;
+    const worker=factory();workers.add(worker);
     worker.onmessage=({data})=>{
-      const job=busy.get(worker);busy.delete(worker);idle.push(worker);
-      if(job&&data.id===job.id){
-        if(data.error){const error=Object.assign(Error(data.error.message),data.error.i18n?{i18n:data.error.i18n}:{});cache.delete(job.key);job.reject(error);}
-        else{
-          const entry=cache.get(job.key);if(entry){entry.result=data.result;entry.bytes=data.result.vertices?.byteLength||0;bytes+=entry.bytes;}
-          job.resolve(data.result);trim();
-        }
+      const job=busy.get(worker);
+      // A stale or unrelated reply must not release the worker currently running this job.
+      if(!job||data?.id!==job.id)return;
+      if(!data.error&&!validResult(job.type,data.result)){failPool(Error('Výpočet nevrátil úplný výsledek.'));return;}
+      busy.delete(worker);idle.push(worker);
+      if(data.error){const error=Object.assign(Error(data.error.message),data.error.i18n?{i18n:data.error.i18n}:{});cache.delete(job.key);job.reject(error);}
+      else{
+        const entry=cache.get(job.key);if(entry){entry.result=data.result;entry.bytes=data.result.vertices?.byteLength||0;bytes+=entry.bytes;}
+        job.resolve(data.result);trim();
       }
       pump();
     };
     worker.onerror=event=>{
-      event.preventDefault?.();broken=Error('Výpočetní vlákno se nepodařilo spustit.');
-      for(const job of [...busy.values(),...queue.splice(0)])fail(job,broken);
-      busy.clear();idle.length=0;
+      event.preventDefault?.();failPool(Error('Výpočetní vlákno se nepodařilo spustit.'));
     };
+    worker.onmessageerror=()=>failPool(Error('Výsledek výpočtu se nepodařilo načíst.'));
     return worker;
   };
   const pump=()=>{
     while(queue.length&&!broken){
       let worker=idle.pop();
-      if(!worker){if(workers>=size)return;try{worker=spawn();}catch(error){broken=error;for(const job of queue.splice(0))fail(job,error);return;}}
-      const job=queue.shift();busy.set(worker,job);worker.postMessage({id:job.id,type:job.type,project:job.project,moduleId:job.moduleId,projectKey:job.projectKey,lang:getLang(),unit:unit()});
+      if(!worker){if(workers.size>=size)return;try{worker=spawn();}catch(error){failPool(error);return;}}
+      const job=queue.shift();busy.set(worker,job);
+      const message={id:job.id,type:job.type,project:job.project,moduleId:job.moduleId,projectKey:job.projectKey,lang:getLang(),unit:unit()};
+      if(Object.hasOwn(job,'batch'))message.batch=job.batch;
+      try{worker.postMessage(message);}
+      catch(error){failPool(Object.assign(Error('Projekt nelze předat výpočtu.'),{cause:error}));}
     }
   };
   return{
     /** Larger `weight` starts first, which keeps the longest module from finishing last. */
-    run(type,key,project,moduleId,{projectKey=key,weight=0}={}){
+    run(type,key,project,moduleId,options={}){
+      const {projectKey=key,weight=0}=options;
       const cacheKey=type+':'+key,known=cache.get(cacheKey);
       if(known){cache.delete(cacheKey);cache.set(cacheKey,known);return known.promise;}
       if(broken)return Promise.reject(broken);
       let job;const promise=new Promise((resolve,reject)=>{job={id:nextId++,key:cacheKey,type,project,moduleId,projectKey,weight,resolve,reject};});
+      if(Object.hasOwn(options,'batch'))job.batch=options.batch;
       promise.catch(()=>{});cache.set(cacheKey,{promise,result:null,bytes:0});
       const at=queue.findIndex(item=>item.weight<weight);if(at<0)queue.push(job);else queue.splice(at,0,job);
       pump();return promise;

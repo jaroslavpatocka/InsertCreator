@@ -1,4 +1,4 @@
-// Live 3D view: modules are built in workers and appear one by one, the camera only redraws on the GPU.
+// Live 3D view: workers prepare modules in parallel; the complete scene is revealed together.
 import {createGLPreview} from './webgl-preview.js';
 import {createMeshPool,meshKeys} from './mesh-client.js';
 import {usesPrintParts} from './preview-mesh.js';
@@ -33,10 +33,13 @@ export function createLivePreview({onChange,createCanvas=()=>document.createElem
 
   const finished=(id,key,error,result)=>{
     if(!scene||scene.keys.get(id)!==key||error?.cancelled)return;
+    // Uploads can fail independently of the worker (for example when GPU memory is exhausted).
+    // Settle that module and repaint the status even when no buffer could be created.
+    if(!error)try{renderer.setMesh(id,result);}catch(cause){error=cause;}
     scene.pending.delete(id);
     if(error){scene.failed.set(id,localized(error));renderer.removeMesh(id);scene.shown.delete(id);scene.facets.delete(id);scene.parts.delete(id);scene.skipped.delete(id);}
     else{
-      renderer.setMesh(id,result);scene.failed.delete(id);scene.shown.set(id,key);scene.facets.set(id,result.facets);
+      scene.failed.delete(id);scene.shown.set(id,key);scene.facets.set(id,result.facets);
       scene.parts.set(id,result.parts);scene.skipped.set(id,result.skippedLabels||[]);if(jointInfo.size>32)jointInfo.clear();jointInfo.set(scene.projectKey,{joints:result.joints,unjoined:result.unjoined});
     }
     onChange?.();
@@ -56,22 +59,40 @@ export function createLivePreview({onChange,createCanvas=()=>document.createElem
     }
     scene=next;
     meshes.keep('mesh',[...keys.values()]);
+    meshes.keep('plan',sharedLayout?[projectKey]:[]);
     const order=[...sourceModules].sort((a,b)=>b.width*b.height-a.width*a.height);
     for(const module of order){
       const key=keys.get(module.id);
       if(next.shown.get(module.id)===key&&renderer.has(module.id))continue;
       next.pending.add(module.id);
-      meshes.run('mesh',key,snapshot,module.id,{projectKey,weight:module.width*module.height}).then(result=>finished(module.id,key,null,result),error=>finished(module.id,key,error));
     }
+    const build=batch=>{
+      if(scene!==next)return;
+      for(const module of order){
+        if(!next.pending.has(module.id))continue;
+        const key=keys.get(module.id),options={projectKey,weight:module.width*module.height,...(sharedLayout?{batch}:{})};
+        meshes.run('mesh',key,snapshot,module.id,options).then(result=>finished(module.id,key,null,result),error=>finished(module.id,key,error));
+      }
+    };
+    // Every worker used to plan the same complete set of print joints before its
+    // first mesh. Share one background plan, including its Maps, across all modules.
+    if(sharedLayout&&next.pending.size)meshes.run('plan',projectKey,snapshot,null,{projectKey}).then(({batch})=>build(batch),error=>{
+      if(scene!==next)return;
+      for(const id of [...next.pending])finished(id,keys.get(id),error);
+    });
+    else build();
   };
   const status=()=>{
-    const total=scene.keys.size,ready=total-scene.pending.size-scene.failed.size,warnings=[...scene.warnings,...labelNotes(scene.project,[...scene.skipped.values()].flat())],unjoined=jointInfo.get(scene.projectKey)?.unjoined||0;
-    if(unjoined)warnings.unshift(t('Na {n} společných hranách není bezpečné místo pro spojku. Podrobnosti jsou v assembly.json.',{n:unjoined}));
-    for(const [id,message] of scene.failed){const module=scene.project.modules.find(item=>item.id===id);warnings.push(`${module?.name||t('Modul')}: ${message}`);}
-    return{total,ready,warnings};
+    const total=scene.keys.size,ready=[...scene.keys].filter(([id,key])=>scene.shown.get(id)===key&&renderer.has(id)).length,warnings=[...scene.warnings,...labelNotes(scene.project,[...scene.skipped.values()].flat())],unjoined=jointInfo.get(scene.projectKey)?.unjoined||0;
+    if(unjoined)warnings.unshift(t('Na {n} vnitřních hranách mezi díly není bezpečné místo pro spojku. Podrobnosti jsou v assembly.json.',{n:unjoined}));
+    // Put blocking errors first so label notes cannot hide why the mesh is missing.
+    const errors=[...scene.failed].map(([id,message])=>`${scene.project.modules.find(item=>item.id===id)?.name||t('Modul')}: ${message}`);
+    warnings.unshift(...errors);
+    return{total,ready,warnings,errors};
   };
   return{
     canvas,
+    retry(){scene=null;},
     get broken(){return meshes.broken||renderer.failed;},
     render(project,{activeIds,camera,viewport,refresh=true}){
       if(refresh||!scene)sync(project);
@@ -83,7 +104,7 @@ export function createLivePreview({onChange,createCanvas=()=>document.createElem
       };
       view={center:scene.center,right:frame.right,down:frame.down,towards:frame.towards,bounds:frame.viewBounds,fitSize:scene.fitSize,viewport:frame.size,reference:scene.reference,color};
       renderer.draw(view);
-      const projectPoint=frame.project(scene.center),{total,ready,warnings}=status();let html='';
+      const projectPoint=frame.project(scene.center),{total,ready,warnings,errors}=status();let html='';
       for(const [id,wire] of scene.wires){
         const failed=scene.failed.has(id);if(!failed&&renderer.has(id))continue;
         const name=scene.project.modules.find(item=>item.id===id)?.name||t('Modul'),active=activeIds.has(id),stroke=failed?active?'#bf8d35':'#b56c52':'#8fa07d';
@@ -91,7 +112,7 @@ export function createLivePreview({onChange,createCanvas=()=>document.createElem
       }
       const facets=[...scene.keys.keys()].reduce((sum,id)=>sum+(scene.facets.get(id)||0),0);
       html+=previewHud(scene.project,frame,[]);
-      const busy=ready<total-scene.failed.size,notice=[busy?t('Připravuji 3D model: {ready} z {total} modulů',{ready,total}):'',...warnings].filter(Boolean).join(' ');
+      const busy=ready<total-scene.failed.size,notice=busy?t('Připravuji 3D model: {ready} z {total} modulů',{ready,total}):(errors.length?errors:warnings).join(' ');
       return{html,notice,busy,viewBox:frame.viewBox,camera:frame.state,frame:{width:frame.width,height:frame.height,fitSize:scene.fitSize,center:[...scene.center],viewport:frame.size},warnings,stats:{triangles:facets,ready,total,failed:scene.failed.size,joints:jointInfo.get(scene.projectKey)?.joints||0}};
     },
     pick(x,y,rect){

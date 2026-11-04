@@ -95,7 +95,7 @@ V režimu **2D** posouváte pohled tažením pravým tlačítkem myši a kolečk
 
 V režimu **3D** otáčíte pohledem tažením levým tlačítkem myši, posouváte jej tažením pravým tlačítkem a kolečkem přibližujete či oddalujete. Funguje to nad modelem i nad prázdnou částí plochy. Tlačítka přiblížení ovládají aktuální pohled; **Zobrazit vše** vrátí výchozí kameru. Přepnutí do 2D a zpět zachová 3D pohled, otevření jiného šuplíku jej obnoví.
 
-3D náhled se kreslí přes WebGL a model se staví na pozadí, takže stránka během přípravy reaguje. Moduly se objevují postupně, do té doby je vidíte jako čárkovaný obrys. Prohlížeč bez WebGL použije SVG náhled, který u velmi složitých sestav ukáže jen obrysy.
+3D náhled se kreslí přes WebGL a model se staví na pozadí, takže stránka během přípravy reaguje. Během výpočtu vidíte načítání s počtem hotových modulů; model se zobrazí až po dokončení celé sestavy. Pokud některý modul nelze připravit, plocha zobrazí důvod chyby a tlačítko **Zkusit znovu**. Prohlížeč bez WebGL použije SVG náhled, který u velmi složitých sestav ukáže jen obrysy.
 
 Navigace mění pouze kameru. Nepřesouvá moduly, neotáčí nástroje a nepřidává záznamy do historie úprav projektu.
 

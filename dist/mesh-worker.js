@@ -11,7 +11,10 @@ self.onmessage=({data})=>{
   try{
     if(lang)setLang(lang,{save:false});
     setProjectUnit(unit);
-    const batch=batchFor(project,projectKey),mesh=moduleMesh(project,moduleId,batch);
+    if(data.type==='plan'){
+      self.postMessage({id,result:{batch:batchFor(project,projectKey)}});return;
+    }
+    const batch=Object.hasOwn(data,'batch')?data.batch:batchFor(project,projectKey),mesh=moduleMesh(project,moduleId,batch);
     self.postMessage({id,result:{...mesh,joints:batch?.jointPlan?.joints.length||0,unjoined:batch?.jointPlan?.unjoined.length||0}},[mesh.vertices.buffer]);
   }catch(error){self.postMessage({id,error:{message:error?.message||String(error),i18n:error?.i18n||null}});}
 };

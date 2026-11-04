@@ -871,7 +871,7 @@ export default {
   "Vůle v XY: {side} na každé straně, zdířka je o {total} širší. Svislá vůle se tímto nastavením nemění.":"XY clearance: {side} per side; the socket is {total} wider. This setting does not change vertical clearance.",
   "Nejprve vytiskněte zkušební spojku stejným materiálem a nastavením jako finální díly. Pokud jde ztuha, vůli zvětšete; pokud je volná, zmenšete ji. Zkontrolujte také rozšíření první vrstvy. Díly spojujte nasazením shora.":"Print the fit test first using the same material and settings as the final parts. Increase clearance if it is tight; reduce it if it is loose. Also check first-layer expansion. Assemble the parts by lowering the socket onto the tab.",
   "Z toho {n} spojek propojuje díly rozdělené podle podložky.":"{n} of these joints connect parts split to fit the print bed.",
-  "Na {n} společných hranách není bezpečné místo pro spojku. Podrobnosti jsou v assembly.json.":"There is no safe joint location on {n} shared edges. See assembly.json for details.",
+  "Na {n} vnitřních hranách mezi díly není bezpečné místo pro spojku. Podrobnosti jsou v assembly.json.":"There is no safe joint location on {n} internal edges between parts. See assembly.json for details.",
   "Zadejte vůli spojky od 0 do 1 mm na každé straně.":"Enter joint clearance from 0 to 1 mm per side.",
   "Spojky mezi tiskovými díly (puzzle)":"Puzzle joints between printed parts",
   "U Gridfinity se puzzle spojky nepřidávají, moduly drží základna. S magnety lze puzzle spojky kombinovat.":"Gridfinity modules are held by the baseplate, so puzzle joints are omitted. Magnets can be combined with puzzle joints.",
@@ -879,4 +879,7 @@ export default {
   "Spojky jsou ve vrstvě dna. V sestaveném modelu je zkontrolujete pohledem zespodu.":"Joints are in the base layer. Check them from underneath in the assembled model.",
   'Připravuji 3D model: {ready} z {total} modulů':'Preparing the 3D model: {ready} of {total} modules',
   'Počítám objem modelu…':'Calculating the model volume…',
+  'Načítání 3D náhledu…':'Loading the 3D preview…',
+  '3D náhled se nepodařilo dokončit.':'The 3D preview could not be completed.',
+  'Spojky jsou pouze mezi díly. Na vnějším obvodu šuplíku se nepřidávají.':'Joints are only added between parts, never along the outer perimeter of the drawer.',
 };

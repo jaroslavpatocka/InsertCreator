@@ -808,10 +808,19 @@ function liveEngine(){
   }
   return livePreview&&!livePreview.broken?livePreview:null;
 }
-function previewNotice(svg,text,busy=false){
+function previewNotice(svg,text,busy=false,progress=null){
   let notice=svg.parentElement?.querySelector('[data-preview-state]');
   if(!notice){notice=document.createElement('div');notice.dataset.previewState='';notice.className='preview-state';notice.setAttribute('role','status');notice.setAttribute('aria-live','polite');svg.parentElement?.append(notice);}
-  notice.hidden=!text;notice.setAttribute('aria-busy',String(busy));notice.textContent=text;
+  const failed=Number(progress?.failed)>0,blocked=busy||failed,area=svg.parentElement;
+  area?.classList.toggle('preview-loading',blocked);area?.setAttribute('aria-busy',String(busy));
+  if(blocked)svg.setAttribute('aria-hidden','true');else svg.removeAttribute('aria-hidden');
+  notice.hidden=!(text||blocked);notice.setAttribute('aria-busy',String(busy));notice.classList.toggle('preview-error',failed);
+  if(busy){
+    const total=Number(progress?.total)||0,ready=Number(progress?.ready)||0;
+    notice.innerHTML=`<span class="spinner preview-spinner" aria-hidden="true"></span><strong>${esc(tr('Načítání 3D náhledu…'))}</strong><span>${esc(text)}</span>${total?`<progress max="${total}" value="${ready}" aria-label="${esc(tr('Načítání 3D náhledu…'))}"></progress>`:''}`;
+  }else if(failed){
+    notice.innerHTML=`<strong>${esc(tr('3D náhled se nepodařilo dokončit.'))}</strong><span>${esc(text)}</span><button class="btn btn-light" data-action="retry-preview">${esc(tr('Zkusit znovu'))}</button>`;
+  }else notice.textContent=text;
 }
 function applyPreviewFrame(svg,result,signature,viewport){
   const aspect=viewport.width/viewport.height,fit=result.frame.fitSize;
@@ -821,7 +830,7 @@ function applyPreviewFrame(svg,result,signature,viewport){
   cameraFrame={...result.frame,width,height,zoom:camera3D.zoom};
   const font=height/70,hudY=(camera3D.panY||0)+height/2-font;
   svg.querySelectorAll('[data-preview-hud],[data-preview-warning]').forEach(text=>{text.setAttribute('x',camera3D.panX||0);text.setAttribute('y',text.hasAttribute('data-preview-warning')?hudY-font*1.5:hudY);text.setAttribute('font-size',font);});
-  previewNotice(svg,(result.warnings||[]).join(' '));
+  previewNotice(svg,(result.warnings||[]).join(' '),false,{failed:result.stats?.invalidModules||0});
 }
 function renderLive(svg,live,refresh){
   const rect=svg.getBoundingClientRect(),viewport={width:rect.width||svg.clientWidth||1000,height:rect.height||svg.clientHeight||600};
@@ -831,7 +840,7 @@ function renderLive(svg,live,refresh){
   camera3D=preview.camera;cameraFrame={...preview.frame,zoom:camera3D.zoom};
   svg.setAttribute('viewBox',preview.viewBox);svg.innerHTML=preview.html;delete svg.dataset.previewSignature;
   svg.dataset.renderer='webgl';svg.dataset.meshReady=preview.stats.ready+'/'+preview.stats.total;svg.dataset.meshTriangles=preview.stats.triangles;
-  previewNotice(svg,preview.notice,preview.busy);
+  previewNotice(svg,preview.notice,preview.busy,preview.stats);
 }
 function render3D(svg,refresh=true){
   const live=liveEngine();
@@ -847,7 +856,7 @@ function render3D(svg,refresh=true){
   previewClient.run('preview',project,{...backgroundOptions(),queueLatest:true,selected:bulkSelection.size?null:selected,selectedModule:bulkSelection.size?null:selectedModule,camera:camera3D,viewport,selectedToolIds:[...bulkSelection]}).then(result=>{
     if(sequence!==previewSequence||view!=='3d'||!svg.isConnected||same(project)!==source)return;
     previewValue=result;previewSignature=signature;applyPreviewFrame(svg,result,signature,viewport);
-  }).catch(error=>{if(error.name!=='AbortError'&&sequence===previewSequence&&svg.isConnected)previewNotice(svg,errorText(error));});
+  }).catch(error=>{if(error.name!=='AbortError'&&sequence===previewSequence&&svg.isConnected)previewNotice(svg,errorText(error),false,{failed:1});});
 }
 /** The module under a pointer; in the WebGL view the faces are not DOM elements. */
 function boardModuleId(event){
@@ -1128,7 +1137,7 @@ function exportJointFit(){
 // Plan the same printable parts as the ZIP so cut seams and bed margins agree with this summary.
 function jointStatus(source,entries,summary=null,jointError=""){
   const unsupported=project.bottomMode==='grid';
-  const toggle=`<label class="check-row"><input id="export-connectors" type="checkbox" ${project.connectors&&!unsupported?'checked':''} ${unsupported?'disabled':''}>${tr('Spojky mezi tiskovými díly (puzzle)')}</label>`;
+  const toggle=`<label class="check-row"><input id="export-connectors" type="checkbox" ${project.connectors&&!unsupported?'checked':''} ${unsupported?'disabled':''}>${tr('Spojky mezi tiskovými díly (puzzle)')}</label><p class="muted-note">${esc(tr('Spojky jsou pouze mezi díly. Na vnějším obvodu šuplíku se nepřidávají.'))}</p>`;
   if(unsupported)return toggle+`<p class="muted-note">${tr('U Gridfinity se puzzle spojky nepřidávají, moduly drží základna. S magnety lze puzzle spojky kombinovat.')}</p>`;
   if(!project.connectors)return toggle;
   const clearance=source.jointClearance??.2;
@@ -1141,7 +1150,7 @@ function jointSummary(plan,error=''){
   const count=n?plural(n,['Vznikne {n} spojka.','Vzniknou {n} spojky.','Vznikne {n} spojek.']):tr('Vybrané moduly nemají společnou hranu s místem pro spojku.');
   const cuts=plan.cutCount?' '+tr('Z toho {n} spojek propojuje díly rozdělené podle podložky.',{n:plan.cutCount}):'';
   const skipped=plan.skipped?' '+plural(plan.skipped,['{n} spojka se nevešla: u hrany leží kapsa nástroje, nebo by díl přesáhl tiskovou plochu.','{n} spojky se nevešly: u hrany leží kapsa nástroje, nebo by díl přesáhl tiskovou plochu.','{n} spojek se nevešlo: u hrany leží kapsa nástroje, nebo by díl přesáhl tiskovou plochu.']):'';
-  const unjoined=plan.unjoined?.length?' '+tr('Na {n} společných hranách není bezpečné místo pro spojku. Podrobnosti jsou v assembly.json.',{n:plan.unjoined.length}):'';
+  const unjoined=plan.unjoined?.length?' '+tr('Na {n} vnitřních hranách mezi díly není bezpečné místo pro spojku. Podrobnosti jsou v assembly.json.',{n:plan.unjoined.length}):'';
   return esc(count+cuts+skipped+unjoined)+' '+tr('Spojky jsou ve vrstvě dna. V sestaveném modelu je zkontrolujete pohledem zespodu.')+' '+tr('Skládejte zleva doprava a shora dolů, další modul vždy nasaďte shora. Moduly exportujte společně, aby výstupky a zdířky seděly. Se spojkami mají moduly větší okraj, ruční a zamčené moduly se nemění.');
 }
 const exportAnalysisCache=new Map();
@@ -1303,6 +1312,7 @@ const actions={
  undo,redo,
  snap:()=>{snap=!snap;render();},grid:()=>{showGrid=!showGrid;render();},labels:()=>{showLabels=!showLabels;render();},
  '2d':()=>{previewSequence++;previewClient.cancel();view='2d';render();},'3d':()=>{view='3d';render();},
+ 'retry-preview':()=>{livePreview?.retry();previewValue=null;previewSignature=null;const svg=$('#board-svg');if(svg&&view==='3d')render3D(svg);},
  'zoom-in':()=>{if(view==='3d')camera3D=normalizeCamera3D({...camera3D,zoom:camera3D.zoom*1.25});else zoom=Math.min(3,zoom+.25);render();},'zoom-out':()=>{if(view==='3d')camera3D=normalizeCamera3D({...camera3D,zoom:camera3D.zoom/1.25});else zoom=Math.max(.5,zoom-.25);render();},fit:()=>{if(view==='3d')camera3D=createCamera3D();else{zoom=1;pan2D={x:0,y:0};}render();},
  'hide-tip':()=>{tipVisible=false;writeLocal('suplik-hide-tip',true);render();},
  rotate:()=>rotateCurrentTool(90),'rotate-module':()=>applyModuleEdit(moduleEdit.rotateModule,90,tr('Modul otočen.')),'duplicate-module':duplicateCurrentModule,
