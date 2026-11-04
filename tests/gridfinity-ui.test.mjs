@@ -49,10 +49,10 @@ async function verifyDownload(download){
 }
 after(()=>win.happyDOM.abort());
 
-test('the visible module-system control enables the real 42mm baseplate in both model views, independently of guide-grid visibility',()=>{
+test('the visible module-system control enables the real 42mm baseplate in both model views, independently of guide-grid visibility',async()=>{
   const before=state(),select=$('select[data-field="bottomMode"]');assert.ok(select&&visible(select));assert.equal(select.value,'plain');change('select[data-field="bottomMode"]','grid');assert.equal(state().bottomMode,'grid');assert.equal(state().grid,42);
   const pattern=$('#board-svg #gridfinity-sockets');assert.ok(pattern);assert.equal(pattern.getAttribute('width'),'42');assert.equal(pattern.getAttribute('height'),'42');assert.ok($('#board-svg [data-baseplate="true"]'));
-  action('grid');assert.ok($('#board-svg #gridfinity-sockets'),'hiding editing guides does not hide the physical baseplate');action('3d');assert.ok($('#board-svg polygon[data-baseplate="true"][data-face-index]'),'3D displays actual material faces');assert.equal($('#board-svg [data-baseplate="true"]').closest('[data-module]'),null,'baseplate is not an editable insert module');
+  action('grid');assert.ok($('#board-svg #gridfinity-sockets'),'hiding editing guides does not hide the physical baseplate');action('3d');await waitFor(()=>$('#board-svg polygon[data-baseplate="true"][data-face-index]'));assert.ok($('#board-svg polygon[data-baseplate="true"][data-face-index]'),'3D displays actual material faces');assert.equal($('#board-svg [data-baseplate="true"]').closest('[data-module]'),null,'baseplate is not an editable insert module');
   assert.equal(state().modules.length,0);assert.equal(state().tools.length,0);action('undo');assert.deepEqual(state(),before);assert.deepEqual(history(),[true,false]);
 });
 

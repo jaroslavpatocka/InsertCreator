@@ -4,6 +4,21 @@ import {test,after} from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import {Window} from 'happy-dom';
+import {Worker as NodeWorker} from 'node:worker_threads';
+
+// The final eight-tool export intentionally exceeds the synchronous fallback
+// budget. Exercise the browser worker modules instead of raising that budget.
+const browserWorkers=new Set();
+globalThis.Worker=class{
+  constructor(url){
+    this.native=new NodeWorker(new URL('./worker-adapter.mjs',import.meta.url),{workerData:{url:String(url)}});browserWorkers.add(this);
+    this.native.on('message',data=>this.onmessage?.({data}));
+    this.native.on('error',error=>this.onerror?.({message:error.message,preventDefault(){}}));
+    this.native.on('messageerror',()=>this.onmessageerror?.());this.native.unref();
+  }
+  postMessage(data,transfer){this.native.postMessage(data,transfer);}
+  terminate(){browserWorkers.delete(this);return this.native.terminate();}
+};
 
 const win=new Window({url:'http://localhost:5173'});
 const html=await fs.readFile(new URL('../dist/index.html',import.meta.url),'utf8');
@@ -62,7 +77,7 @@ const ids=p=>new Set(p.tools.map(t=>t.id));
 const toolIssues=(p,toolIds)=>validateLayout(p).filter(i=>i.ids.some(id=>toolIds.has(id)||p.modules.some(m=>m.id===id&&p.tools.some(t=>toolIds.has(t.id)&&t.moduleId===m.id))));
 const placedInDrawer=(p,t)=>{const m=p.modules.find(m=>m.id===t.moduleId);return !!m&&m.x>=-.001&&m.y>=-.001&&m.x+m.width<=p.width+.001&&m.y+m.height<=p.height+.001;};
 
-after(()=>{setLang('cs');setAppUnit('mm');setCatalogSource(null);});
+after(async()=>{setLang('cs');setAppUnit('mm');setCatalogSource(null);await Promise.all([...browserWorkers].map(worker=>worker.terminate()));});
 
 test('pure helpers: scaleFactor by percent and by longest length, with validation',()=>{
   const list=[key(13)];const long=longestSide(list);assert.equal(long,112);
@@ -374,7 +389,7 @@ test('export cuts an oversized shared 3D model into STL parts without changing t
     const inserted=saved(),added=newOf(old,inserted),addedIds=new Set(added.map(t=>t.id)),moduleId=added[0].moduleId;
     assert.equal(new Set(added.map(t=>t.moduleId)).size,1);assert.ok($('.modal')===null);
     const serialized=localStorage.getItem('suplik-studio-projects-v1'),history=()=>[$('#app [data-action="undo"]').disabled,$('#app [data-action="redo"]').disabled],undo=history(),count=downloads.length;
-    click('#app [data-action="export"]');assert.equal($('[data-do-export]').disabled,false,'A valid oversized model can export using geometric cuts');
+    click('#app [data-action="export"]');await waitFor(()=>$('[data-export-analysis]')?.getAttribute('aria-busy')!=='true');assert.equal($('[data-do-export]').disabled,false,'A valid oversized model can export using geometric cuts');
     assert.equal(localStorage.getItem('suplik-studio-projects-v1'),serialized,'Opening export cannot split or repack the module');
     click('[data-export-split-module="'+moduleId+'"]');await waitFor(()=>downloads.length>count);
     const downloaded=downloads.at(-1);assert.match(downloaded.name,/\.zip$/);const bytes=new Uint8Array(await downloaded.blob.arrayBuffer()),view=new DataView(bytes.buffer),files=new Map();let offset=0;

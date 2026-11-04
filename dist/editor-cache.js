@@ -4,7 +4,8 @@ export function createEditorGeometryCache({validateLayout,pocketOutline,findTool
   const outlines=new WeakMap(),stats={layouts:0,sets:0,pockets:0,pocketHits:0};
   return{
     validate(project,context=''){
-      const key=context+JSON.stringify(project);
+      // Printer settings, colours and save timestamps cannot change layout validity.
+      const key=context+JSON.stringify([project.width,project.height,project.grid,project.wall,project.clearance,project.base,project.insertHeight,project.modules,project.tools]);
       if(key!==layoutKey){layoutValue=validateLayout(project);layoutKey=key;stats.layouts++;}return layoutValue;
     },
     sets(project,context=''){const key=context+JSON.stringify(project);if(key!==setsKey){setsValue=findToolSets(project);setsKey=key;stats.sets++;}return setsValue;},

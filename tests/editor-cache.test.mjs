@@ -6,6 +6,26 @@ import {pocketOutline} from '../dist/finger-grip.js';
 import {findToolSets} from '../dist/tool-sets.js';
 import {blankProject} from '../dist/model.js';
 const make=()=>({...blankProject(),tools:[{id:'one',name:'Klíč',points:[{x:0,y:0},{x:10,y:0},{x:10,y:60},{x:0,y:60}],x:10,y:10,rotation:0,depth:8,moduleId:'m',fingerGrips:[]}],modules:[{id:'m',x:0,y:0,width:42,height:84}]});
+
+test('printer and colour edits reuse validation while actual layout edits refresh issues and names',()=>{
+  let validations=0;
+  const cache=createEditorGeometryCache({validateLayout:project=>{validations++;return validateLayout(project);},pocketOutline,findToolSets}),project=make();
+  const valid=cache.validate(project,'cs:mm');assert.deepEqual(valid,[]);assert.equal(validations,1);
+  for(const edit of [
+    p=>p.bedWidth=256,p=>p.bedHeight=300,p=>p.limitToBed=false,p=>p.updatedAt='new-save-time',
+    p=>p.multiMaterial={enabled:true,floorThickness:1,bodyColor:'#ff0000',floorColor:'#00ff00',textColor:'#ffffff'},
+    p=>p.multiMaterial.bodyColor='#0000ff'
+  ]){edit(project);assert.equal(cache.validate(project,'cs:mm'),valid,'manufacturing-only edits must reuse the actual validation result');assert.equal(validations,1);}
+  project.tools[0].depth=30;
+  const deep=cache.validate(project,'cs:mm');assert.equal(validations,2);assert.ok(deep.some(issue=>issue.type==='depth'));
+  project.tools[0].name='Nový název';
+  const renamed=cache.validate(project,'cs:mm');assert.equal(validations,3);assert.ok(renamed.some(issue=>issue.message.includes('Nový název')),'cached errors must not retain the old tool name');
+  project.tools[0].depth=8;project.tools[0].x=100;
+  const outside=cache.validate(project,'cs:mm');assert.equal(validations,4);assert.ok(outside.some(issue=>issue.type==='outside'));
+  project.tools[0].x=10;project.wall=12;
+  const wall=cache.validate(project,'cs:mm');assert.equal(validations,5);assert.ok(wall.some(issue=>issue.type==='outside'),'wall clearance remains part of layout validity');
+  assert.equal(cache.stats().layouts,5);
+});
 test('read-only redraws reuse actual validation and set analysis; every geometry and language change invalidates them',()=>{
   const cache=createEditorGeometryCache({validateLayout,pocketOutline,findToolSets}),project=make();
   for(let i=0;i<10;i++){assert.deepEqual(cache.validate(project,'cs:mm'),validateLayout(project));cache.sets(project);}

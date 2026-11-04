@@ -44,7 +44,18 @@ function assertModule(id){
   assert.equal($(`#board-svg [data-module="${id}"]`).dataset.moduleSelected,'true');
 }
 const noHistory=()=>assert.equal($('#app [data-action="undo"]').disabled,true,'selection alone does not create history');
-after(()=>win.happyDOM.abort());
+async function paint3D(){
+  // Let a scheduled orbit frame start, then wait for the bounded worker fallback
+  // to replace the loading state with actual module facets.
+  await new Promise(resolve=>nativeTimeout(resolve,0));
+  const started=performance.now();
+  while(performance.now()-started<10000){
+    if(!$('[data-preview-state][aria-busy="true"]')&&$('#board-svg [data-module="b"]'))return;
+    await new Promise(resolve=>nativeTimeout(resolve,2));
+  }
+  assert.fail('3D module facets did not finish rendering: '+$('[data-preview-state]')?.textContent);
+}
+after(()=>{win.dispatchEvent(new win.Event('pagehide'));return win.happyDOM.abort();});
 
 test('captured mouse and pen clicks on a shared module background clear every selected tool without editing data',()=>{
   const before=state(),stored=localStorage.getItem('suplik-studio-projects-v1');
@@ -103,9 +114,9 @@ test('a resize handle switches to its module context even while another module h
   gesture($('#board-svg [data-resize-of="b"][data-resize="e"]'));assertModule('b');assert.deepEqual(state(),before);noHistory();
 });
 
-test('a captured no-movement 3D facet click selects the module and clears old tool selection',()=>{
+test('a captured no-movement 3D facet click selects the module and clears old tool selection',async()=>{
   const before=state();select('a1','a2');action('3d');
-  gesture($('#board-svg [data-module="b"]'));assertModule('b');assert.deepEqual(state(),before);noHistory();
+  await paint3D();gesture($('#board-svg [data-module="b"]'));await paint3D();assertModule('b');assert.deepEqual(state(),before);noHistory();
   action('2d');
 });
 
@@ -125,21 +136,21 @@ test('locked bulk movement keeps its selection, while an unmoved captured click 
 
 test('a primary 3D gesture on empty canvas cannot be stolen by another pointer and cancel or blur releases the next pick',async()=>{
   const before=state();select('a1','a2');action('3d');
-  const paint=()=>new Promise(resolve=>setTimeout(resolve,10));
+  await paint3D();
   for(const secondary of [{pointerType:'mouse',isPrimary:false},{pointerType:'pen',isPrimary:true}]){
     pointer('pointerdown',board(),{id:121});
     pointer('pointerdown',$('#board-svg [data-module="b"]'),{id:122,...secondary});
     pointer('pointerup',board(),{id:122,...secondary});click($('#board-svg [data-module="b"]'));
     assert.deepEqual(checked(),['a1','a2'],'secondary pointer click cannot replace the active empty-canvas gesture');
-    pointer('pointermove',board(),{id:121,x:35});pointer('pointerup',board(),{id:121,x:35});click(board());await paint();
+    pointer('pointermove',board(),{id:121,x:35});pointer('pointerup',board(),{id:121,x:35});click(board());await paint3D();
     assert.deepEqual(checked(),['a1','a2'],'orbiting the primary pointer does not become a module selection');
     assert.deepEqual(state(),before);noHistory();
   }
   for(const end of ['pointercancel','blur']){
     pointer('pointerdown',board(),{id:123});
     if(end==='blur')win.dispatchEvent(new win.Event('blur'));else pointer('pointercancel',board(),{id:123});
-    gesture($('#board-svg [data-module="b"]'),{id:124});assertModule('b');assert.deepEqual(state(),before);noHistory();
-    select('a1','a2');
+    gesture($('#board-svg [data-module="b"]'),{id:124});await paint3D();assertModule('b');assert.deepEqual(state(),before);noHistory();
+    select('a1','a2');await paint3D();
   }
   action('select-no-tools');action('2d');
 });

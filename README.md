@@ -147,6 +147,14 @@ Před celou sestavou použijte **Zkušební tisk spojky**. ZIP obsahuje dva mal�
 
 Fotografie nedává zaručenou výrobní přesnost. Stíny, lesklé plochy, výška nástroje nad papírem a perspektiva ovlivňují obrys. Překrývající se nástroje se mohou spojit. Automatické hodnocení kvality je heuristické a nepředstavuje záruku rozměrové přesnosti. Nečitelnou hranu nelze z chybějící obrazové informace spolehlivě odhadnout. Kontrolujte měřítko podle skutečného rozměru a před tiskem celé sestavy vytiskněte jeden zkušební díl. Hloubku kapsy určujete sami; z jedné fotografie ji nelze spolehlivě změřit.
 
+## Odezva u velkých sestav
+
+Kontrola exportu, příprava STL/3MF, SVG/DXF, zkušebních STL/PDF a základny Gridfinity běží v pracovním vlákně prohlížeče. Dialog se otevře hned a průběh ukazuje načítáním. Během kontroly můžete dál upravovat hodnoty; rychlé změny se sloučí a starý výsledek se zahodí. Zavření dialogu nebo **Zrušit** ukončí rozpracovaný výpočet. Při chybě nebo překročení času můžete akci opakovat; nedokončené soubory se nestahují a projekt zůstává zachovaný.
+
+U velké sestavy se přesný objem automaticky nepočítá při každé změně. Použijte **Vypočítat objem modelu**, pokud jej chcete znát před exportem. Jednou vypočtené údaje se znovu používají, dokud se nezmění geometrie. Změna tiskové podložky nezpůsobuje nové rytí popisků ani nový výpočet stejného objemu.
+
+Náročný 3D náhled automaticky přejde na označené obrysy modulů a naměřených nástrojů. Výrobní export stále obsahuje úplné kapsy, popisky, magnety i spojky. Posun a zoom mění pouze zobrazení a znovu nesestavují model. Výpočty i fotografie zůstávají v zařízení. Bez podpory pracovních vláken se velké výpočty odmítnou s vysvětlením, aby se nezablokovala stránka; drobné projekty mají omezenou lokální variantu.
+
 ## Šuplíky a soukromí
 
 Každý šuplík se ukládá jako samostatný projekt s vlastním názvem, rozměry, nástroji a moduly v úložišti daného prohlížeče. Export JSON slouží jako záloha a pro přenos na jiný počítač či telefon; import vrátí upravitelný projekt. Smazání dat prohlížeče může lokální šuplíky odstranit. Automatická synchronizace mezi zařízeními není součástí aplikace. Fotografie se neodesílají k rozpoznávání na vzdálený server.

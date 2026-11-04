@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {createCamera3D,normalizeCamera3D,printPreview} from '../dist/preview3d.js';
+import {createCamera3D,normalizeCamera3D,printPreview,PREVIEW_BUDGET} from '../dist/preview3d.js';
 import {blankProject} from '../dist/model.js';
 import {exportSTL,createDemoProject} from '../dist/geometry.js';
 import {createCanvas,loadImage} from '@napi-rs/canvas';
@@ -30,6 +30,51 @@ test('camera normalization wraps yaw, supports underneath views and keeps invali
     const normalized=normalizeCamera3D(input);assert.ok(Object.values(normalized).every(Number.isFinite));
     assert.ok(normalized.yaw>=-Math.PI&&normalized.yaw<Math.PI);assert.ok(Math.abs(normalized.pitch)<Math.PI/2);assert.ok(normalized.zoom>=.2&&normalized.zoom<=10);
   }
+});
+
+test('a 95-tool drawer uses a bounded honest reference before exact manufacturing work',()=>{
+  const project={...blankProject(),id:'large-reference',width:420,height:420,connectors:true,sizeLabels:true,modules:[],tools:[]};
+  const points=[{x:0,y:0},{x:26,y:3},{x:25,y:8},{x:9,y:6},{x:8,y:26},{x:0,y:26}];
+  for(let i=0;i<95;i++){
+    const x=i%10*42,y=Math.floor(i/10)*42,id='m'+i;
+    project.modules.push({id,name:'Module '+i,x,y,width:42,height:42});
+    project.tools.push({id:'t'+i,name:'Tool '+i,moduleId:id,x:x+8,y:y+8,rotation:0,depth:8,nominalSize:{value:8,unit:'mm'},points});
+  }
+  const before=JSON.stringify(project),start=performance.now(),preview=printPreview(project,null,null,{yaw:0,pitch:1.56});
+  assert.ok(performance.now()-start<1500,'reference preview must not enter the multi-second label/part/mesh pipeline');
+  assert.equal(preview.stats.reducedDetail,true);assert.equal(preview.stats.invalidModules,0);assert.equal(preview.stats.visibleFaces,0);
+  assert.equal(preview.stats.printParts,null,'uncomputed production information must not claim that no parts or joints exist');assert.equal(preview.stats.joints,null);
+  assert.equal((preview.html.match(/data-preview-tool="true"/g)||[]).length,95);assert.equal((preview.html.match(/data-simplified-module="true"/g)||[]).length,95);
+  assert.ok(preview.html.length<PREVIEW_BUDGET.htmlBytes);assert.doesNotMatch(preview.html,/Skutečná geometrie STL|data-invalid-module/);assert.match(preview.warnings[0],/export/);
+  const first=preview.html.match(/<polygon data-preview-tool="true" points="([^"]+)"/)[1].split(' ').map(point=>point.split(',').map(Number));
+  const [cx,cy,cz]=preview.frame.center,screen=([x,y])=>[x-cx,-(project.height-y-cy)*Math.sin(1.56)-(project.insertHeight-cz)*Math.cos(1.56)];
+  for(const index of [0,1,3,5]){
+    const expected=screen([points[index].x+8,points[index].y+8]);
+    assert.ok(first[index].every((value,axis)=>Math.abs(value-expected[axis])<.001),'reference keeps the declared asymmetric outline and its layout position');
+  }
+  assert.equal(JSON.stringify(project),before);assertFinite(preview);
+});
+
+test('a dense photographed contour produces bounded reference markup without cleaning or meshing every vertex',()=>{
+  const project=fixture();project.tools[0].points=Array.from({length:6000},(_,i)=>({x:17+17*Math.cos(i*Math.PI/3000),y:35+35*Math.sin(i*Math.PI/3000)}));
+  const before=JSON.stringify(project),start=performance.now(),preview=printPreview(project,null,null);
+  assert.ok(performance.now()-start<1500);assert.equal(preview.stats.reducedDetail,true);assert.equal(preview.stats.invalidModules,0);
+  const outline=preview.html.match(/data-preview-tool="true" points="([^"]+)"/);assert.ok(outline);
+  assert.ok(outline[1].split(' ').length<=128,'DOM work is limited even when a single source contour has thousands of vertices');
+  assert.ok(preview.html.length<50000);assert.equal(JSON.stringify(project),before);assertFinite(preview);
+});
+
+test('metadata and material colours reuse geometry while pan and zoom reuse projected polygons',()=>{
+  const project={...fixture(),multiMaterial:{enabled:true,floorThickness:.6,bodyColor:'#2f3a45',floorColor:'#e7a039',textColor:'#ffffff'}};
+  const first=printPreview(project,null,null),metadata=structuredClone(project);
+  metadata.updatedAt='different-save-time';metadata.name='Renamed drawer';metadata.modules[0].locked=true;metadata.tools[0].locked=true;metadata.unit='in';
+  const saved=printPreview(metadata,null,null);assert.equal(saved.stats.meshRevision,first.stats.meshRevision);assert.equal(saved.stats.projectionRevision,first.stats.projectionRevision);
+  const recoloured=structuredClone(metadata);recoloured.multiMaterial.bodyColor='#ff0000';
+  const changed=printPreview(recoloured,null,null);assert.equal(changed.stats.meshRevision,first.stats.meshRevision);assert.notEqual(changed.html,first.html);
+  const pan=printPreview(recoloured,null,null,{panX:18,panY:-12,zoom:2});
+  assert.equal(pan.stats.projectionRevision,changed.stats.projectionRevision);assert.deepEqual(renderedFaces(pan),renderedFaces(changed));assert.notEqual(pan.viewBox,changed.viewBox);
+  const thicker=structuredClone(recoloured);thicker.multiMaterial.floorThickness=.8;
+  assert.notEqual(printPreview(thicker,null,null).stats.meshRevision,first.stats.meshRevision,'manufacturing material thickness remains a real geometry change');
 });
 
 test('orbit exposes actual opposite STL walls and the underside without rebuilding the cached mesh',()=>{

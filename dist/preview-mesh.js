@@ -55,7 +55,7 @@ export function moduleMesh(project,moduleId,batch){
   if(!module)throw Error('Modul nemá platnou síť pro náhled.');
   const parts=moduleParts(project,module,tools,batch),mesh=packParts(parts);
   if(!mesh.facets)throw Error('Modul nemá platnou síť pro náhled.');
-  return{...mesh,parts:new Set(parts.map(part=>part.partKey)).size};
+  return{...mesh,parts:new Set(parts.map(part=>part.partKey)).size,skippedLabels:planSizeLabels(project,[module],tools).skipped};
 }
 
 export function previewBatch(project){

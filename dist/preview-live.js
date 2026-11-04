@@ -2,7 +2,7 @@
 import {createGLPreview} from './webgl-preview.js';
 import {createMeshPool,meshKeys} from './mesh-client.js';
 import {usesPrintParts} from './preview-mesh.js';
-import {baseplateEntry,boundsFor,modulePreviewWire,previewFrame,previewHud,sceneNotes,wirePath} from './preview3d.js';
+import {baseplateEntry,boundsFor,labelNotes,modulePreviewWire,previewFrame,previewHud,sceneNotes,wirePath} from './preview3d.js';
 import {materialConfig} from './print-material.js';
 import {esc} from './ui.js';
 import {t} from './i18n.js';
@@ -34,10 +34,10 @@ export function createLivePreview({onChange,createCanvas=()=>document.createElem
   const finished=(id,key,error,result)=>{
     if(!scene||scene.keys.get(id)!==key||error?.cancelled)return;
     scene.pending.delete(id);
-    if(error){scene.failed.set(id,localized(error));renderer.removeMesh(id);scene.shown.delete(id);scene.facets.delete(id);scene.parts.delete(id);}
+    if(error){scene.failed.set(id,localized(error));renderer.removeMesh(id);scene.shown.delete(id);scene.facets.delete(id);scene.parts.delete(id);scene.skipped.delete(id);}
     else{
       renderer.setMesh(id,result);scene.failed.delete(id);scene.shown.set(id,key);scene.facets.set(id,result.facets);
-      scene.parts.set(id,result.parts);if(jointInfo.size>32)jointInfo.clear();jointInfo.set(scene.projectKey,{joints:result.joints,unjoined:result.unjoined});
+      scene.parts.set(id,result.parts);scene.skipped.set(id,result.skippedLabels||[]);if(jointInfo.size>32)jointInfo.clear();jointInfo.set(scene.projectKey,{joints:result.joints,unjoined:result.unjoined});
     }
     onChange?.();
   };
@@ -45,9 +45,9 @@ export function createLivePreview({onChange,createCanvas=()=>document.createElem
     const sharedLayout=usesPrintParts(project),{projectKey,modules:keys}=meshKeys(project,{sharedLayout});
     if(scene?.projectKey===projectKey)return;
     const snapshot=JSON.parse(JSON.stringify(project)),sourceModules=snapshot.modules||[],bounds=boundsFor(snapshot);
-    const next={projectKey,project:snapshot,keys,pending:new Set(),failed:new Map(),shown:scene?.shown||new Map(),facets:scene?.facets||new Map(),parts:scene?.parts||new Map(),wires:new Map(),warnings:sceneNotes(snapshot),...bounds};
+    const next={projectKey,project:snapshot,keys,pending:new Set(),failed:new Map(),shown:scene?.shown||new Map(),facets:scene?.facets||new Map(),parts:scene?.parts||new Map(),skipped:scene?.skipped||new Map(),wires:new Map(),warnings:sceneNotes(snapshot,{labels:false}),...bounds};
     next.reference=renderer.reference(bounds.reference);
-    for(const id of renderer.ids())if(id!==BASEPLATE&&!keys.has(id)){renderer.removeMesh(id);next.shown.delete(id);next.facets.delete(id);next.parts.delete(id);}
+    for(const id of renderer.ids())if(id!==BASEPLATE&&!keys.has(id)){renderer.removeMesh(id);next.shown.delete(id);next.facets.delete(id);next.parts.delete(id);next.skipped.delete(id);}
     for(const module of sourceModules)next.wires.set(module.id,modulePreviewWire(snapshot,module));
     renderer.removeMesh(BASEPLATE);
     if(snapshot.bottomMode==='grid'){
@@ -65,7 +65,7 @@ export function createLivePreview({onChange,createCanvas=()=>document.createElem
     }
   };
   const status=()=>{
-    const total=scene.keys.size,ready=total-scene.pending.size-scene.failed.size,warnings=[...scene.warnings],unjoined=jointInfo.get(scene.projectKey)?.unjoined||0;
+    const total=scene.keys.size,ready=total-scene.pending.size-scene.failed.size,warnings=[...scene.warnings,...labelNotes(scene.project,[...scene.skipped.values()].flat())],unjoined=jointInfo.get(scene.projectKey)?.unjoined||0;
     if(unjoined)warnings.unshift(t('Na {n} společných hranách není bezpečné místo pro spojku. Podrobnosti jsou v assembly.json.',{n:unjoined}));
     for(const [id,message] of scene.failed){const module=scene.project.modules.find(item=>item.id===id);warnings.push(`${module?.name||t('Modul')}: ${message}`);}
     return{total,ready,warnings};
@@ -90,8 +90,9 @@ export function createLivePreview({onChange,createCanvas=()=>document.createElem
         html+=`<g data-module="${esc(id)}"${failed?' data-invalid-module="true"':' data-pending-module="true"'} role="button" tabindex="0" aria-label="${esc(name)}${failed?' — neplatný modul':''}" data-module-selected="${active}"><path d="${wirePath(wire,projectPoint)}" fill="none" stroke="${stroke}" stroke-width="1.2" stroke-dasharray="5 3" vector-effect="non-scaling-stroke"/></g>`;
       }
       const facets=[...scene.keys.keys()].reduce((sum,id)=>sum+(scene.facets.get(id)||0),0);
-      html+=previewHud(scene.project,frame,warnings,ready<total-scene.failed.size?t('Připravuji 3D model: {ready} z {total} modulů',{ready,total}):'');
-      return{html,viewBox:frame.viewBox,camera:frame.state,frame:{width:frame.width,height:frame.height,fitSize:scene.fitSize,center:[...scene.center],viewport:frame.size},warnings,stats:{triangles:facets,ready,total,failed:scene.failed.size,joints:jointInfo.get(scene.projectKey)?.joints||0}};
+      html+=previewHud(scene.project,frame,[]);
+      const busy=ready<total-scene.failed.size,notice=[busy?t('Připravuji 3D model: {ready} z {total} modulů',{ready,total}):'',...warnings].filter(Boolean).join(' ');
+      return{html,notice,busy,viewBox:frame.viewBox,camera:frame.state,frame:{width:frame.width,height:frame.height,fitSize:scene.fitSize,center:[...scene.center],viewport:frame.size},warnings,stats:{triangles:facets,ready,total,failed:scene.failed.size,joints:jointInfo.get(scene.projectKey)?.joints||0}};
     },
     pick(x,y,rect){
       if(!view)return null;

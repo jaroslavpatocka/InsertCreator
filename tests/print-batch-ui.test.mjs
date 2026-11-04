@@ -42,7 +42,8 @@ const selected=()=>all('.modal [data-export-module]:checked').map(element=>eleme
 function choose(ids){const wanted=new Set(ids),known=all('.modal [data-export-module]').map(box=>box.dataset.exportModule);for(const id of known){const box=$(`.modal [data-export-module="${id}"]`);if(box.checked!==wanted.has(id)){box.checked=wanted.has(id);box.dispatchEvent(new win.Event('change',{bubbles:true}));}}}
 function change(selector,value){const element=$(selector);assert.ok(element,selector);element.value=String(value);element.dispatchEvent(new win.Event('change',{bubbles:true}));}
 function close(){if($('[data-print-batch-cancel]'))click('[data-print-batch-cancel]');else if($('[data-modal-close]'))click('[data-modal-close]');}
-async function open(id){holdFrames=false;close();action('projects');click(`[data-open="${id}"]`);action('export');await tick();assert.ok($('[data-do-export]'));assert.equal(all('.modal [data-export-module]').length,3);}
+const analysisReady=()=>waitFor(()=>$('[data-export-analysis]')?.getAttribute('aria-busy')!=='true');
+async function open(id){holdFrames=false;close();action('projects');click(`[data-open="${id}"]`);action('export');await analysisReady();assert.ok($('[data-do-export]'));assert.equal(all('.modal [data-export-module]').length,3);}
 function assertReadOnly(before,undo){assert.equal(store(),before,'printing must not change even persisted timestamps, IDs, positions or contours');assert.deepEqual(history(),undo,'printing must not add or remove undo history');}
 async function unzip(blob){const bytes=new Uint8Array(await blob.arrayBuffer()),view=new DataView(bytes.buffer),files=new Map();let offset=0;while(view.getUint32(offset,true)===0x04034b50){assert.equal(view.getUint16(offset+8,true),0);const length=view.getUint32(offset+18,true),nameLength=view.getUint16(offset+26,true),extraLength=view.getUint16(offset+28,true),start=offset+30+nameLength+extraLength,name=new TextDecoder().decode(bytes.subarray(offset+30,offset+30+nameLength));assert.equal(files.has(name),false);files.set(name,bytes.slice(start,start+length));offset=start+length;}assert.equal(view.getUint32(offset,true),0x02014b50);return files;}
 function decodeSTL(bytes){const view=new DataView(bytes.buffer,bytes.byteOffset,bytes.byteLength),count=view.getUint32(80,true);assert.equal(bytes.length,84+count*50);return Array.from({length:count},(_,i)=>[0,1,2].map(vertex=>[0,1,2].map(axis=>view.getFloat32(84+i*50+12+vertex*12+axis*4,true))));}
@@ -58,7 +59,7 @@ async function verifyZIP(download,source,moduleIds,expectedParts){
   }
   return manifest;
 }
-async function exportSelected(ids){choose(ids);assert.deepEqual(selected(),[...ids].sort());const button=$('[data-do-export]');assert.ok(!button.disabled,'oversized modules are printable by clipping, without manual repacking');const before=store(),undo=history(),source=saved(),count=downloads.length;click(button);await waitFor(()=>downloads.length===count+1);assertReadOnly(before,undo);assert.equal(saved().modules.length,3);return{download:downloads.at(-1),source};}
+async function exportSelected(ids){choose(ids);await analysisReady();assert.deepEqual(selected(),[...ids].sort());const button=$('[data-do-export]');assert.ok(!button.disabled,'oversized modules are printable by clipping, without manual repacking');const before=store(),undo=history(),source=saved(),count=downloads.length;click(button);await waitFor(()=>downloads.length===count+1);assertReadOnly(before,undo);assert.equal(saved().modules.length,3);return{download:downloads.at(-1),source};}
 async function flushHeld(){holdFrames=false;const callbacks=[...heldFrames.values()];heldFrames.clear();for(const callback of callbacks)callback(performance.now());await pause(75);}
 after(()=>win.happyDOM.abort());
 
@@ -84,9 +85,9 @@ test('an invalid selected pocket is blocked without preparing a partial ZIP or c
 });
 
 test('cancelling queued preparation drops every part without a file or project/history change',async()=>{
-  await open('cancel');choose(['pair','triple']);await tick();const before=store(),undo=history(),count=downloads.length;holdFrames=true;click('[data-do-export]');assert.ok($('[data-print-batch-progress]'));assert.ok($('[data-print-batch-cancel]'));click('[data-print-batch-cancel]');await flushHeld();assert.equal(downloads.length,count);assertReadOnly(before,undo);assert.equal($('.modal'),null);
+  await open('cancel');choose(['pair','triple']);await analysisReady();const before=store(),undo=history(),count=downloads.length;holdFrames=true;click('[data-do-export]');assert.ok($('[data-print-batch-progress]'));assert.ok($('[data-print-batch-cancel]'));click('[data-print-batch-cancel]');await flushHeld();assert.equal(downloads.length,count);assertReadOnly(before,undo);assert.equal($('.modal'),null);
 });
 
 test('switching drawers before queued preparation completes cannot download or alter either drawer',async()=>{
-  await open('stale');choose(['pair','triple']);await tick();const source=saved(),count=downloads.length;holdFrames=true;click('[data-do-export]');assert.ok($('[data-print-batch-progress]'));action('projects');click('[data-open="target"]');const afterSwitch=store(),undo=history();await flushHeld();assert.equal(downloads.length,count);assertReadOnly(afterSwitch,undo);assert.equal(saved().id,'target');const old=JSON.parse(store()).find(project=>project.id==='stale');delete old.updatedAt;delete source.updatedAt;assert.deepEqual(old,source,'switching preserves all source layout data');
+  await open('stale');choose(['pair','triple']);await analysisReady();const source=saved(),count=downloads.length;holdFrames=true;click('[data-do-export]');assert.ok($('[data-print-batch-progress]'));action('projects');click('[data-open="target"]');const afterSwitch=store(),undo=history();await flushHeld();assert.equal(downloads.length,count);assertReadOnly(afterSwitch,undo);assert.equal(saved().id,'target');const old=JSON.parse(store()).find(project=>project.id==='stale');delete old.updatedAt;delete source.updatedAt;assert.deepEqual(old,source,'switching preserves all source layout data');
 });

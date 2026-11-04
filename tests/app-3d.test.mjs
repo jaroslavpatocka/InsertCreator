@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
+import {Worker as NodeWorker} from 'node:worker_threads';
 import {Window} from 'happy-dom';
 import {blankProject} from '../dist/model.js';
 
@@ -14,15 +15,27 @@ const pendingFrames=new Map();let nextFrame=0;
 globalThis.requestAnimationFrame=win.requestAnimationFrame=callback=>{pendingFrames.set(++nextFrame,callback);return nextFrame;};
 globalThis.cancelAnimationFrame=win.cancelAnimationFrame=id=>pendingFrames.delete(id);
 async function paint(){
-  for(let i=0;pendingFrames.size&&i<12;i++){
+  const started=performance.now();
+  while(performance.now()-started<10000){
     const callbacks=[...pendingFrames.values()];pendingFrames.clear();
     for(const callback of callbacks)callback(performance.now());
     await Promise.resolve();
+    if(!pendingFrames.size&&!win.document.querySelector('[data-preview-state][aria-busy="true"]'))return;
+    await new Promise(resolve=>nativeSetTimeout(resolve,2));
   }
-  assert.equal(pendingFrames.size,0,'camera painting must settle');
+  assert.fail('camera painting and the asynchronous preview must settle: '+win.document.querySelector('[data-preview-state]')?.textContent);
 }
 const nativeSetTimeout=globalThis.setTimeout;
 globalThis.setTimeout=(callback,delay,...args)=>{const timer=nativeSetTimeout(callback,delay,...args);if(delay>=4000)timer.unref?.();return timer;};
+const workers=[];let previewRequests=0;
+globalThis.Worker=class BrowserWorker{
+  constructor(url){
+    this.native=new NodeWorker(new URL('./worker-adapter.mjs',import.meta.url),{workerData:{url:String(url)}});workers.push(this);
+    this.native.on('message',data=>this.onmessage?.({data}));this.native.on('error',error=>this.onerror?.({message:error.message,preventDefault(){}}));this.native.on('messageerror',()=>this.onmessageerror?.());
+  }
+  postMessage(data){if(data.operation==='preview')previewRequests++;this.native.postMessage(data);}
+  terminate(){return this.native.terminate();}
+};
 
 const rectangle={x:100,y:50,left:100,top:50,right:900,bottom:550,width:800,height:500,toJSON(){return this;}};
 const originalRect=win.Element.prototype.getBoundingClientRect;
@@ -85,7 +98,7 @@ function unchanged(snapshot,undo){assert.equal(serialized(),snapshot,'camera nav
 await import('../dist/app.js');await paint();
 
 test('3D mouse navigation changes only the camera and preserves normal 2D behavior',async t=>{
-  t.after(async()=>{await win.happyDOM.close();});
+  t.after(async()=>{win.dispatchEvent(new win.Event('pagehide'));await Promise.all(workers.map(worker=>worker.terminate()));await win.happyDOM.close();});
   await t.test('left drag orbits over background, unlocked and locked modules without editing data or undo',async()=>{
     await reset();action('2d');
     const field=$('#app [data-field=width]'),originalWidth=saved().width;field.value=String(originalWidth+42);field.dispatchEvent(new win.Event('change',{bubbles:true}));action('3d');await paint();
@@ -101,15 +114,18 @@ test('3D mouse navigation changes only the camera and preserves normal 2D behavi
 
   await t.test('right drag pans the model in screen pixels without rotating it',async()=>{
     await reset();const snapshot=serialized(),undo=history(),before=box(),mesh=geometry(),origin=screenPoint({x:0,y:0},before);
+    const retained=board().querySelector('[data-module]'),requests=previewRequests;
     await drag(board().querySelector('[data-module="m-locked"]'),2,64,-32);
     const after=box(),moved=screenPoint({x:0,y:0},after);
     assert.equal(geometry(),mesh,'pan must preserve the projected orientation');
     assert.notDeepEqual(after,before);assert.ok(Math.abs(moved.x-origin.x-64)<1);assert.ok(Math.abs(moved.y-origin.y+32)<1);
+    assert.equal(board().querySelector('[data-module]'),retained,'pan keeps the existing SVG mesh nodes');assert.equal(previewRequests,requests,'pan must not request another worker render');
     unchanged(snapshot,undo);
   });
 
   await t.test('wheel zoom is cursor anchored, clamped and confined to the 3D board',async()=>{
     await reset();const snapshot=serialized(),undo=history(),before=box(),anchor={x:720,y:170},world=worldPoint(anchor.x,anchor.y,before);
+    const retained=board().querySelector('[data-module]'),requests=previewRequests;
     assert.equal(wheel(board(),{x:anchor.x,y:anchor.y}).defaultPrevented,true);await paint();
     assert.ok(box().width<before.width);assert.ok(zoomPercent()>100);
     const fixed=screenPoint(world);assert.ok(Math.abs(fixed.x-anchor.x)<.01);assert.ok(Math.abs(fixed.y-anchor.y)<.01);
@@ -119,6 +135,7 @@ test('3D mouse navigation changes only the camera and preserves normal 2D behavi
     wheel(board(),{deltaY:1e9});await paint();assert.deepEqual(box(),minimum);assert.equal(zoomPercent(),minPercent);
     assert.ok(Number.isFinite(maxPercent)&&maxPercent>100);assert.ok(Number.isFinite(minPercent)&&minPercent>0&&minPercent<100);
     assert.equal(wheel($('.board-toolbar')).defaultPrevented,false,'wheel outside the SVG must keep scrolling the page');
+    assert.equal(board().querySelector('[data-module]'),retained,'zoom changes the viewBox without replacing mesh nodes');assert.equal(previewRequests,requests,'zoom must not request another worker render');
     unchanged(snapshot,undo);
   });
 

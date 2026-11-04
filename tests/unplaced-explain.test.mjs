@@ -39,15 +39,17 @@ test('tools longer than the saved bed stay placed with no editor printer warning
   action('3d');assert.ok($('#app [data-action=print-bed]')===null);action('2d');
 });
 
-test('STL export prepares automatic mesh cuts for oversized parts while other formats keep their original outlines',()=>{
+test('STL export prepares automatic mesh cuts for oversized parts while other formats keep their original outlines',async()=>{
+  const ready=async()=>{const start=performance.now();while($('[data-export-analysis]')?.getAttribute('aria-busy')==='true'){if(performance.now()-start>5000)assert.fail('Background export analysis did not finish');await new Promise(resolve=>nativeSetTimeout(resolve,5));}};
   const before=localStorage.getItem('suplik-studio-projects-v1');action('export');
+  await ready();
   assert.equal($('[data-do-export]').disabled,false,'A valid oversized part can be printed in cut pieces');assert.ok($('.modal [data-field=bedWidth]'));assert.ok($('.modal [data-field=bedHeight]'));
   assert.ok(!$('#limit-bed'));assert.equal(saved().limitToBed,true);assert.equal(localStorage.getItem('suplik-studio-projects-v1'),before);
   for(const format of ['svg','dxf','json']){
-    click('[data-format="'+format+'"]');assert.equal($('[data-do-export]').disabled,false,format+' has no bed restriction');
+    click('[data-format="'+format+'"]');await ready();assert.equal($('[data-do-export]').disabled,false,format+' has no bed restriction');
     assert.ok($('#bed-warnings')===null);
   }
-  click('[data-format="stl"]');assert.equal($('[data-do-export]').disabled,false);assert.ok(!$('#limit-bed'));closeModals();
+  click('[data-format="stl"]');await ready();assert.equal($('[data-do-export]').disabled,false);assert.ok(!$('#limit-bed'));closeModals();
   assert.equal(localStorage.getItem('suplik-studio-projects-v1'),before,'Changing export formats cannot repack or persist the drawer');assert.equal(issueText(),'');
 });
 
