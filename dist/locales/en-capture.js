@@ -2,6 +2,12 @@
 // Keep {placeholders} identical in both languages.
 // Worker progress messages, quality reasons and worker errors travel as Czech text and are translated in capture.js.
 export default {
+  'Pohled na fotografii':'Photo view',
+  'Kolečko: přiblížit · Pravé nebo prostřední tlačítko: posunout · Mezerník + tažení: posunout':'Wheel: zoom · Right or middle button: pan · Space + drag: pan',
+  'Zpět k měřítku':'Back to scale',
+  'Samostatné nástroje se nerozpoznaly.':'Individual tools were not recognised.',
+  'Obrysy obsahují značky měřítka.':'The outlines contain the scale marks.',
+  'Nalezené obrysy obsahují obě značky měřítka, proto nejsou automaticky vybrané. Jednotlivé nástroje uvnitř kufříku nebo držáku se neoddělily. Pro samostatné obrysy je vyjměte a vyfoťte odděleně na jednolitém kontrastním podkladu.':'The detected outlines contain both scale marks, so they are not selected automatically. Individual tools inside a case or holder were not separated. For separate outlines, remove the tools and photograph them apart on a plain, contrasting background.',
   // Capture modal
   'Vyfoťte. Obrys připravíme my.':'Take a photo. We’ll do the outline.',
   'Automatické měřítko, rozpoznání nástroje i čisté hrany. Bez kreslení bodů.':'Automatic scale, tool recognition and clean edges. No point drawing.',

@@ -15,7 +15,7 @@ function actual(element){
   if(!canvases.has(element))canvases.set(element,createCanvas(element.width||300,element.height||150));
   const canvas=canvases.get(element);if(canvas.width!==element.width)canvas.width=element.width;if(canvas.height!==element.height)canvas.height=element.height;return canvas;
 }
-win.HTMLCanvasElement.prototype.getContext=function(type){if(type!=='2d')return null;const ctx=actual(this).getContext('2d');return new Proxy(ctx,{get:(target,key)=>typeof target[key]==='function'?target[key].bind(target):target[key],set:(target,key,value)=>(target[key]=value,true)});};
+win.HTMLCanvasElement.prototype.getContext=function(type){if(type!=='2d')return null;const ctx=actual(this).getContext('2d');return new Proxy(ctx,{get:(target,key)=>key==='drawImage'?((source,...args)=>target.drawImage(source instanceof win.HTMLCanvasElement?actual(source):source,...args)):typeof target[key]==='function'?target[key].bind(target):target[key],set:(target,key,value)=>(target[key]=value,true)});};
 // Fake workers record what recognition receives (the calibrated scale) and never answer.
 const posted=[];
 globalThis.Worker=class{constructor(url){this.url=String(url);}postMessage(message){posted.push({url:this.url,message});}terminate(){}};
