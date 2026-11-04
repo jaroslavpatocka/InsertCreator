@@ -1,5 +1,6 @@
 import { autoTraceImage } from './auto-trace.js';
 import { segmentNeural } from './neural.js';
+import { readableImage } from './photo-enhance.js';
 import { i18nError } from './i18n.js';
 // Progress messages and worker errors are Czech source text; capture.js translates them with t()/errorText().
 
@@ -35,6 +36,18 @@ function classical(image, options, signal) {
 export async function recognizeTools(image, { pxPerMm = 1, kind = 'paper', signal, onProgress } = {}) {
   if (signal?.aborted) throw aborted();
   const progress = event => { if (!signal?.aborted) onProgress?.(event); };
+  // Light tools on a dark insert would be traced as one dark object, whatever its score, so this comes first.
+  const readable = readableImage(image);
+  if (readable) {
+    progress({ stage: 'enhance', progress: .05, message: 'Upravuji fotku, aby byly nástroje čitelné…' });
+    const result = await classical(readable.image, { pxPerMm, kind: 'tray', onProgress: progress }, signal);
+    if (signal?.aborted) throw aborted();
+    if (result.quality.status !== 'retake' && result.contours.length >= 2) {
+      result.enhanced = readable.name; result.neuralModel = null;
+      progress({ stage: 'done', progress: 1, message: result.quality.status === 'ready' ? 'Obrysy jsou připravené.' : 'Fotka potřebuje lepší podmínky.' });
+      return result;
+    }
+  }
   progress({ stage: 'recognition', progress: .05, message: 'Odděluji nástroje od papíru…' });
   const [base, neural] = await Promise.allSettled([
     classical(image, { pxPerMm, kind, onProgress: progress }, signal),

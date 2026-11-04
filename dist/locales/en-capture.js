@@ -142,6 +142,8 @@ export default {
   'Rozpoznávání bylo zrušeno.':'Recognition was cancelled.',
   'Automatické rozpoznávání se nepodařilo spustit. Obnovte aplikaci a zkuste to znovu.':'Automatic recognition couldn’t start. Reload the app and try again.',
   'Odděluji nástroje od papíru…':'Separating tools from the paper…',
+  'Upravuji fotku, aby byly nástroje čitelné…':'Adjusting the photo so the tools are readable…',
+  'Fotku jsme pro rozpoznání automaticky upravili: světlé nástroje jsme oddělili od tmavé vložky. Poloha a rozměry obrysů se tím nezměnily.':'We adjusted the photo automatically for recognition: light tools were separated from the dark insert. The position and size of the outlines did not change.',
   'Zpřesňuji skutečné hrany a odstraňuji stíny…':'Refining real edges and removing shadows…',
   'Fotka potřebuje lepší podmínky.':'The photo needs better conditions.',
   'Rozpoznávání selhalo.':'Recognition failed.',

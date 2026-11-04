@@ -324,7 +324,7 @@ function separateTouching(binary, result, im, features, pxPerMm, options) {
   });
 }
 
-function evaluateCandidate(name, binary, im, features, pxPerMm) {
+function evaluateCandidate(name, binary, im, features, pxPerMm, separated = false) {
   const options = { smoothing: Math.max(.25, .15 * pxPerMm), minArea: Math.max(im.width * im.height * .00016, 4 * pxPerMm * pxPerMm) };
   const result = traceMask(binary, im.width, im.height, { ...options, includeLabels: true });
   const contours = separateTouching(binary, result, im, features, pxPerMm, options);
@@ -341,7 +341,7 @@ function evaluateCandidate(name, binary, im, features, pxPerMm) {
     if (possibleFragments(accepted[i], accepted[j], pxPerMm)) fragments++;
   }
   const fill = count / mask.length, foregroundEvidence = count ? strong / count : 0, neuralAgreement = count && im.prior ? prior / count : null;
-  const rawScore = .44 * coverage + .28 * strength + .16 * foregroundEvidence + .12 - Math.min(.25, fragments * .075) - Math.max(0, fill - .65) * 1.5 - Math.max(0, accepted.length - 15) * .012;
+  const rawScore = .44 * coverage + .28 * strength + .16 * foregroundEvidence + .12 - (separated ? 0 : Math.min(.25, fragments * .075) + Math.max(0, accepted.length - 15) * .012) - Math.max(0, fill - .65) * 1.5;
   const score = clamp(rawScore + (neuralAgreement === null ? 0 : (neuralAgreement - .55) * .18));
   return { name, contours: accepted.map(c => c.contour), mask, score, coverage, strength, foregroundEvidence, fragments, fill, rejected: measured.length - accepted.length, rawContours: measured.length, weakestCoverage: accepted.length ? Math.min(...accepted.map(c => c.coverage)) : 0, neuralAgreement, agreement: 0 };
 }
@@ -385,7 +385,7 @@ export async function autoTraceImage(imageData, { pxPerMm = 1, kind = 'paper', p
   const candidates = [];
   for (let i = 0; i < definitions.length; i++) {
     progress('contours', .38 + i / definitions.length * .42, `Porovnávám automatické obrysy (${i + 1}/${definitions.length})…`); await pause();
-    const definition = definitions[i]; candidates.push(evaluateCandidate(definition.name, definition.mask, im, features, scale)); definition.mask = null;
+    const definition = definitions[i]; candidates.push(evaluateCandidate(definition.name, definition.mask, im, features, scale, kind === 'tray')); definition.mask = null;
   }
   progress('quality', .9, 'Ověřuji souvislost hran a shodu metod…'); await pause();
   for (let i = 0; i < candidates.length; i++) for (let j = i + 1; j < candidates.length; j++) { const agreement = overlap(candidates[i].mask, candidates[j].mask); candidates[i].agreement = Math.max(candidates[i].agreement, agreement); candidates[j].agreement = Math.max(candidates[j].agreement, agreement); }
@@ -397,7 +397,8 @@ export async function autoTraceImage(imageData, { pxPerMm = 1, kind = 'paper', p
   else {
     if (best.coverage < .74 || best.weakestCoverage < .58 || best.strength < .5) { status = 'review'; reasons.push('Část hrany je málo kontrastní nebo splývá se stínem. Přesnost této části nelze z fotografie spolehlivě ověřit.'); }
     if (best.agreement < .68 && !(best.coverage > .94 && best.strength > .78)) { status = 'review'; reasons.push('Nezávislé metody se neshodují na celém obrysu; fotografie obsahuje nejednoznačné odlesky či stíny.'); }
-    if (best.fragments > 0 || best.contours.length > 15) { status = 'review'; reasons.push('Některé části mohou patřit ke stejnému nástroji. Ponechte mezi nástroji větší mezery a omezte odlesky.'); }
+    // Tools in a case insert are many and deliberately kept apart, so neighbours are not fragments of one tool.
+    if (kind !== 'tray' && (best.fragments > 0 || best.contours.length > 15)) { status = 'review'; reasons.push('Některé části mohou patřit ke stejnému nástroji. Ponechte mezi nástroji větší mezery a omezte odlesky.'); }
     if (kind === 'paper' && clippedForeground > Math.max(16, (im.width + im.height) * .02)) { status = 'review'; reasons.push('Nástroj nebo tmavé pozadí zasahuje k okraji papíru. Celý nástroj musí být uvnitř a všechny rohy papíru viditelné.'); }
     if (best.fill > .72) { status = 'review'; reasons.push('Nástroje zabírají téměř celou plochu. Nechte kolem nich více čistého papíru.'); }
     if (model.fitResidual > 10 || model.inlierFraction < .48) { status = 'review'; reasons.push('Pozadí se nepodobá rovnoměrně osvětlenému čistému papíru.'); }
