@@ -91,6 +91,10 @@ Vývoj/testy používají také `@napi-rs/canvas` 1.1.0 (MIT), `happy-dom` 21.0.
 
 Development/tests also use `@napi-rs/canvas` 1.1.0 (MIT), `happy-dom` 21.0.4 (MIT) and `pdfjs-dist` 4.10.38 (Apache 2.0). They are not part of the static application published from `dist/`. The complete dependency tree is recorded in `package-lock.json`.
 
+Automatické nasazování přes SFTP používá [Paramiko 5.1.0](https://pypi.org/project/paramiko/5.1.0/) (LGPL-2.1) a jeho závislosti. Přesné verze a kontrolní součty jsou v [requirements-deploy.txt](requirements-deploy.txt). Tyto balíčky se instalují pouze do prostředí nasazovací úlohy na GitHubu a nepublikují se v `dist/`. Knihovnu Paramiko neupravujeme; její vlastní licence a licence závislostí zůstávají přibalené v distribučních Python balíčcích.
+
+Automatic SFTP deployment uses [Paramiko 5.1.0](https://pypi.org/project/paramiko/5.1.0/) (LGPL-2.1) and its dependencies. Exact versions and hashes are in [requirements-deploy.txt](requirements-deploy.txt). These packages are installed only in the GitHub deployment job and are not published in `dist/`. Paramiko is used without modification; the Python distributions retain their own licence notices.
+
 Tento soupis shrnuje použití součástí. Úplné podmínky stanoví odkazované licence a dokumentace původu; při další distribuci příslušné texty zachovejte.
 
 This inventory summarises component use. The linked licences and provenance documents provide the complete terms; retain the applicable texts when redistributing.
