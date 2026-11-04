@@ -18,6 +18,7 @@ globalThis.setTimeout=(callback,delay,...args)=>{const timer=nativeSetTimeout(ca
 const $=selector=>win.document.querySelector(selector);
 const click=selector=>{const el=$(selector);assert.ok(el,'Missing '+selector);el.click();};
 const action=name=>click(`#app [data-action="${name}"]`);
+async function arrange(){action('smart-layout');const start=performance.now();while(!$('[data-smart-close]')){if(performance.now()-start>20000)throw Error('Arrangement did not finish');await new Promise(resolve=>setTimeout(resolve,5));}assert.doesNotMatch($('.smart-layout-result h3').textContent,/nepodařilo|failed|couldn.t/i,$('.smart-layout-result').textContent);click('[data-smart-close]');}
 const saved=()=>JSON.parse(localStorage.getItem('suplik-studio-projects-v1')).find(p=>p.id===JSON.parse(localStorage.getItem('suplik-studio-current')));
 const change=(selector,value)=>{const element=$(selector);assert.ok(element,'Missing '+selector);element.value=String(value);element.dispatchEvent(new win.Event('change',{bubbles:true}));};
 const closeModals=()=>{while($('#modal-root [data-modal-close]'))click('#modal-root [data-modal-close]');};
@@ -27,29 +28,27 @@ const unplacedIds=()=>{const p=saved();return p.tools.filter(t=>!p.modules.some(
 const issueText=()=>$('#app .issue-box[role=status]')?.textContent??'';
 await import('../dist/app.js');
 
-test('tools longer than the saved bed stay placed with no editor printer warning',()=>{
+test('tools longer than the saved bed stay placed with no editor printer warning',async()=>{
   const p=createDrawerFromUI('Klíče',588,420);assert.equal(p.limitToBed,true);
   for(let i=0;i<3;i++)addRect(20,235);
   assert.equal(unplacedIds().length,0,'The drawer can hold parts longer than the 220 mm printer bed');
   assert.equal(issueText(),'');assert.ok($('#app [data-action=print-bed]')===null);
   assert.deepEqual([saved().limitToBed,saved().bedWidth,saved().bedHeight],[true,220,220]);
   const id=saved().tools[0].id;click('#app [data-select="'+id+'"]');assert.ok($('#app .unplaced-why')===null);
-  action('auto');assert.equal(unplacedIds().length,0);assert.equal(issueText(),'');
+  await arrange();assert.equal(unplacedIds().length,0);assert.equal(issueText(),'');
   action('3d');assert.ok($('#app [data-action=print-bed]')===null);action('2d');
 });
 
-test('the same oversized part is warned about only in STL export; SVG and DXF remain available',()=>{
-  const before=JSON.stringify(saved().modules);action('export');
-  assert.match($('#bed-warnings').textContent,/nevejde/);assert.equal($('[data-do-export]').disabled,true);
-  assert.equal($('#limit-bed').checked,true);assert.equal(JSON.stringify(saved().modules),before);
+test('STL export prepares automatic mesh cuts for oversized parts while other formats keep their original outlines',()=>{
+  const before=localStorage.getItem('suplik-studio-projects-v1');action('export');
+  assert.equal($('[data-do-export]').disabled,false,'A valid oversized part can be printed in cut pieces');assert.ok($('.modal [data-field=bedWidth]'));assert.ok($('.modal [data-field=bedHeight]'));
+  assert.ok(!$('#limit-bed'));assert.equal(saved().limitToBed,true);assert.equal(localStorage.getItem('suplik-studio-projects-v1'),before);
   for(const format of ['svg','dxf','json']){
     click('[data-format="'+format+'"]');assert.equal($('[data-do-export]').disabled,false,format+' has no bed restriction');
     assert.ok($('#bed-warnings')===null);
   }
-  click('[data-format="stl"]');assert.equal($('[data-do-export]').disabled,true);
-  const box=$('#limit-bed');box.checked=false;box.dispatchEvent(new win.Event('change',{bubbles:true}));
-  assert.equal(saved().limitToBed,false);assert.equal($('[data-do-export]').disabled,false);closeModals();
-  assert.equal(JSON.stringify(saved().modules),before,'Export settings cannot repack the drawer');assert.equal(issueText(),'');
+  click('[data-format="stl"]');assert.equal($('[data-do-export]').disabled,false);assert.ok(!$('#limit-bed'));closeModals();
+  assert.equal(localStorage.getItem('suplik-studio-projects-v1'),before,'Changing export formats cannot repack or persist the drawer');assert.equal(issueText(),'');
 });
 
 test('no free room and larger than the drawer are told apart',()=>{

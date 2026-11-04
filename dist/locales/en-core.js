@@ -186,4 +186,13 @@ export default {
   'Díl podkladové mřížky musí obsahovat celá pole uvnitř šuplíku.':'A baseplate tile must contain whole cells inside the drawer.',
   'Podkladová mřížka má příliš mnoho polí pro jeden STL. Exportujte ji po dílech nejvýše 400 polí.':'The baseplate has too many cells for one STL. Export tiles of at most 400 cells.',
   'Podkladová mřížka potřebuje tiskovou plochu alespoň {size}.':'The baseplate needs a print bed of at least {size}.',
+  'Řez modelu musí mít platnou polohu a kladné rozměry.':'The model cut must have a valid position and positive dimensions.',
+  'Řez modelu s patkami Gridfinity musí vést po hranicích polí 42 mm.':'Cuts of a model with Gridfinity feet must follow the 42 mm cell boundaries.',
+  'Tisková plocha je příliš malá pro celé pole Gridfinity 42 mm.':'The print bed is too small for a complete 42 mm Gridfinity cell.',
+  'Pro jeden export lze připravit nejvýše 400 tiskových dílů. Vyberte méně modulů nebo větší tiskovou plochu.':'One export supports at most 400 printable parts. Select fewer modules or a larger print bed.',
+  'Vyberte alespoň jeden platný modul pro tisk.':'Select at least one valid module to print.',
+  'Některý vybraný modul už v projektu neexistuje.':'A selected module no longer exists in the project.',
+  'Tiskový díl se nevejde na zadanou tiskovou plochu.':'A printable part does not fit the specified print bed.',
+  'Tiskové díly přesahují limit 128 MB. Vyberte méně modulů a export zopakujte.':'The printable parts exceed the 128 MB limit. Select fewer modules and export again.',
+  'Vybrané moduly neobsahují žádnou tisknutelnou geometrii.':'The selected modules contain no printable geometry.',
 };

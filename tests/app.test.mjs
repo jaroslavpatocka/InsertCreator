@@ -37,9 +37,15 @@ win.HTMLCanvasElement.prototype.getContext=function(type){
 };
 const $=selector=>win.document.querySelector(selector);
 const click=selector=>{const el=$(selector);assert.ok(el,'Missing '+selector);el.click();};
-const waitFor=async fn=>{const start=Date.now();while(!fn()){if(Date.now()-start>12000)throw Error('Timed out waiting for UI');await new Promise(r=>setTimeout(r,15));}};
+const waitFor=async(fn,timeout=12000)=>{const start=Date.now();while(!fn()){if(Date.now()-start>timeout)throw Error('Timed out waiting for UI');await new Promise(r=>setTimeout(r,15));}};
 const action=name=>click(`#app [data-action="${name}"]`);
 const saved=()=>JSON.parse(localStorage.getItem('suplik-studio-projects-v1')).find(p=>p.id===JSON.parse(localStorage.getItem('suplik-studio-current')));
+const logical=p=>{const copy=structuredClone(p);delete copy.updatedAt;return copy;};
+async function arrange(){
+  const before=logical(saved());action('smart-layout');assert.ok($('[data-smart-progress]'));
+  await waitFor(()=>$('[data-smart-close]'),60000);assert.doesNotMatch($('.smart-layout-result h3').textContent,/nepodařilo|failed|couldn.t/i,$('.smart-layout-result').textContent);
+  click('[data-smart-close]');return JSON.stringify(logical(saved()))!==JSON.stringify(before);
+}
 const change=(selector,value)=>{const element=$(selector);assert.ok(element,'Missing '+selector);if(element.type==='checkbox')element.checked=Boolean(value);else element.value=String(value);element.dispatchEvent(new win.Event('change',{bubbles:true}));};
 const createDrawerFromUI=(name,width,height)=>{action('projects');click('[data-new]');change('[data-field=drawerName]',name);change('[data-field=drawerWidth]',width);change('[data-field=drawerHeight]',height);click('[data-create-drawer]');return saved();};
 const downloadFrom=async selector=>{const count=downloads.length;click(selector);await waitFor(()=>downloads.length>count);assert.ok(downloads.at(-1).blob,'A generated file Blob must be present');return downloads.at(-1);};
@@ -82,12 +88,13 @@ test('rotation shortcut ignores Ctrl, Meta and Alt while plain R still rotates',
   }
 });
 
-test('legacy projects keep their original pockets until finger grips are explicitly requested',()=>{
+test('legacy projects keep their original pockets until finger grips are explicitly requested',async()=>{
   const before=saved();assert.ok(before.tools.every(t=>!Object.prototype.hasOwnProperty.call(t,'fingerGrips')));
   click('.tool-row');assert.match($('#app [data-action=finger-grips-auto]').textContent,/Přidat výřezy pro prsty/);
   assert.ok($('.finger-grip-preview .grip-pocket'));assert.ok($('.finger-grip-preview .grip-tool'));
-  action('auto');assert.ok(saved().tools.every(t=>!Object.prototype.hasOwnProperty.call(t,'fingerGrips')));
-  assert.deepEqual(saved().tools.map(t=>t.points),before.tools.map(t=>t.points));action('undo');
+  const arranged=await arrange();
+  try{assert.ok(saved().tools.every(t=>!Object.prototype.hasOwnProperty.call(t,'fingerGrips')));assert.deepEqual(saved().tools.map(t=>t.points),before.tools.map(t=>t.points));}
+  finally{if(arranged)action('undo');}
 });
 
 test('new finger grips support editing, individual removal, undo and explicit empty JSON transfers',async()=>{
@@ -102,15 +109,15 @@ test('new finger grips support editing, individual removal, undo and explicit em
   click('[data-grip-delete]');assert.equal(win.document.querySelectorAll('[data-grip-row]').length,1,'An incomplete row must still be removable');click('[data-grips-save]');assert.equal(saved().tools[0].fingerGrips.length,1);
   action('undo');assert.deepEqual(saved().tools[0].fingerGrips,edited);
   action('finger-grips');click('[data-grip-add]');assert.equal(win.document.querySelectorAll('[data-grip-row]').length,3);click('[data-grips-save]');assert.equal(saved().tools[0].fingerGrips.length,3);action('undo');
-  action('finger-grips-clear');assert.deepEqual(saved().tools[0].fingerGrips,[]);action('auto');assert.deepEqual(saved().tools[0].fingerGrips,[]);
-  action('undo');assert.deepEqual(saved().tools[0].fingerGrips,[]);action('undo');assert.deepEqual(saved().tools[0].fingerGrips,edited);action('redo');assert.deepEqual(saved().tools[0].fingerGrips,[]);
+  action('finger-grips-clear');assert.deepEqual(saved().tools[0].fingerGrips,[]);const arranged=await arrange();assert.deepEqual(saved().tools[0].fingerGrips,[]);
+  if(arranged)action('undo');assert.deepEqual(saved().tools[0].fingerGrips,[]);action('undo');assert.deepEqual(saved().tools[0].fingerGrips,edited);action('redo');assert.deepEqual(saved().tools[0].fingerGrips,[]);
   action('duplicate');const copy=saved().tools.at(-1);assert.deepEqual(copy.fingerGrips,[],'Duplicating explicit removal must not generate new defaults');assert.deepEqual(copy.points,points);
   action('library');const copyCard=[...win.document.querySelectorAll('.library-item')].find(el=>el.querySelector('strong').textContent===copy.name);assert.ok(copyCard);copyCard.querySelector('[data-library-add]').click();assert.deepEqual(saved().tools.at(-1).fingerGrips,[],'The library must preserve explicit removal');
   const backup=await downloadFrom('#app [data-action=save-project]'),json=await backup.blob.text();assert.ok(JSON.parse(json).project.tools.every(t=>Array.isArray(t.fingerGrips)&&t.fingerGrips.length===0));
   const fileInput=$('#project-file');Object.defineProperty(fileInput,'files',{configurable:true,value:[{size:json.length,text:async()=>json}]});
   fileInput.dispatchEvent(new win.Event('change',{bubbles:true}));await waitFor(()=>saved().id!==scratch.id);delete fileInput.files;
   const imported=saved();assert.ok(imported.tools.every(t=>Array.isArray(t.fingerGrips)&&t.fingerGrips.length===0));assert.deepEqual(imported.tools[0].points,points);
-  action('auto');assert.ok(saved().tools.every(t=>t.fingerGrips.length===0));
+  await arrange();assert.ok(saved().tools.every(t=>t.fingerGrips.length===0));
   action('projects');click(`[data-open="${original.id}"]`);action('projects');click(`[data-remove-project="${scratch.id}"]`);click(`[data-remove-project="${imported.id}"]`);click('[data-modal-close]');
 });
 
@@ -135,13 +142,13 @@ test('finger grip edits validate before commit and preserve manual locked module
   action('projects');click(`[data-open="${original.id}"]`);action('projects');click(`[data-remove-project="${scratch.id}"]`);click('[data-modal-close]');
 });
 
-test('finger grip growth cannot displace another previously placed tool or change undo history',()=>{
+test('finger grip growth cannot displace another previously placed tool or change undo history',async()=>{
   const original=saved(),scratch=createDrawerFromUI('Plný malý šuplík',84,84),ids=[];
   for(const name of ['První nástroj','Druhý nástroj']){
     action('add-shape');change('#shape-type','rect');change('[data-field=shapeName]',name);change('[data-field=shapeWidth]',30);change('[data-field=shapeHeight]',60);click('[data-confirm]');
     ids.push(saved().tools.at(-1).id);action('finger-grips-clear');
   }
-  action('auto');assert.equal(saved().modules.length,2);assert.ok(saved().modules.every(m=>m.width===84&&m.height===42));
+  await arrange();assert.equal(saved().tools.length,2);assert.ok(saved().tools.every(t=>saved().modules.some(m=>m.id===t.moduleId)));assert.deepEqual(validateLayout(saved()),[]);
   click(`[data-select="${ids[0]}"]`);change('#app [data-field=name]','První nástroj před úpravou');const before=saved();
   action('finger-grips-auto');assert.deepEqual(saved(),before,'A grip edit must not move an existing tool out of the drawer');
   assert.match($('#toast').textContent,/místo/);assert.match($('#toast').textContent,/Druhý nástroj/);
@@ -204,7 +211,7 @@ test('named drawers keep independent real dimensions when switching between them
   action('projects');click(`[data-remove-project="${first.id}"]`);click(`[data-remove-project="${second.id}"]`);click('[data-modal-close]');
 });
 
-test('manual and automatic module sizes preserve contours, position locks and undo history',()=>{
+test('manual and automatic module sizes preserve contours, position locks and undo history',async()=>{
   const original=saved(),scratch=createDrawerFromUI('Zkouška velikosti modulů',504,378);
   action('add-shape');change('#shape-type','rect');change('[data-field=shapeName]','Zkušební kapsa');change('[data-field=shapeWidth]',40);change('[data-field=shapeHeight]',80);click('[data-confirm]');
   const before=saved(),module=before.modules[0],points=before.tools[0].points;
@@ -212,25 +219,25 @@ test('manual and automatic module sizes preserve contours, position locks and un
   change('[data-field=moduleWidth]',110);change('[data-field=moduleHeight]',170);click('[data-resize-module]');
   let resized=saved();assert.equal(resized.modules[0].width,110);assert.equal(resized.modules[0].height,170);assert.equal(resized.modules[0].sizeMode,'manual');assert.equal(resized.modules[0].locked,false);
   assert.deepEqual(resized.tools[0].points,points);assert.match($('.module-sizing').textContent,/Jmenovité 110 × 170 mm/);assert.match($('.module-sizing').textContent,/Vnější 109,5 × 169,5 mm/);
-  action('auto');resized=saved();assert.equal(resized.modules[0].width,110);assert.equal(resized.modules[0].height,170);assert.equal(resized.modules[0].sizeMode,'manual');assert.deepEqual(resized.tools[0].points,points);
-  action('undo');action('size-module-auto');resized=saved();assert.equal(resized.modules[0].sizeMode,'auto');assert.equal(resized.modules[0].width,module.width);assert.equal(resized.modules[0].height,module.height);assert.equal(resized.modules[0].locked,false);assert.deepEqual(resized.tools[0].points,points);
+  const arranged=await arrange();resized=saved();assert.equal(resized.modules[0].width,110);assert.equal(resized.modules[0].height,170);assert.equal(resized.modules[0].sizeMode,'manual');assert.deepEqual(resized.tools[0].points,points);
+  if(arranged)action('undo');action('size-module-auto');resized=saved();assert.equal(resized.modules[0].sizeMode,'auto');assert.equal(resized.modules[0].width,module.width);assert.equal(resized.modules[0].height,module.height);assert.equal(resized.modules[0].locked,false);assert.deepEqual(resized.tools[0].points,points);
   action('undo');assert.equal(saved().modules[0].width,110);assert.equal(saved().modules[0].sizeMode,'manual');assert.deepEqual(saved().tools[0].points,points);
   action('undo');assert.equal(saved().modules[0].width,module.width);assert.equal(saved().modules[0].height,module.height);assert.deepEqual(saved().tools,before.tools);
   action('projects');click(`[data-open="${original.id}"]`);action('projects');click(`[data-remove-project="${scratch.id}"]`);click('[data-modal-close]');
 });
 
-test('expanding a drawer leaves outside manual modules movable for automatic recovery',()=>{
+test('expanding a drawer leaves outside manual modules movable for automatic recovery',async()=>{
   const original=saved(),scratch=createDrawerFromUI('Rozšíření odloženého modulu',504,378);
   action('add-shape');change('#shape-type','rect');change('[data-field=shapeWidth]',40);change('[data-field=shapeHeight]',80);click('[data-confirm]');
   action('resize-module');change('[data-field=moduleWidth]',151.5);change('[data-field=moduleHeight]',139.25);click('[data-resize-module]');
   const points=saved().tools[0].points;
-  click('.drawer-dimensions');change('#app [data-field=width]',42);change('#app [data-field=height]',42);action('auto');
-  const outside=saved().modules[0];assert.ok(outside.x>=42);assert.equal(outside.locked,false);assert.equal(saved().tools[0].locked,false);
+  click('.drawer-dimensions');change('#app [data-field=width]',42);change('#app [data-field=height]',42);await arrange();
+  const outside=saved().modules[0];assert.ok(outside.x+outside.width>42||outside.y+outside.height>42);assert.equal(outside.locked,false);assert.equal(saved().tools[0].locked,false);
   action('expand');assert.match($('.modal .tip').textContent,/Zamkne se 0 /);
   change('[data-field=expandWidth]',168);change('[data-field=expandHeight]',168);click('[data-confirm]');
   assert.equal(saved().modules[0].locked,false,'An outside module must not be locked by drawer expansion');
   assert.equal(saved().tools[0].locked,false,'Tools in an outside module must remain available for placement');
-  action('auto');const recovered=saved(),m=recovered.modules[0];
+  await arrange();const recovered=saved(),m=recovered.modules[0];
   assert.equal(m.width,151.5);assert.equal(m.height,139.25);assert.equal(m.sizeMode,'manual');assert.equal(m.locked,false);
   assert.ok(m.x>=0&&m.y>=0&&m.x+m.width<=168&&m.y+m.height<=168,'The retained manual footprint must fit inside the expanded drawer');
   assert.deepEqual(recovered.tools[0].points,points,'Recovery must preserve the tool contour');
@@ -255,9 +262,9 @@ test('touch selection scrolls normally until explicit move mode enables pointer 
 });
 
 test('saved status recovers after browser storage becomes writable again',()=>{
-  const setItem=localStorage.setItem;
+  action('drawer-tab');const setItem=localStorage.setItem,width=saved().width;
   try{
-    Object.defineProperty(localStorage,'setItem',{configurable:true,value:()=>{throw new DOMException('Storage quota exceeded','QuotaExceededError');}});action('auto');
+    Object.defineProperty(localStorage,'setItem',{configurable:true,value:()=>{throw new DOMException('Storage quota exceeded','QuotaExceededError');}});change('#app [data-field=width]',width+42);
     assert.match($('.save-state').textContent,/Stáhněte zálohu/);
   }finally{Object.defineProperty(localStorage,'setItem',{configurable:true,value:setItem});}
   action('undo');assert.match($('.save-state').textContent,/Uloženo v zařízení/);assert.equal(saved().tools.length,6);
@@ -333,8 +340,9 @@ test('sidebar lists all drawers with create, switch and delete, replacing the ol
   assert.ok($(`.drawer-list [data-drawer-open="${created.id}"]`)===null);assert.equal(saved().id,original.id);
 });
 
-test('tools and modules can use their own units inside one millimetre drawer',()=>{
+test('tools and modules can use their own units inside one millimetre drawer',async()=>{
   const original=saved(),scratch=createDrawerFromUI('Smíšené nástroje',588,420),ids=[];
+  try{
   action('drawer-tab');change('#app [data-field=insertHeight]',70);
   for(const [name,w,h] of [['Palcový nástroj',40,80],['Metrický nástroj',30,60]]){
     action('add-shape');change('#shape-type','rect');change('[data-field=shapeName]',name);change('[data-field=shapeWidth]',w);change('[data-field=shapeHeight]',h);click('[data-confirm]');ids.push(saved().tools.at(-1).id);
@@ -354,14 +362,14 @@ test('tools and modules can use their own units inside one millimetre drawer',()
   action('redo');action('redo');assert.equal(find(a).unit,'in');assert.ok(Math.abs(find(a).depth-50.8)<1e-9);
   // Module override
   const moduleId=find(a).moduleId;change('#app [data-scope=module][data-field=unit]','in');assert.equal(saved().modules.find(m=>m.id===moduleId).unit,'in');
-  const mod=()=>saved().modules.find(m=>m.id===moduleId);assert.match($('.module-sizing').textContent,new RegExp(`Jmenovité ${inches(mod().width).replace('.',',')} × `));assert.ok($('.module-sizing .unit-badge'));
-  action('auto');assert.equal(mod().unit,'in','Auto layout keeps the module unit');
+  const mod=()=>saved().modules.find(m=>m.id===find(a).moduleId);assert.match($('.module-sizing').textContent,new RegExp(`Jmenovité ${inches(mod().width).replace('.',',')} × `));assert.ok($('.module-sizing .unit-badge'));
+  await arrange();assert.equal(mod().unit,'in','Arrangement keeps the module unit');
   action('resize-module');assert.equal($('[data-field=moduleWidth]').parentElement.querySelector('em').textContent,'in');
   const [w,h]=[mod().width,mod().height].map(v=>Math.floor(v/25.4*2)/2);change('[data-field=moduleWidth]',String(w));change('[data-field=moduleHeight]',String(h));click('[data-resize-module]');
   assert.ok(Math.abs(mod().width-w*25.4)<1e-9,'Bare module sizes use the module unit');assert.ok(Math.abs(mod().height-h*25.4)<1e-9);assert.equal(mod().unit,'in');assert.equal(mod().sizeMode,'manual');
   action('undo');assert.equal(mod().sizeMode,'auto');assert.equal(mod().unit,'in');
   action('duplicate');assert.equal(saved().tools.at(-1).unit,'in','A copy keeps the tool unit');
-  action('projects');click(`[data-open="${original.id}"]`);action('projects');click(`[data-remove-project="${scratch.id}"]`);click('[data-modal-close]');
+  }finally{action('projects');click(`[data-open="${original.id}"]`);action('projects');click(`[data-remove-project="${scratch.id}"]`);click('[data-modal-close]');}
 });
 
 test('editor workflows and actual photo pipeline integrate with persistent projects',async()=>{
@@ -373,8 +381,8 @@ test('editor workflows and actual photo pipeline integrate with persistent proje
   assert.equal(saved().width,588);assert.ok(saved().modules.every(m=>m.locked));
   action('library');click('[data-library-add="0"]');assert.equal(saved().tools.length,7);
   const lockedPositions=saved().modules.filter(m=>m.locked).map(m=>[m.id,m.x,m.y]);
-  action('auto');assert.deepEqual(saved().modules.filter(m=>m.locked).map(m=>[m.id,m.x,m.y]),lockedPositions);
-  action('undo');assert.equal(saved().tools.length,7);action('redo');
+  const arranged=await arrange();assert.deepEqual(saved().modules.filter(m=>m.locked).map(m=>[m.id,m.x,m.y]),lockedPositions);
+  if(arranged){action('undo');assert.equal(saved().tools.length,7);action('redo');}
   // The measured sample needs a 252mm module including its walls and clearance.
   action('export');change('.modal [data-field=bedHeight]',256);click('[data-modal-close]');
   action('capture');click('#sample-scan');await waitFor(()=>$('#trace-items input[type=checkbox]'));
@@ -393,9 +401,9 @@ test('editor workflows and actual photo pipeline integrate with persistent proje
   change('#print-light',true);assert.equal(saved().printMode,'light');assert.equal($('#print-light').checked,true);
   change('#print-bottom','adhesive');assert.equal(saved().bottomMode,'adhesive');assert.ok($('#print-bottom option[value=adhesive][selected]'),'The saved bottom must be marked in the re-rendered select');
   const bedWidth=saved().bedWidth;change('.modal [data-field=bedWidth]',49);assert.equal(saved().bedWidth,bedWidth,'Invalid printer width must not persist');
-  change('.modal [data-field=bedWidth]',50);change('.modal [data-field=bedHeight]',50);assert.match($('#bed-warnings').textContent,/nevejde/);assert.equal($('[data-do-export]').disabled,true,'Oversized final parts must be blocked for a limited printer');
-  change('#limit-bed',false);assert.equal(saved().limitToBed,false);assert.equal($('[data-do-export]').disabled,false,'The explicit printer limit can be disabled');
-  change('.modal [data-field=bedWidth]',180);change('.modal [data-field=bedHeight]',256);change('#limit-bed',true);
+  change('.modal [data-field=bedWidth]',50);change('.modal [data-field=bedHeight]',50);assert.equal($('[data-do-export]').disabled,false,'Valid oversized models export as automatically cut mesh parts');
+  assert.ok(!$('#limit-bed'),'The print batch always fits its printer without a legacy-limit bypass');assert.equal(saved().limitToBed,true,'The stored legacy flag is retained');
+  change('.modal [data-field=bedWidth]',180);change('.modal [data-field=bedHeight]',256);
   assert.equal(saved().bedWidth,180);assert.equal(saved().bedHeight,256);assert.equal(saved().limitToBed,true);assert.equal($('[data-do-export]').disabled,false);
 
   const pdf=await downloadFrom('[data-fit-pdf]'),pdfText=await pdf.blob.text();
@@ -404,15 +412,19 @@ test('editor workflows and actual photo pipeline integrate with persistent proje
   const thinFiles=storedZip(new Uint8Array(await thin.blob.arrayBuffer()));assert.equal(thinFiles.length,saved().modules.length);
   for(const file of thinFiles){assert.match(file.name,/-zkouska\.stl$/);assert.ok(Math.abs(stlHeight(file.bytes)-1)<1e-5,'A fit test must be a genuine 1mm high model');}
 
-  const full=await downloadFrom('[data-do-export]');await waitFor(()=>!$('#modal-root').children.length);assert.match(full.name,/-moduly\.zip$/);assert.equal(full.blob.type,'application/zip');
+  const beforePrint=localStorage.getItem('suplik-studio-projects-v1'),printHistory=[$('#app [data-action=undo]').disabled,$('#app [data-action=redo]').disabled];
+  const full=await downloadFrom('[data-do-export]');await waitFor(()=>!$('#modal-root').children.length);assert.match(full.name,/-tiskove-dily\.zip$/);assert.equal(full.blob.type,'application/zip');
   const fullFiles=storedZip(new Uint8Array(await full.blob.arrayBuffer())),fullModels=fullFiles.filter(file=>file.name.endsWith('.stl'));
-  assert.equal(fullModels.length,saved().modules.length);
-  for(const [i,file] of fullModels.entries()){
-    const p=saved(),m=p.modules[i],depth=Math.max(...p.tools.filter(t=>t.moduleId===m.id).map(t=>t.depth)),height=stlHeight(file.bytes);
-    assert.ok(Math.abs(height-(p.base+depth))<1e-4,'The adhesive light module must retain its full pocket depth and minimum floor');
-    assert.ok(height>p.base+1,'The production pocket must extend beyond the 1mm fit test and its minimum floor');
+  const assembly=JSON.parse(new TextDecoder().decode(fullFiles.find(file=>file.name==='assembly.json').bytes));assert.equal(assembly.parts.length,fullModels.length);
+  for(const m of saved().modules){
+    const own=assembly.parts.filter(part=>part.moduleId===m.id);assert.ok(own.length,'Every selected module is represented in the assembly map');
+    const p=saved(),depth=Math.max(...p.tools.filter(t=>t.moduleId===m.id).map(t=>t.depth)),height=Math.max(...own.map(part=>stlHeight(fullModels.find(file=>file.name===part.file).bytes)));
+    assert.ok(Math.abs(height-(p.base+depth))<1e-4,'The combined adhesive light mesh parts retain the full pocket depth and minimum floor');
+    assert.ok(height>p.base+1,'The production pocket extends beyond the 1mm fit test');
   }
-  assert.ok(fullFiles.some(file=>file.name==='sestava.svg'));const exportedProject=JSON.parse(new TextDecoder().decode(fullFiles.find(file=>file.name==='projekt.json').bytes)).project;
+  assert.ok(!fullFiles.some(file=>file.name.endsWith('.svg')||file.name.endsWith('.dxf')),'The print batch contains STL manufacturing geometry');assert.ok(fullFiles.some(file=>/readme/i.test(file.name)));
+  assert.equal(localStorage.getItem('suplik-studio-projects-v1'),beforePrint,'Mesh cutting and downloading cannot mutate the project');assert.deepEqual([$('#app [data-action=undo]').disabled,$('#app [data-action=redo]').disabled],printHistory);
+  const exportedProject=JSON.parse(new TextDecoder().decode(fullFiles.find(file=>file.name==='projekt.json').bytes)).project;
   assert.equal(exportedProject.printMode,'light');assert.equal(exportedProject.bottomMode,'adhesive');assert.equal(exportedProject.bedWidth,180);
 
   action('export');click('[data-format=svg]');assert.match($('.modal-body').textContent,/Černá/);const svg=await downloadFrom('[data-do-export]');await waitFor(()=>!$('#modal-root').children.length);assert.match(svg.name,/\.svg$/);assert.equal(svg.blob.type,'image/svg+xml');assert.match(await svg.blob.text(),/<svg[^>]*width="[\d.]+mm"/);

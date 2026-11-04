@@ -65,7 +65,7 @@ test('project tool sets are editable, reversible and respected by real worker la
     action('undo');assert.deepEqual(logical(saved()),logical(sharedMetadata));action('redo');
     const count=downloads.length;action('save-project');await waitFor(()=>downloads.length>count,'Set JSON backup');const json=await downloads.at(-1).blob.text();assert.deepEqual(JSON.parse(json).project.toolSets,shared.toolSets);
     const input=$('#project-file');Object.defineProperty(input,'files',{value:[new win.File([json],'sets.json',{type:'application/json'})],configurable:true});input.dispatchEvent(new win.Event('change'));await waitFor(()=>saved().id!==shared.id,'Import set JSON');delete input.files;
-    assert.deepEqual(saved().toolSets,shared.toolSets);action('auto');assert.ok(setCoherence(saved(),findToolSets(saved()).sets).satisfied.includes(set.id));
+    assert.deepEqual(saved().toolSets,shared.toolSets);await optimize();assert.ok(setCoherence(saved(),findToolSets(saved()).sets).satisfied.includes(set.id));click('[data-smart-close]');
   });
   await t.test('membership moves, renames and deletion are metadata edits and duplicated tools are unassigned',()=>{
     open('sets-members');const before=saved(),ids=before.tools.map(t=>t.id),a=createSet('Sada A',ids.slice(0,2)),b=createSet('Sada B',ids.slice(1));

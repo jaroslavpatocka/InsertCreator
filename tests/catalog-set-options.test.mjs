@@ -16,6 +16,10 @@ globalThis.cancelAnimationFrame=clearTimeout;
 win.scrollTo=()=>{};
 const nativeSetTimeout=globalThis.setTimeout;
 globalThis.setTimeout=(callback,delay,...args)=>{const timer=nativeSetTimeout(callback,delay,...args);if(delay>=4000)timer.unref?.();return timer;};
+const downloadURLs=new Map(),downloads=[];
+URL.createObjectURL=blob=>{const url=`blob:http://localhost/catalog-export-${downloadURLs.size}`;downloadURLs.set(url,blob);return url;};
+URL.revokeObjectURL=url=>downloadURLs.delete(url);
+win.HTMLAnchorElement.prototype.click=function(){if(this.download)downloads.push({name:this.download,blob:downloadURLs.get(this.href)});};
 
 const {setCatalogSource,scaleFactor,longestSide,mountLibraryFolders}=await import('../dist/catalog-ui.js');
 const {setLang}=await import('../dist/i18n.js');
@@ -23,6 +27,7 @@ const {setAppUnit}=await import('../dist/units.js');
 const {validateLayout}=await import('../dist/geometry.js');
 const {setCoherence}=await import('../dist/tool-sets.js');
 const {openModal}=await import('../dist/ui.js');
+const {validatePrintMesh}=await import('../dist/print-geometry.js');
 
 const rect=(w,h)=>[{x:0,y:0},{x:w,y:0},{x:w,y:h},{x:0,y:h}];
 const CATEGORIES=[{id:'wrenches',cs:'Klíče',en:'Wrenches'},{id:'hex-keys',cs:'Imbusy a torxy',en:'Hex & Torx keys'}];
@@ -360,7 +365,7 @@ test('individual minimal catalogue insertion is limited by drawer space only and
   }finally{setCatalogSource(source);}
 });
 
-test('bed-sized splitting is an explicit export action with a single undo, never an insertion side effect',async()=>{
+test('export cuts an oversized shared 3D model into STL parts without changing the inserted catalogue set or undo history',async()=>{
   const bars=Array.from({length:8},(_,i)=>({id:'bar-'+i,category:'wrenches',name:{cs:'Tyčka '+(i+1),en:'Rod '+(i+1)},points:rect(180,26),depth:6,unit:'mm',size:i+1,accuracy:'typical',source:{name:'Test'}}));
   setCatalogSource(async()=>({categories:CATEGORIES,items:bars,sets:[{id:'bar-set',category:'wrenches',name:{cs:'Sada tyček',en:'Rod set'},items:bars.map(b=>b.id),unit:'mm'}],setsCategory:{id:'sets',cs:'Sady nářadí',en:'Tool sets'}}));
   try{
@@ -368,14 +373,24 @@ test('bed-sized splitting is an explicit export action with a single undo, never
     await openSets();chooseLayout('bar-set','group');click('[data-set-add="bar-set"]');finishDrawer();
     const inserted=saved(),added=newOf(old,inserted),addedIds=new Set(added.map(t=>t.id)),moduleId=added[0].moduleId;
     assert.equal(new Set(added.map(t=>t.moduleId)).size,1);assert.ok($('.modal')===null);
-    click('#app [data-action="export"]');assert.match($('#bed-warnings').textContent,/nevejde/);assert.equal($('[data-do-export]').disabled,true);
-    assert.equal(saved().modules.length,inserted.modules.length,'Opening export cannot split the module');
-    click('[data-export-split-module="'+moduleId+'"]');finishDrawer();
-    const p=saved(),own=p.tools.filter(t=>addedIds.has(t.id)),modules=[...new Set(own.map(t=>t.moduleId))].map(id=>p.modules.find(m=>m.id===id));
-    assert.equal(own.length,8);assert.ok(modules.length>=2);assert.ok(modules.every(onBed));assert.deepEqual(toolIssues(p,addedIds),[]);
-    assert.deepEqual([p.limitToBed,p.bedWidth,p.bedHeight],[true,220,220]);
-    if($('[data-modal-close]'))click('[data-modal-close]');click('#app [data-action="undo"]');
-    assert.deepEqual(saved().modules,inserted.modules);assert.deepEqual(saved().tools,inserted.tools,'One undo restores the unsplit group');
-    click('#app [data-action="undo"]');assert.equal(saved().tools.length,before.tools.length);
+    const serialized=localStorage.getItem('suplik-studio-projects-v1'),history=()=>[$('#app [data-action="undo"]').disabled,$('#app [data-action="redo"]').disabled],undo=history(),count=downloads.length;
+    click('#app [data-action="export"]');assert.equal($('[data-do-export]').disabled,false,'A valid oversized model can export using geometric cuts');
+    assert.equal(localStorage.getItem('suplik-studio-projects-v1'),serialized,'Opening export cannot split or repack the module');
+    click('[data-export-split-module="'+moduleId+'"]');await waitFor(()=>downloads.length>count);
+    const downloaded=downloads.at(-1);assert.match(downloaded.name,/\.zip$/);const bytes=new Uint8Array(await downloaded.blob.arrayBuffer()),view=new DataView(bytes.buffer),files=new Map();let offset=0;
+    while(offset+30<=bytes.length&&view.getUint32(offset,true)===0x04034b50){assert.equal(view.getUint16(offset+8,true),0);const size=view.getUint32(offset+18,true),nameLength=view.getUint16(offset+26,true),extraLength=view.getUint16(offset+28,true),start=offset+30+nameLength+extraLength,name=new TextDecoder().decode(bytes.subarray(offset+30,offset+30+nameLength));files.set(name,bytes.slice(start,start+size));offset=start+size;}
+    const stls=[...files.keys()].filter(name=>name.endsWith('.stl'));assert.ok(stls.length>=2,'The original large model is cut into multiple printable meshes');
+    assert.ok(files.has('assembly.json'),'The exported pieces have an assembly map');const manifest=JSON.parse(new TextDecoder().decode(files.get('assembly.json')));
+    assert.equal(manifest.parts.length,stls.length);
+    for(const part of manifest.parts){
+      assert.equal(part.moduleId,moduleId);assert.ok(stls.includes(part.file));assert.ok([part.offset.x,part.offset.y,part.offset.z,part.clip.x,part.clip.y,part.clip.width,part.clip.height].every(Number.isFinite));
+      const data=files.get(part.file),stl=new DataView(data.buffer,data.byteOffset,data.byteLength),triangles=[];assert.equal(data.length,84+stl.getUint32(80,true)*50);
+      const low=[Infinity,Infinity,Infinity],high=[-Infinity,-Infinity,-Infinity];
+      for(let i=0;i<stl.getUint32(80,true);i++){const triangle=[];for(let vertex=0;vertex<3;vertex++){const p=[0,1,2].map(axis=>stl.getFloat32(84+i*50+12+vertex*12+axis*4,true));p.forEach((value,axis)=>{low[axis]=Math.min(low[axis],value);high[axis]=Math.max(high[axis],value);});triangle.push(p);}triangles.push(triangle);}
+      validatePrintMesh(triangles);assert.ok(high[0]-low[0]<=220.001&&high[1]-low[1]<=220.001,'Every STL piece fits the printer');assert.ok(Math.abs(low[0])<.001&&Math.abs(low[1])<.001,'STL pieces use a local print origin');
+    }
+    const p=saved();assert.equal(p.tools.filter(t=>addedIds.has(t.id)).length,8);assert.deepEqual(toolIssues(p,addedIds),[]);
+    assert.equal(localStorage.getItem('suplik-studio-projects-v1'),serialized,'Downloading mesh parts leaves all project data untouched');assert.deepEqual(history(),undo);
+    while($('[data-modal-close]'))click('[data-modal-close]');click('#app [data-action="undo"]');assert.equal(saved().tools.length,before.tools.length,'One undo still removes catalogue insertion: export adds no undo entry');
   }finally{setCatalogSource(source);}
 });

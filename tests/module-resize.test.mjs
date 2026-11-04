@@ -210,7 +210,7 @@ test('many unplaced tools collapse into one issue line',()=>{
   const box=$('#app .issue-box');assert.ok(box);
   assert.match(box.textContent,/4 nástroje jsou větší než šuplík 100 × 100 mm/);
   assert.doesNotMatch(box.textContent,/zatím nemá umístěný modul/);
-  assert.ok(box.querySelector('[data-action=expand]'));assert.ok(box.querySelector('[data-action=auto]'));
+  assert.ok(box.querySelector('[data-action=expand]'));assert.ok(box.querySelector('[data-action="smart-layout"]'));
 });
 
 test('English labels',()=>{

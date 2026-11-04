@@ -77,6 +77,7 @@ function start(){
   return{snapshot,undo};
 }
 async function completed(){await waitFor(()=>$('[data-smart-close]'),'real smart worker did not finish');}
+async function arrange(){start();await completed();assert.doesNotMatch($('.smart-layout-result h3').textContent,/nepodařilo|failed|couldn.t/i,$('.smart-layout-result').textContent);click('[data-smart-close]');}
 function unchanged({snapshot,undo}){assert.equal(serialized(),snapshot);assert.deepEqual(history(),undo);}
 function sameToolGeometry(before,after){
   for(const tool of before.tools){const next=after.tools.find(t=>t.id===tool.id);assert.ok(next);for(const key of ['points','depth','fingerGrips','name'])assert.deepEqual(next[key],tool[key]);}
@@ -85,7 +86,7 @@ await import('../dist/app.js');
 
 test('smart layout UI uses real workers and applies only valid, reversible results',{timeout:120000},async t=>{
   t.after(async()=>{await Promise.all([...workers].map(worker=>worker.terminate()));delete globalThis.Worker;await win.happyDOM.close();});
-  await t.test('an actual improvement is one undo, persists shared groups, survives normal Auto and can be split',async()=>{
+  await t.test('an actual improvement is one undo, persists groups across repeated arrangement and can be split',async()=>{
     open('smart-normal');const before=saved(),count=realResults.length;start();await completed();
     assert.ok(realResults.length>count,'the bundled optimizer must really run in the worker');
     assert.ok(created.at(-1).url.endsWith('/smart-layout-worker.js'));assert.ok(realResults.at(-1).stats.savedPercent>0);
@@ -93,13 +94,13 @@ test('smart layout UI uses real workers and applies only valid, reversible resul
     assert.match($('.smart-layout-result').textContent,/Úspora plochy/);click('[data-smart-close]');
     action('undo');assert.deepEqual(logical(saved()),logical(before));assert.equal(history().undo,true,'the whole optimization is exactly one undo step');
     action('redo');assert.deepEqual(logical(saved()),logical(optimized));
-    action('auto');assert.deepEqual(memberships(saved()),memberships(optimized));sameToolGeometry(optimized,saved());assert.deepEqual(validateLayout(saved()),[]);
+    await arrange();sameToolGeometry(optimized,saved());assert.deepEqual(validateLayout(saved()),[]);assert.ok(saved().modules.some(m=>m.grouped),'optimized tools remain editable as a shared module');
 
     // Import the saved JSON through the public file-input route, including model normalization.
     const persisted=saved(),file=new win.File([JSON.stringify({schemaVersion:1,project:persisted})],'smart-project.json',{type:'application/json'}),input=$('#project-file');
     Object.defineProperty(input,'files',{value:[file],configurable:true});input.dispatchEvent(new win.Event('change'));
     await waitFor(()=>saved().id!==persisted.id,'portable grouped project was not imported');
-    assert.deepEqual(memberships(saved()),memberships(persisted));action('auto');assert.deepEqual(memberships(saved()),memberships(persisted));
+    assert.deepEqual(memberships(saved()),memberships(persisted));await arrange();sameToolGeometry(persisted,saved());assert.deepEqual(validateLayout(saved()),[]);
     const group=saved().modules.find(m=>m.grouped&&saved().tools.filter(t=>t.moduleId===m.id).length>1),members=saved().tools.filter(t=>t.moduleId===group.id);
     click(`[data-select="${members[0].id}"]`);action('lock');const locked=serialized(),lockedHistory=history();action('split-module');
     assert.equal(serialized(),locked,'a locked group must not be split');assert.deepEqual(history(),lockedHistory);action('undo');
@@ -170,7 +171,7 @@ test('smart layout UI uses real workers and applies only valid, reversible resul
   await t.test('English smart layout reports square inches while preserving every metric tool and module setting',async()=>{
     open('smart-english');const before=saved();
     click('[data-action="set-lang"][data-value="en"]');click('[data-action="set-unit"][data-value="in"]');
-    assert.equal($('#app [data-action=smart-layout]').textContent.trim(),'Smart layout');
+    assert.equal($('#app [data-action=smart-layout]').textContent.trim(),'Arrange tools');
     start();await completed();const after=saved(),text=$('.smart-layout-result').textContent;
     assert.match(text,/Area saved:/);assert.match(text,/Outer module footprints:/);assert.match(text,/in²/);assert.doesNotMatch(text,/mm²|Úspora|Umístěné/);
     const displayed=(area(before)/645.16).toLocaleString('en-US',{maximumFractionDigits:2});assert.ok(text.includes(displayed),'the displayed area must actually convert mm² to in²');
