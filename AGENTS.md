@@ -39,4 +39,17 @@ Průběžně mi zobrazuj stručně:
 - co dělá hlavní agent,
 - co dělá Agent 1,
 - co dělá Agent 2,
-- co dělá Agent 3.
+- co dělá Agent 3,4,5.
+
+## Souběžná práce více agentů
+
+Na projektu může současně pracovat více AI agentů (Claude, Codex) a ve dvou kopiích repozitáře: `suplik-studio` a `InsertCreator-deployment`. Přehled práce je v `../PRACE-AGENTU.md`.
+
+1. Před začátkem práce přečti `../PRACE-AGENTU.md` a v obou kopiích spusť `git fetch`, `git status` a podívej se na poslední commity.
+2. Přidej do `../PRACE-AGENTU.md` svůj řádek: úkol, složku, větev a soubory, které budeš upravovat.
+3. Pokud jiný agent pracuje na něčem jiném a v jiných souborech, pokračuj. Každý commituje a pushuje jen své soubory.
+4. Pokud jde o stejný úkol nebo stejné soubory, nezačínej souběžně. Počkej, až druhý agent dokončí práci a smaže svůj řádek, nebo se zeptej uživatele. Mezitím můžeš dělat jen práci, která se s ním nekříží.
+5. Cizí změny nepřepisuj, nevracej ani nezahazuj. Necommituj cizí necommitnuté soubory.
+6. Těsně před commitem a před pushem znovu spusť `git fetch`. Pokud se `origin/main` změnil, nejdřív svou práci přenes na aktuální stav a znovu spusť testy. Nikdy nepoužívej force push.
+7. Po dokončení smaž svůj řádek z `../PRACE-AGENTU.md`.
+8. Tvrzení, že druhý agent skončil, ověř: podívej se na `../PRACE-AGENTU.md`, poslední commity a časy změn souborů.
