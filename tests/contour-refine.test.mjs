@@ -138,6 +138,54 @@ test('a tool cut by the photo edge is still measured',()=>{
   const b=extent(result.points);near(b.y0,170,1,'top');near(b.y1,250,1,'bottom');near(b.x1,400,1,'right');
 });
 
+test('a thin shaft of a seeded tool is never cut off',()=>{
+  const image=photo(ctx=>{foam(ctx);ctx.fillStyle='#0a0a0c';ctx.fillRect(100,160,460,100);ctx.fillStyle='#d8dbde';ctx.fillRect(120,204,160,7);ctx.fillRect(280,190,260,36);});
+  const outline=[{x:120,y:204},{x:280,y:204},{x:280,y:190},{x:540,y:190},{x:540,y:226},{x:280,y:226},{x:280,y:211},{x:120,y:211}];
+  const [result]=refineContours(image,[seed(outline)]);
+  near(extent(result.points).x0,120,2,'the shaft end is kept');
+});
+
+test('a shaded underside takes its width from the visible flank',()=>{
+  const image=photo(ctx=>{
+    foam(ctx);ctx.fillStyle='#030508';ctx.fillRect(40,150,520,130);
+    ctx.fillStyle='#d8dbde';ctx.fillRect(60,205,260,20);    // the shaft shows the true axis, y=215
+    ctx.fillStyle='#303030';ctx.fillRect(320,195,220,34);   // lit part of a black grip
+    ctx.fillStyle='#07090b';ctx.fillRect(320,229,220,6);    // its underside fades into the recess
+  });
+  const outline=[{x:60,y:205},{x:320,y:205},{x:320,y:195},{x:540,y:195},{x:540,y:229},{x:320,y:229},{x:320,y:225},{x:60,y:225}];
+  const [result]=refineContours(image,[seed(outline)]),b=extent(result.points);
+  near(b.y0,195,2,'visible top');assert.ok(b.y1>=232.5,'the hidden flank mirrors the visible one: '+b.y1);
+});
+
+test('round tools become true circles',()=>{
+  const image=photo(ctx=>{foam(ctx);ctx.fillStyle='#0a0a0c';ctx.beginPath();ctx.arc(320,210,110,0,Math.PI*2);ctx.fill();ctx.fillStyle='#d8dbde';ctx.beginPath();ctx.arc(320,210,90,0,Math.PI*2);ctx.fill();});
+  const noisy=Array.from({length:120},(_,i)=>{const a=i/120*Math.PI*2,r=90+2*Math.sin(a*7);return {x:320+r*Math.cos(a),y:210+r*Math.sin(a)};});
+  const [result]=refineContours(image,[seed(noisy)]);
+  assert.equal(result.fitted,true);
+  for(const p of result.points)near(Math.hypot(p.x-320,p.y-210),90,1,'radius');
+});
+
+test('ribs on a black grip do not saw the outline',()=>{
+  const image=photo(ctx=>{
+    foam(ctx);ctx.fillStyle='#030508';ctx.fillRect(90,130,480,170);ctx.fillStyle='#1a1a1a';ctx.fillRect(120,170,420,80);
+    ctx.fillStyle='#030508';for(let x=130;x<530;x+=14)for(const y of [170,246])ctx.fillRect(x,y,5,4);
+    ctx.fillStyle='#d8dbde';ctx.fillRect(120,195,420,30);
+  });
+  const [result]=refineContours(image,[seed(box(122,174,538,246))]);
+  const top=result.points.filter(p=>p.y<210&&p.x>160&&p.x<500).map(p=>p.y);
+  assert.ok(Math.max(...top)-Math.min(...top)<=3,'spread '+(Math.max(...top)-Math.min(...top)));
+});
+
+test('a curved black handle on white keeps its curve',()=>{
+  const flank=x=>30+28*Math.sin((x-120)/420*Math.PI),outline=[];
+  for(let x=120;x<=540;x+=6)outline.push({x,y:210-flank(x)});
+  for(let x=540;x>=120;x-=6)outline.push({x,y:210+flank(x)});
+  const image=photo(ctx=>{ctx.fillStyle='#f4f2ee';ctx.fillRect(0,0,WIDTH,HEIGHT);ctx.fillStyle='#17171a';ctx.beginPath();outline.forEach((p,i)=>i?ctx.lineTo(p.x,p.y):ctx.moveTo(p.x,p.y));ctx.closePath();ctx.fill();});
+  const [result]=refineContours(image,[seed(outline)],{search:.008});
+  for(const x of [200,260,330,400,460])assert.equal(inside(result.points,x,210-flank(x)+2),true,'no chord cuts the handle at '+x);
+  for(const x of [200,260,330,400,460])assert.equal(inside(result.points,x,210-flank(x)-3),false,'no bulge at '+x);
+});
+
 test('an outline the photograph does not support keeps its seed',()=>{
   const image=photo(ctx=>foam(ctx));
   const original=seed(box(200,150,420,270)),[result]=refineContours(image,[original]);

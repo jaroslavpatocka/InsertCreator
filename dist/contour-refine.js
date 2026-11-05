@@ -3,7 +3,12 @@
 // photo's own edges: a seeded watershed on the colour gradient, in log brightness so that black rubber
 // against a black recess is as visible as chrome against foam. Nothing is inferred from a tool template.
 import { simple } from './contour-smoothing.js';
+import { fitToolShape } from './contour-shape.js';
 
+// Absolute colour, because a ratio calls any near-black pixel saturated: rubber reads as 20,31,34.
+const NEUTRAL = 26;
+// Below this brightness a surface shows no reliable edge of its own, whatever surrounds it.
+const DARK_SURFACE = 40;
 const MAX_PIXELS = 4000000, LOG_KNEE = 6, LEVELS = 1024, GRADIENT_SCALE = 170;
 const BLUR = [.0545, .2442, .4026, .2442, .0545];
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
@@ -162,7 +167,7 @@ function closeSlits(mask, foreign, w, h, radius) {
   for (let i = 0; i < labels.length; i++) if (labels[i] && deepest[labels[i]] >= radius * .7) mask[i] = 1;
 }
 
-function outline(labelMap, label, box, w, h, opening, slit) {
+function outline(labelMap, seeds, label, box, w, h, opening, slit) {
   const pad = Math.ceil(slit * 2) + 4, x0 = Math.max(0, box.x0 - pad), y0 = Math.max(0, box.y0 - pad), x1 = Math.min(w - 1, box.x1 + pad), y1 = Math.min(h - 1, box.y1 + pad), bw = x1 - x0 + 1, bh = y1 - y0 + 1;
   const mask = new Uint8Array(bw * bh), foreign = new Uint8Array(bw * bh);
   for (let y = 0; y < bh; y++) for (let x = 0; x < bw; x++) { const owner = labelMap[(y + y0) * w + x + x0]; mask[y * bw + x] = +(owner === label); foreign[y * bw + x] = +(owner > 1 && owner !== label); }
@@ -180,8 +185,12 @@ function outline(labelMap, label, box, w, h, opening, slit) {
   const { labels, sizes } = regions(core, bw, bh); let largest = 0;
   for (let i = 1; i < sizes.length; i++) if (sizes[i] > sizes[largest]) largest = i;
   if (largest) {
-    const body = distance(i => labels[i] !== largest, bw, bh, true);
-    for (let i = 0; i < mask.length; i++) mask[i] &= +(body[i] <= opening + 1);
+    const body = distance(i => labels[i] !== largest, bw, bh, true), removed = new Uint8Array(mask.length);
+    for (let i = 0; i < mask.length; i++) removed[i] = +(mask[i] && body[i] > opening + 1);
+    // A thin shaft is cut off by the same opening as a leak. The seed tells them apart: it covers the shaft.
+    const parts = regions(removed, bw, bh), seeded = new Uint32Array(parts.sizes.length);
+    for (let y = 0; y < bh; y++) for (let x = 0; x < bw; x++) { const part = parts.labels[y * bw + x]; if (part && seeds[(y + y0) * w + x + x0] === label - 1) seeded[part]++; }
+    for (let i = 0; i < mask.length; i++) if (parts.labels[i] && seeded[parts.labels[i]] * 2 < parts.sizes[parts.labels[i]]) mask[i] = 0;
   }
   const field = blurred(Float32Array.from(mask), bw, bh);
   // A tool cut by the photo edge still needs a closed loop.
@@ -274,10 +283,10 @@ export function refineContours(image, contours, { search = .012 } = {}) {
     for (const l of logs) { const gx = l[p + 1] - l[p - 1], gy = l[p + w] - l[p - w]; sum += gx * gx + gy * gy; }
     gradient[p] = Math.min(LEVELS - 1, Math.sqrt(sum) * GRADIENT_SCALE);
   }
-  const luminance = new Float32Array(size), saturation = new Float32Array(size);
+  const luminance = new Float32Array(size), chroma = new Float32Array(size);
   for (let i = 0; i < size; i++) {
     const r = channels[0][i], g = channels[1][i], b = channels[2][i], v = Math.max(r, g, b);
-    luminance[i] = .2126 * r + .7152 * g + .0722 * b; saturation[i] = v > 8 ? (v - Math.min(r, g, b)) / v : 0;
+    luminance[i] = .2126 * r + .7152 * g + .0722 * b; chroma[i] = v - Math.min(r, g, b);
   }
   // Twice: the first split separates lit foam from everything dark, the second finds the recess inside the dark part.
   const band = i => !seeds[i] && outer[i] <= reach, lit = darkLevel(luminance, i => band(i) && luminance[i] < 96);
@@ -321,24 +330,37 @@ export function refineContours(image, contours, { search = .012 } = {}) {
   const before = new Uint32Array(contours.length + 2), after = new Uint32Array(contours.length + 2);
   const body = distance(i => marks[i] > 1, w, h), kept = distance(i => body[i] <= 2.5, w, h, true), opened = new Uint8Array(size);
   for (let i = 0; i < size; i++) if (marks[i] > 1) { before[marks[i]]++; if (kept[i] <= 3.5) { opened[i] = 1; after[marks[i]]++; } }
-  for (let i = 0; i < size; i++) if (marks[i] > 1 && !opened[i] && after[marks[i]] >= before[marks[i]] * .3) marks[i] = 0;
+  // A rim runs along a barrier swallowed by the seed. A thin shaft is bounded by the seed alone and stays.
+  const behindBarrier = (piece, parts, members) => {
+    let contact = 0;
+    for (const p of members) { const x = p % w; if ([x ? p - 1 : p, x + 1 < w ? p + 1 : p, p >= w ? p - w : p, p + w < size ? p + w : p].some(n => seeds[n] && marks[n] === BACKGROUND)) contact++; }
+    return contact >= parts.sizes[piece] * .15;
+  };
+  const dropped = regions(Uint8Array.from(marks, (m, i) => +(m > 1 && !opened[i])), w, h), droppedPixels = dropped.sizes.map(() => []);
+  for (let i = 0; i < size; i++) if (dropped.labels[i]) droppedPixels[dropped.labels[i]].push(i);
+  for (let piece = 1; piece < dropped.sizes.length; piece++) {
+    const owner = marks[droppedPixels[piece][0]];
+    if (after[owner] >= before[owner] * .3 && behindBarrier(piece, dropped, droppedPixels[piece])) for (const p of droppedPixels[piece]) marks[p] = 0;
+  }
 
   // Pieces of a loose seed that lie behind a barrier are foam rims, not the tool. They lose their mark
   // and the watershed decides from the edges; a genuine part stays reachable through the tool.
   const marked = regions(Uint8Array.from(marks, m => +(m > 1)), w, h), largestPiece = new Uint32Array(contours.length + 2);
   for (let i = 0; i < size; i++) if (marks[i] > 1) largestPiece[marks[i]] = Math.max(largestPiece[marks[i]], marked.sizes[marked.labels[i]]);
-  for (let i = 0; i < size; i++) if (marks[i] > 1 && marked.sizes[marked.labels[i]] < largestPiece[marks[i]] * .1) marks[i] = 0;
+  const piecePixels = marked.sizes.map(() => []);
+  for (let i = 0; i < size; i++) if (marks[i] > 1 && marked.sizes[marked.labels[i]] < largestPiece[marks[i]] * .1) piecePixels[marked.labels[i]].push(i);
+  for (let piece = 1; piece < marked.sizes.length; piece++) if (piecePixels[piece].length && behindBarrier(piece, marked, piecePixels[piece])) for (const p of piecePixels[piece]) marks[p] = 0;
 
   // Dark tool material: grow it up to the gap around it. Its rounded edges fade too slowly for the
   // gradient alone, while its brightness stays above the recess. Bright tools have no such surface.
   const material = new Uint8Array(size), limit = dark * 8;
-  for (let i = 0; i < size; i++) material[i] = +(marks[i] > 1 && luminance[i] >= dark && luminance[i] <= limit && saturation[i] < .3 && inner[i] > 3.5);
+  for (let i = 0; i < size; i++) material[i] = +(marks[i] > 1 && luminance[i] >= dark && luminance[i] <= limit && chroma[i] < NEUTRAL && inner[i] > 3.5);
   const bodies = regions(material, w, h), queue = [], minimumBody = reach * reach * 1.5;
   for (let i = 0; i < size; i++) if (bodies.labels[i] && bodies.sizes[bodies.labels[i]] >= minimumBody) queue.push(i);
   while (queue.length) {
     const p = queue.pop(), x = p % w, label = marks[p];
     for (const n of [x ? p - 1 : p, x + 1 < w ? p + 1 : p, p >= w ? p - w : p, p + w < size ? p + w : p]) {
-      if (marks[n] || gap[n] || outer[n] > reach || luminance[n] < dark || luminance[n] > limit || saturation[n] >= .3 || (seeds[n] && seeds[n] + 1 !== label)) continue;
+      if (marks[n] || gap[n] || outer[n] > reach || luminance[n] < dark || luminance[n] > limit || chroma[n] >= NEUTRAL || (seeds[n] && seeds[n] + 1 !== label)) continue;
       marks[n] = label; queue.push(n);
     }
   }
@@ -358,19 +380,22 @@ export function refineContours(image, contours, { search = .012 } = {}) {
     const b = boxes[marks[p] - 2], x = p % w, y = (p - x) / w; b.area++;
     b.x0 = Math.min(b.x0, x); b.x1 = Math.max(b.x1, x); b.y0 = Math.min(b.y0, y); b.y1 = Math.max(b.y1, y);
   }
+  const spacing = Math.max(1, Math.min(w, h) / 800), at = (values, x, y) => values[clamp(Math.floor(y / step), 0, h - 1) * w + clamp(Math.floor(x / step), 0, w - 1)];
+  const strength = (x, y) => at(edge, x, y), shaded = (x, y) => at(luminance, x, y) < Math.max(lit, DARK_SURFACE);
   return contours.map((contour, i) => {
-    const traced = boxes[i].area ? outline(marks, i + 2, boxes[i], w, h, 1.5, Math.max(2, reach * .5)) : [];
+    const traced = boxes[i].area ? outline(marks, seeds, i + 2, boxes[i], w, h, 1.5, Math.max(2, reach * .5)) : [];
     // A small part has no long edge to average along, and a fold at a very tight neck cannot be drawn:
     // both keep the watershed line, which cannot cross itself.
     const tiny = traced.length < 64 * Math.max(1, Math.min(w, h) / 800);
     let loop = traced.length >= 3 && !tiny ? snapToEdge(traced, edge, w, h, Math.max(1, Math.min(w, h) / 800)) : traced;
     if (loop.length >= 3 && !simple(loop)) loop = traced;
     if (loop.length < 3) return { ...contour, refined: false };
-    const points = loop.map(p => ({ x: p.x * step, y: p.y * step }));
+    const measured = loop.map(p => ({ x: p.x * step, y: p.y * step }));
+    const fitted = fitToolShape(measured, strength, spacing * step, shaded), points = fitted ?? measured;
     let area = 0; for (let k = 0, j = points.length - 1; k < points.length; j = k++) area += points[j].x * points[k].y - points[k].x * points[j].y;
     area = Math.abs(area) / 2;
     if (!(area > contour.area * .6 && area < contour.area * 1.6)) return { ...contour, refined: false };
     const xs = points.map(p => p.x), ys = points.map(p => p.y);
-    return { ...contour, points, area, width: Math.max(...xs) - Math.min(...xs), height: Math.max(...ys) - Math.min(...ys), refined: true };
+    return { ...contour, points, area, width: Math.max(...xs) - Math.min(...xs), height: Math.max(...ys) - Math.min(...ys), refined: true, fitted: !!fitted };
   });
 }

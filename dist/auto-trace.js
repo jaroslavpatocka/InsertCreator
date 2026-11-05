@@ -372,7 +372,8 @@ function contoursTouch(a, b) {
 function regularizeCandidate(candidate, im, pxPerMm) {
   // Quality still describes the measured image edges. Only the chosen final
   // outlines are denoised, with the same physical budget at every photo scale.
-  const points = candidate.contours.map(c => regularizeContour(c.points, CONTOUR_SMOOTHING_MM * pxPerMm));
+  // A fitted outline is already regular; resampling it would only soften its shoulders.
+  const points = candidate.contours.map(c => c.fitted ? c.points : regularizeContour(c.points, CONTOUR_SMOOTHING_MM * pxPerMm));
   const blocked = new Set();
   for (let i = 0; i < points.length; i++) for (let j = i + 1; j < points.length; j++) {
     // Check both possible fallbacks as well: smoothing must never join tools or
