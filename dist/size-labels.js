@@ -5,6 +5,7 @@ import {sizeText} from './tool-size.js';
 import {containsPocketWalls} from './module-footprint.js';
 import {getLang} from './i18n.js';
 import {hashText} from './mesh-client.js';
+import {moduleMagnetLift} from './print-material.js';
 
 const SCALE=10000,DEPTH=.35,PAD=.8,CELL=.5,CLEAR=.6;
 const round=v=>Math.round(v*SCALE)/SCALE;
@@ -110,7 +111,7 @@ export function sizeLabelGlyphs(input){
  */
 export function planSizeLabels(project,modules=project.modules||[],tools=project.tools||[]){
   const labels=[],skipped=[];if(!project.sizeLabels)return{labels,skipped};
-  const settings=JSON.stringify([getLang(),project.wall,project.base,project.insertHeight,project.printMode,project.bottomMode,project.magnetDepth,project.clearance,project.grid]);
+  const settings=JSON.stringify([getLang(),project.wall,project.base,project.insertHeight,project.printMode,project.bottomMode,project.magnetDepth,project.magnetDiameter,project.multiMaterial,project.clearance,project.grid]);
   for(const module of modules){
     const own=tools.filter(t=>t.moduleId===module.id),key=hashText(settings+JSON.stringify(module)+JSON.stringify(own));
     let plan=moduleLabels.get(key);
@@ -126,8 +127,8 @@ function planModuleLabels(project,module,own){
   const labels=[],skipped=[];
   const wall=number(project.wall,2.4),base=number(project.base,2.4),height=number(project.insertHeight,20),light=project.printMode==='light';
   const effectiveBase=project.bottomMode==='magnet'?Math.max(base,number(project.magnetDepth,2.2)+1.2):base;
-  const foot=project.bottomMode==='grid'?4.75:0,baseTop=foot+effectiveBase,top=light?baseTop+Math.min(1,height-base):foot+height+effectiveBase-base;
-  const available=height-base,obstacles=[];let invalid=false;
+  const foot=project.bottomMode==='grid'?4.75:0,lift=moduleMagnetLift(project,own),baseTop=foot+effectiveBase+lift,top=light?baseTop+Math.min(1,height-base-lift):foot+height+effectiveBase-base;
+  const available=height-base-lift,obstacles=[];let invalid=false;
   for(const tool of own){try{const poly=tool.poly||pocketOutline(tool,number(project.clearance,.8));if(poly.length<3)throw Error();obstacles.push(...offset(poly,wall+CLEAR));}catch{invalid=true;}}
   const blocked=obstacles.map(poly=>({poly,bounds:box(poly)})),margin=Math.max(wall+.25,project.bottomMode==='grid'?4.1:1.25),inner={x:module.x+margin,y:module.y+margin,maxX:module.x+module.width-margin,maxY:module.y+module.height-margin};
   for(const tool of own){

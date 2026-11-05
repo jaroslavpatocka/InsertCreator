@@ -75,15 +75,21 @@ export function validateFingerGrips(grips,{minX=0,minY=0}={}){
   });
 }
 
-/** One world-space pocket. Adding grips never changes the raw rotated-bounds anchor. */
-export function pocketOutline(tool,clearance=0){
+function placement(tool){
   const points=rawPoints(tool),minX=Math.min(...points.map(p=>p.x)),minY=Math.min(...points.map(p=>p.y));
   const rotation=numeric(tool.rotation??0,-1000000,1000000,'otočení',false)*Math.PI/180,c=Math.cos(rotation),s=Math.sin(rotation);
   const rotate=p=>({x:(p.x-minX)*c-(p.y-minY)*s,y:(p.x-minX)*s+(p.y-minY)*c});
   const rotated=points.map(rotate),bx=Math.min(...rotated.map(p=>p.x)),by=Math.min(...rotated.map(p=>p.y));
   const x=numeric(tool.x??0,-1000000,1000000,'pozice X'),y=numeric(tool.y??0,-1000000,1000000,'pozice Y');
-  const world=p=>{const q=rotate(p);return{x:q.x-bx+x,y:q.y-by+y};};
-  const base=offset(rotated.map(p=>({x:p.x-bx+x,y:p.y-by+y})),numeric(clearance,0,6000,'vůle kapsy'));
+  return{points,world:p=>{const q=rotate(p);return{x:q.x-bx+x,y:q.y-by+y};}};
+}
+/** Maps raw local tool millimetres (points, grips, magnets) to the placed world frame. */
+export const toolWorldPoint=tool=>placement(tool).world;
+
+/** One world-space pocket. Adding grips never changes the raw rotated-bounds anchor. */
+export function pocketOutline(tool,clearance=0){
+  const {points,world}=placement(tool);
+  const base=offset(points.map(world),numeric(clearance,0,6000,'vůle kapsy'));
   const grips=Object.hasOwn(tool,'fingerGrips')?validateFingerGrips(tool.fingerGrips):[];
   if(!grips.length)return base;
   const circles=grips.map(grip=>circle({...grip,...world(grip)}));

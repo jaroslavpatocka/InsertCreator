@@ -1,5 +1,6 @@
 import {materialConfig} from './print-material.js';
 import {validateFingerGrips} from './finger-grip.js';
+import {validatePocketMagnets} from './tool-magnet.js';
 import {validateToolSets} from './tool-sets.js';
 import {validateModuleFootprint} from './module-footprint.js';
 import {t,t as tr,i18nError} from './i18n.js';
@@ -59,7 +60,7 @@ export function validateProject(input){
     const category=metaText(t.category,40);if(category)sizeFields.category=category;
     if(t.pocketFit&&['hybrid','functional'].includes(t.pocketFit.mode)&&typeof t.pocketFit.signature==='string'&&/^[a-f0-9]{8}$/.test(t.pocketFit.signature))sizeFields.pocketFit={mode:t.pocketFit.mode,signature:t.pocketFit.signature};
     if(Array.isArray(t.setNames)){const setNames=[...new Set(t.setNames.map(s=>metaText(s,100)).filter(Boolean))].slice(0,12);if(setNames.length)sizeFields.setNames=setNames;}
-    return{id,name:text(t.name||tr('Nástroj')),...(['mm','in'].includes(t.unit)?{unit:t.unit}:{}),...sizeFields,points,x:finite(t.x??0,-1000000,1000000,'X nástroje'),y:finite(t.y??0,-1000000,1000000,'Y nástroje'),rotation:finite(t.rotation??0,-3600,3600,'otočení',false),depth:finite(t.depth??12,.5,99,'hloubka kapsy'),locked:!!t.locked,moduleId:ids.has(t.moduleId)?t.moduleId:null,...(Object.hasOwn(t,'fingerGrips')?{fingerGrips:validateFingerGrips(t.fingerGrips,{minX,minY})}:{})};
+    return{id,name:text(t.name||tr('Nástroj')),...(['mm','in'].includes(t.unit)?{unit:t.unit}:{}),...sizeFields,points,x:finite(t.x??0,-1000000,1000000,'X nástroje'),y:finite(t.y??0,-1000000,1000000,'Y nástroje'),rotation:finite(t.rotation??0,-3600,3600,'otočení',false),depth:finite(t.depth??12,.5,99,'hloubka kapsy'),locked:!!t.locked,moduleId:ids.has(t.moduleId)?t.moduleId:null,...(Object.hasOwn(t,'fingerGrips')?{fingerGrips:validateFingerGrips(t.fingerGrips,{minX,minY})}:{}),...(Object.hasOwn(t,'pocketMagnets')?{pocketMagnets:validatePocketMagnets(t.pocketMagnets,{minX,minY})}:{})};
   });
   if(Object.hasOwn(p,'toolSets'))out.toolSets=validateToolSets(p.toolSets,toolIds);
   return out;

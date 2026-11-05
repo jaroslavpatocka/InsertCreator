@@ -61,6 +61,7 @@ export function resizeToolDimensions(tool,dimensions={}){
   // Snap arithmetic overshoot at the model's strict coordinate limit.
   next.points=next.points.map(p=>({x:Math.min(MAX,p.x),y:Math.min(MAX,p.y)}));
   if(Array.isArray(tool.fingerGrips))next.fingerGrips=tool.fingerGrips.map(grip=>{const p=transform(grip);return{...grip,x:p.x-minX,y:p.y-minY};});
+  if(Array.isArray(tool.pocketMagnets))next.pocketMagnets=tool.pocketMagnets.map(magnet=>{const p=transform(magnet);return{...magnet,x:p.x-minX,y:p.y-minY};});
   const measured=frame(next),tolerance=Math.max(1,length,width)*1e-7;
   if(Math.abs(measured.length-length)>tolerance||Math.abs(measured.width-width)>tolerance||Math.abs(measured.axis.x*axis.x+measured.axis.y*axis.y)<1-1e-6)throw i18nError('Zadané rozměry by změnily podélnou osu nástroje. Zvolte delší nebo užší obrys.');
   const before=bounds(tool),after=bounds(next);

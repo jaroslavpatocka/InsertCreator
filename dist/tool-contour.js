@@ -53,6 +53,7 @@ export function smoothToolContour(project,toolId,tolerance=CONTOUR_SMOOTHING_MM)
   // cleanup. Compensate that shift instead of recentering the entire tool.
   tool.x=(tool.x??0)+after.x-before.x;tool.y=(tool.y??0)+after.y-before.y;
   if(Array.isArray(tool.fingerGrips))tool.fingerGrips=tool.fingerGrips.map(grip=>({...grip,x:grip.x-origin.x,y:grip.y-origin.y}));
+  if(Array.isArray(tool.pocketMagnets))tool.pocketMagnets=tool.pocketMagnets.map(magnet=>({...magnet,x:magnet.x-origin.x,y:magnet.y-origin.y}));
   validateProject(next);
   // Check physical attachment before clearance can bridge a detached finger bay.
   pocketOutline(tool,0);

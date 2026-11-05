@@ -81,9 +81,10 @@ function rotateSelection(project,toolIds,degrees,absolute){
     if(module.grouped||own.length>1)continue;
     const depths=new Map(own.map(t=>[t.id,t.depth]));
     // The footprint calculation does not alter depth: an existing depth warning must not block a geometry edit.
-    const isolated={...next,modules:[module],tools:own.map(t=>({...t,depth:Math.min(t.depth,next.insertHeight-next.base)}))};
+    const isolated={...next,modules:[module],tools:own.map(t=>({...t,depth:Math.min(t.depth,next.insertHeight-next.base),pocketMagnets:[]}))};
     const resized=resizeModule(isolated,id,{mode:'auto'});
-    const byId=new Map(resized.tools.map(t=>[t.id,{...t,depth:depths.get(t.id)}]));
+    const magnets=new Map(own.map(t=>[t.id,t.pocketMagnets]));
+    const byId=new Map(resized.tools.map(t=>{const {pocketMagnets,...rest}=t,kept=magnets.get(t.id);return[t.id,{...rest,depth:depths.get(t.id),...(kept?{pocketMagnets:kept}:{})}];}));
     next={...next,modules:next.modules.map(m=>m.id===id?resized.modules[0]:m),tools:next.tools.map(t=>byId.get(t.id)||t)};
   }
   checked(project,next,ids,modules,{geometry:true});releaseUniform(next,ids,modules);return next;
@@ -170,7 +171,7 @@ export function bulkDelete(project,toolIds){
 
 /** Set only selected pocket depths. Position locks do not prevent a depth edit. */
 export function bulkSetDepth(project,toolIds,depth){
-  const {next,ids,tools,modules}=selection(project,toolIds),value=finite(depth,'hloubku kapsy'),max=maxPocketDepth(next);
+  const {next,ids,tools,modules}=selection(project,toolIds),value=finite(depth,'hloubku kapsy'),max=Math.min(maxPocketDepth(next),...tools.map(tool=>maxPocketDepth(next,tool)));
   if(value<.5||value>max+.0000001)throw i18nError('Hloubka kapsy musí být od {min} do {max}.',{min:fmtLen(.5),max:fmtLen(max)});
   for(const tool of tools)tool.depth=Math.min(max,value);
   return checked(project,next,ids,modules,{depth:true});

@@ -4,11 +4,12 @@
 import enApp from './locales/en-app.js';
 import enCapture from './locales/en-capture.js';
 import enCore from './locales/en-core.js';
+import enMagnet from './locales/en-magnet.js';
 
 export const LANGS=['cs','en'];
 export const LANG_NAMES={cs:'Čeština',en:'English'};
 const LANG_KEY='suplik-studio-lang';
-const dictionaries={cs:null,en:{...enCore,...enCapture,...enApp}};
+const dictionaries={cs:null,en:{...enCore,...enCapture,...enApp,...enMagnet}};
 const listeners=new Set();
 
 function storage(){try{return typeof document==='undefined'?null:globalThis.localStorage||null;}catch{return null;}}

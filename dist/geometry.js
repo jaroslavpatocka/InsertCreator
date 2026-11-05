@@ -1,7 +1,8 @@
 import {moduleOutline,modulePadding} from './module-footprint.js';
 import Clipper from './vendor/clipper.js';
 import {buildColorZones,buildPrintTriangles,encodeSTL,trianglesVolume,printConfig,validatePrintBed,validatePrintMesh} from './print-geometry.js';
-import {materialConfig} from './print-material.js';
+import {materialConfig,pocketHeightLimits} from './print-material.js';
+import {hasPocketMagnets,pocketMagnetHoles,pocketMagnetProblem} from './tool-magnet.js';
 import {layoutMeshToPhysical} from './manufacturing-coordinates.js';
 import {pocketOutline} from './finger-grip.js';
 export {pocketOutline} from './finger-grip.js';
@@ -284,7 +285,7 @@ export function validateLayout(project) {
     if(m.width<=0||m.height<=0||m.x<-.001||m.y<-.001||m.x+m.width>n(project.width)+.001||m.y+m.height>n(project.height)+.001)issues.push(issue('outside',[m.id],'Modul „{name}“ přesahuje šuplík.',{name:m.name||m.id}));
     for(let j=i+1;j<modules.length;j++){let overlaps=false;try{overlaps=intersectsModules(m,modules[j],n(project.grid,42));}catch{continue;}if(overlaps)issues.push(issue('overlap',[m.id,modules[j].id],'Moduly „{a}“ a „{b}“ se překrývají.',{a:m.name||m.id,b:modules[j].name||modules[j].id}));}
   }
-  const polygons=new Map();
+  const polygons=new Map(),limits=tools.some(hasPocketMagnets)?pocketHeightLimits(project):null;
   for(const t of tools){
     let poly=[],pocketError=null;
     try{poly=pocketOutline(t,clearance);}catch(error){pocketError=error;issues.push(issue('overlap',[t.id],t.fingerGrips?.length?'Výřezy pro prsty nástroje „{name}“ nejsou platné: {error}':'Kontura „{name}“ není platná: {error}',{name:t.name,error:error.message}));}
@@ -294,6 +295,12 @@ export function validateLayout(project) {
     if(!m)issues.push(issue('outside',[t.id],'Nástroj „{name}“ zatím nemá umístěný modul.',{name:t.name}));
     else {let contained=false;try{contained=m.cells?containsPocketWalls(m,poly,wall,n(project.grid,42)):!poly.some(p=>p.x<m.x+wall+.25-.001||p.y<m.y+wall+.25-.001||p.x>m.x+m.width-wall-.25+.001||p.y>m.y+m.height-wall-.25+.001);}catch{}if(!contained)issues.push(issue('outside',[t.id,m.id],'Kolem „{name}“ není dost místa na stěnu. Zvětšete modul nebo spusťte rozvržení.',{name:t.name}));}
     if(!(n(t.depth,10)>0&&n(t.depth,10)<=height-base+.001))issues.push(issue('depth',[t.id],'Hloubka kapsy „{name}“ musí být větší než 0 a nejvýše {max}.',{name:t.name,max:fmtLen(height-base)}));
+    else if(!pocketError&&limits?.affected(t)&&n(t.depth,10)>limits.maxDepth(t)+.001)issues.push(issue('depth',[t.id],'Kapsa „{name}“ v modulu s magnetem potřebuje výšku vložky alespoň {height}.',{name:t.name,height:fmtLen(limits.requiredHeight(t),{digits:2})}));
+    if(!pocketError&&hasPocketMagnets(t)){
+      const problem=pocketMagnetProblem(t,poly);
+      if(problem==='wall')issues.push(issue('overlap',[t.id],'Magnet v kapse „{name}“ je příliš blízko stěny nebo mimo dno kapsy.',{name:t.name}));
+      if(problem==='spacing')issues.push(issue('overlap',[t.id],'Magnety v kapse „{name}“ jsou příliš blízko sebe.',{name:t.name}));
+    }
   }
   for(let i=0;i<tools.length;i++)for(let j=i+1;j<tools.length;j++){
     const a=tools[i],b=tools[j],pa=polygons.get(a.id),pb=polygons.get(b.id);
@@ -317,7 +324,7 @@ const path=points=>points.map((p,i)=>`${i?'L':'M'}${fmt(p.x)},${fmt(p.y)}`).join
 export function exportSVG(project,{moduleId=null}={}) {
   const {modules,tools,origin,width,height}=selected(project,moduleId);
   const shift=p=>({x:p.x-origin.x,y:p.y-origin.y});
-  return `<?xml version="1.0" encoding="UTF-8"?>\n<svg xmlns="http://www.w3.org/2000/svg" width="${fmt(width)}mm" height="${fmt(height)}mm" viewBox="0 0 ${fmt(width)} ${fmt(height)}"><title>${xml(project.name||'InsertCreator')}</title><desc>${xml(tr('Rozměry v mm. Černá = modul; červená = kapsa včetně vůle {clearance} mm. Ploché dno, rozteč modulů {grid} mm.',{clearance:n(project.clearance,.8),grid:n(project.grid,42)}))}</desc><g id="modules" fill="none" stroke="black" stroke-width="0.15">${modules.map(m=>m.cells?`<path d="${path(moduleOutline(m,project.grid,{inset:.25}).map(shift))}"/>`:`<rect x="${fmt(m.x-origin.x+.25)}" y="${fmt(m.y-origin.y+.25)}" width="${fmt(m.width-.5)}" height="${fmt(m.height-.5)}"/>`).join('')}</g><g id="pockets" fill="none" stroke="red" stroke-width="0.15">${tools.map(t=>`<path id="${xml(t.id)}" data-depth-mm="${n(t.depth,10)}" d="${path(pocketOutline(t,n(project.clearance,.8)).map(shift))}"><title>${xml(t.name)}</title></path>`).join('')}</g></svg>`;
+  return `<?xml version="1.0" encoding="UTF-8"?>\n<svg xmlns="http://www.w3.org/2000/svg" width="${fmt(width)}mm" height="${fmt(height)}mm" viewBox="0 0 ${fmt(width)} ${fmt(height)}"><title>${xml(project.name||'InsertCreator')}</title><desc>${xml(tr('Rozměry v mm. Černá = modul; červená = kapsa včetně vůle {clearance} mm. Ploché dno, rozteč modulů {grid} mm.',{clearance:n(project.clearance,.8),grid:n(project.grid,42)}))}</desc><g id="modules" fill="none" stroke="black" stroke-width="0.15">${modules.map(m=>m.cells?`<path d="${path(moduleOutline(m,project.grid,{inset:.25}).map(shift))}"/>`:`<rect x="${fmt(m.x-origin.x+.25)}" y="${fmt(m.y-origin.y+.25)}" width="${fmt(m.width-.5)}" height="${fmt(m.height-.5)}"/>`).join('')}</g><g id="pockets" fill="none" stroke="red" stroke-width="0.15">${tools.map(t=>`<path id="${xml(t.id)}" data-depth-mm="${n(t.depth,10)}" d="${path(pocketOutline(t,n(project.clearance,.8)).map(shift))}"><title>${xml(t.name)}</title></path>`).join('')}</g>${tools.some(hasPocketMagnets)?`<g id="magnets" fill="none" stroke="blue" stroke-width="0.15">${tools.flatMap(t=>pocketMagnetHoles(t).map(hole=>`<circle cx="${fmt(hole.x-origin.x)}" cy="${fmt(hole.y-origin.y)}" r="${fmt(hole.radius)}" data-floor-depth-mm="${fmt(n(t.depth,10)+hole.depth)}"><title>${xml(t.name)}</title></circle>`)).join('')}</g>`:''}</svg>`;
 }
 export function exportDXF(project,{moduleId=null}={}) {
   const {modules,tools,origin,height}=selected(project,moduleId),lines=[];
@@ -326,6 +333,7 @@ export function exportDXF(project,{moduleId=null}={}) {
   const polygon=(points,layer)=>{add(0,'LWPOLYLINE');add(100,'AcDbEntity');add(8,layer);add(100,'AcDbPolyline');add(90,points.length);add(70,1);for(const p of points){add(10,fmt(p.x-origin.x));add(20,fmt(height-(p.y-origin.y)));}};
   for(const m of modules)polygon(moduleOutline(m,project.grid,{inset:.25}),'MODULES');
   for(const t of tools)polygon(pocketOutline(t,n(project.clearance,.8)),'POCKETS');
+  for(const t of tools)for(const hole of pocketMagnetHoles(t)){add(0,'CIRCLE');add(100,'AcDbEntity');add(8,'MAGNETS');add(100,'AcDbCircle');add(10,fmt(hole.x-origin.x));add(20,fmt(height-(hole.y-origin.y)));add(40,fmt(hole.radius));}
   add(0,'ENDSEC');add(0,'EOF');return lines.join('\r\n')+'\r\n';
 }
 
@@ -357,6 +365,8 @@ export function printStats(project,{moduleId=null,checkBed=true}={}){
   if(cfg.printMode==='light')notes.push(tr('Úsporný model má ploché dno a pouze obrysové stěny; každá stěna stoupá od dna o hloubku své kapsy. Okolí zůstává nízké a otevřené.'));
   if(cfg.bottomMode==='grid')notes.push(tr('Gridfinity patky mají profil 0,8 + 1,8 + 2,15 mm, rozteč 42 mm a přidávají {foot} pod tělo inzertu. Bez horního stohovacího lemu.',{foot:fmtLen(4.75)}));
   if(cfg.bottomMode==='magnet')notes.push(tr('Čtyři slepé kapsy na modul: Ø {diameter} × {depth}. Dno je automaticky nejméně {base}, aby nad magnety zůstalo alespoň {cover} materiálu.',{diameter:fmtLen(cfg.magnetDiameter,{suffix:false}),depth:fmtLen(cfg.magnetDepth),base:fmtLen(cfg.effectiveBaseMm),cover:fmtLen(1.2)}));
+  const holders=tools.flatMap(t=>t.pocketMagnets||[]);
+  if(holders.length)notes.push(cfg.printMode==='light'?tr('Magnety v kapsách: {count} ks. Díry míří nahoru pod nástroj, díra je o {play} větší než magnet. Dno modulu s magnetem se zesílí, aby pod dírou zůstalo alespoň {cover}.',{count:holders.length,play:fmtLen(.2),cover:fmtLen(1.2)}):tr('Magnety v kapsách: {count} ks. Díry míří nahoru pod nástroj, díra je o {play} větší než magnet a pod dírou zůstává alespoň {cover}.',{count:holders.length,play:fmtLen(.2),cover:fmtLen(1.2)}));
   if(cfg.bottomMode==='adhesive')notes.push(tr('Rovné souvislé dno pro oboustrannou pásku; tloušťka pásky se do modelu nezapočítává.'));
   return {volumeMm3,volumeCm3:volumeMm3/1000,solidVolumeMm3,savingPercent:solidVolumeMm3?Math.max(0,(1-volumeMm3/solidVolumeMm3)*100):0,heightMm,effectiveBaseMm:cfg.effectiveBaseMm,footHeightMm:cfg.footHeight,printMode:cfg.printMode,bottomMode:cfg.bottomMode,triangles:triangles.length,notes};
 }

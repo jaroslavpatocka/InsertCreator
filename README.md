@@ -119,6 +119,12 @@ V rozbalovací nabídce **Upravit měřítko** u katalogového nástroje nebo sa
 
 Obrysy z katalogu jsou jmenovité. Konkrétní nástroj se může lišit, proto ho před tiskem porovnejte se zkušebním PDF 1:1.
 
+## Magnety v kapse
+
+Ocelový nástroj může v kapse držet magnet. U vybraného nástroje otevřete **Magnety v kapse → Přidat magnet**, zadejte skutečný průměr a výšku magnetu a počet. Aplikace díry rozmístí podél nástroje; kliknutím nebo tažením do kapsy vybraný magnet přesunete, přesnou polohu lze zadat i jako X a Y. Dejte ho pod ocelovou část nástroje, plastová rukojeť magnet nepřitáhne.
+
+Díra se otevírá nahoru do dna kapsy a je o 0,2 mm větší než magnet v průměru i výšce. Pod dírou vždy zůstane alespoň 1,2 mm materiálu. U plného bloku se výška vložky zvýší jen tehdy, když pod kapsou není dost místa. U úsporného tisku se zesílí dno celého modulu a hloubka kapes zůstane stejná. Dialog před uložením ukáže, co se s výškou stane. Díry jsou také ve 3D náhledu, v STL a 3MF, v SVG (skupina `magnets`) a v DXF (vrstva `MAGNETS`).
+
 ## Výřezy pro prsty
 
 Novým nástrojům se automaticky připraví dva boční výřezy pro snazší vyjmutí z kapsy. Hledá se úzký skutečně vyplněný průřez v prostředních 35–65 % délky; při stejné šířce má přednost střed. Široká rukojeť šroubováku tak nepřitahuje výřezy, pokud je poblíž užší dřík. Katalog i fotografované nástroje používají stejné pravidlo. Ve společném modulu vyberte konkrétní nástroj klepnutím na jeho obrys. U vybraného nástroje můžete výřezy znovu automaticky umístit, přidat další, upravit jejich polohu a průměr nebo je jednotlivě či všechny odstranit. Změny lze vrátit přes Zpět a ukládají se s projektem i do JSON. Uložené ruční výřezy zůstávají beze změny. Smazané výřezy se při automatickém rozvržení samy neobnovují; u starších nástrojů se přidají až na vaše přání.

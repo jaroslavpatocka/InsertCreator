@@ -4,7 +4,8 @@ import {i18nError} from './i18n.js';
 import {fmtLen,fmtSize} from './units.js';
 import {planSizeLabels} from './size-labels.js';
 import {moduleOutline,validateModuleFootprint,containsPocketWalls} from './module-footprint.js';
-import {FLOOR_RESERVE,materialConfig} from './print-material.js';
+import {FLOOR_RESERVE,floorInlay,magnetFloorNeed,materialConfig,moduleMagnetLift} from './print-material.js';
+import {pocketMagnetHoles} from './tool-magnet.js';
 import {magnetPocketCenters} from './magnet-pockets.js';
 
 // A memory guard for one module: its binary STL stays around 25 MB.
@@ -224,7 +225,16 @@ export function buildPrintTriangles(project,modules,tools,origin={x:0,y:0},{fit=
       }
       feet=union(feet);
     }
-    const bottom=cfg.footHeight,baseTop=bottom+cfg.effectiveBaseMm,H=bottom+cfg.height+cfg.extraBase;
+    const bottom=cfg.footHeight,baseTop=bottom+cfg.effectiveBaseMm+moduleMagnetLift(project,tools.filter(t=>t.moduleId===m.id)),H=bottom+cfg.height+cfg.extraBase;
+    // Holding-magnet holes hang from the visible pocket floor. A carved solid pocket lies below it by
+    // the inlay; in a light model the inlay sits on the base. Either way only a magnet taller than the
+    // inlay reaches the body. The tolerance matches validateLayout, so an accepted height always builds.
+    const pocketHoles=pockets.flatMap(tool=>{
+      const holes=pocketMagnetHoles(tool);if(!holes.length)return[];
+      const light=cfg.printMode==='light',floor=light?baseTop:H-number(tool.depth,10),visible=floor+(light?floorInlay(project):number(tool.floorInlay,0));
+      if(visible-bottom<magnetFloorNeed(project,tool)-.0011)throw i18nError('Pod magnetem v kapse „{name}“ nezbývá dost materiálu. Zvyšte výšku vložky nebo zmenšete hloubku kapsy.',{name:tool.name});
+      return holes.map(hole=>({toolId:tool.id,poly:circle(hole.x,hole.y,hole.radius),floor:round(Math.min(visible-hole.depth,floor)),top:round(floor)}));
+    });
     let magnets=[];
     if(cfg.bottomMode==='magnet'){
       magnets=magnetPocketCenters(project,m,{diameter:cfg.magnetDiameter,wall:cfg.wall}).map(({x,y,radius})=>circle(x,y,radius));
@@ -241,15 +251,17 @@ export function buildPrintTriangles(project,modules,tools,origin={x:0,y:0},{fit=
           const keep=magnets.length&&boolean([tool.poly],magnets,Clipper.ClipType.ctIntersection).length?cfg.magnetDepth+FLOOR_RESERVE:FLOOR_RESERVE;
           const depth=number(tool.depth,10),light=cfg.printMode==='light',top=light?baseTop+thickness:H-depth;
           if(light?baseTop+depth+thickness>H+EPS:top-thickness<bottom+keep-EPS)throw i18nError('Kapsa „{name}“ je pro vložku dna příliš hluboká. Zmenšete hloubku kapsy nebo tloušťku vložky.',{name:tool.name});
-          solid([tool.poly],top-thickness,top);
+          solid(subtract([tool.poly],pocketHoles.filter(hole=>hole.toolId===tool.id).map(hole=>hole.poly)),top-thickness,top);
         }
       }
       const closed=stitchBoundaryEdges(triangles.splice(start),{canonical:!!clip});for(const triangle of closed)triangles.push(triangle);
       continue;
     }
-    if(joint||(clip&&cfg.printMode!=='light')||!disjointComponents(outer,pockets,labels,bottom,baseTop,H,magnets,feet)){
+    const bodyHoles=pocketHoles.filter(hole=>hole.floor<hole.top-EPS);
+    if(bodyHoles.length||joint||(clip&&cfg.printMode!=='light')||!disjointComponents(outer,pockets,labels,bottom,baseTop,H,magnets,feet)){
     const levels=[bottom,baseTop,...pockets.map(t=>cfg.printMode==='light'?baseTop+number(t.depth,10):H-number(t.depth,10)),cfg.printMode==='solid'?H:baseTop];
     if(magnets.length)levels.push(cfg.magnetDepth);
+    levels.push(...bodyHoles.map(hole=>hole.floor));
     const barriers=labels.length?new Set(levels.map(round)):null;
     levels.push(...labels.flatMap(label=>[label.top-label.depth,label.top]));
     const z=[...new Set(levels.map(round))].sort((a,b)=>a-b),sections=[];
@@ -265,6 +277,8 @@ export function buildPrintTriangles(project,modules,tools,origin={x:0,y:0},{fit=
       if(joint&&clip)section=clipped(union(section));
       if(joint&&middle<baseTop-EPS)section=subtract(union([...section,...joint.tabs]),joint.sockets);
       if(magnets.length&&middle<cfg.magnetDepth-EPS)section=subtract(section,magnets);
+      const open=bodyHoles.filter(hole=>middle>=hole.floor-EPS&&middle<hole.top+EPS).map(hole=>hole.poly);
+      if(open.length)section=subtract(section,open);
       const lettering=labels.filter(label=>middle>=label.top-label.depth-EPS&&middle<label.top-EPS).flatMap(label=>label.polygons);
       if(lettering.length)section=subtract(section,lettering);
       sections.push(section);
@@ -283,7 +297,7 @@ export function buildPrintTriangles(project,modules,tools,origin={x:0,y:0},{fit=
 export function buildColorZones(project,modules,tools,origin,options={}){
   const config=materialConfig(project),zones=[];
   const floor=config.floor?buildPrintTriangles(project,modules,tools,origin,{...options,inlay:'floor'}):[];
-  const carved=config.floor?tools.map(tool=>({...tool,depth:number(tool.depth,10)+config.floorThickness})):tools;
+  const carved=config.floor?tools.map(tool=>({...tool,depth:number(tool.depth,10)+config.floorThickness,floorInlay:config.floorThickness})):tools;
   zones.push({zone:'body',mesh:buildPrintTriangles(project,modules,carved,origin,options)});
   if(floor.length)zones.push({zone:'floor',mesh:floor});
   if(config.text){const mesh=buildPrintTriangles(project,modules,tools,origin,{...options,inlay:'text'});if(mesh.length)zones.push({zone:'text',mesh});}

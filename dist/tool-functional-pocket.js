@@ -36,6 +36,7 @@ export function functionalToolPocket(project,toolId,mode='hybrid'){
   tool.points=points.map(p=>({x:p.x-origin.x,y:p.y-origin.y}));
   tool.x=(tool.x??0)+after.x-before.x;tool.y=(tool.y??0)+after.y-before.y;
   if(Array.isArray(tool.fingerGrips))tool.fingerGrips=tool.fingerGrips.map(grip=>({...grip,x:grip.x-origin.x,y:grip.y-origin.y}));
+  if(Array.isArray(tool.pocketMagnets))tool.pocketMagnets=tool.pocketMagnets.map(magnet=>({...magnet,x:magnet.x-origin.x,y:magnet.y-origin.y}));
   tool.pocketFit={mode,signature:pocketFitSignature(tool.points)};
   validateProject(next);
   pocketOutline(tool,0);

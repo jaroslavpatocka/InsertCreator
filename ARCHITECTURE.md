@@ -15,6 +15,7 @@ Aktivní projekt je v tomto adresáři. ZIP se zdroji a dva deployment archivy v
 | UI pomůcky | `dist/ui.js` | Modal, focus trap, ikony, escapování, oznámení a stahování souborů |
 | Datový model | `dist/model.js` | Výchozí projekt, validace/normalizace JSON, ID, kopírování a přístup k localStorage |
 | Úchop nástroje | `dist/finger-grip.js` | Automatické boční výřezy, validace jejich parametrů a sjednocená výrobní kontura kapsy |
+| Magnety v kapse | `dist/tool-magnet.js`, `dist/tool-magnet-ui.js` | Validace, automatické umístění a poloha děr; panel, dialog a značky ve 2D |
 | Rozměry jednotlivého nástroje | `dist/tool-dimensions.js` | Vlastní podélná/příčná osa, nezávislá změna délky a šířky se zachováním středu a fyzických poloměrů |
 | Fotografování | `dist/capture.js` | Soubory/kamera, kalibrace, průběh rozpoznávání, kontrola kvality a přidání nástrojů |
 | Funkční pravidelná kapsa | `dist/functional-pocket.js`, `dist/tool-functional-pocket.js` | Osa naměřeného nástroje, sjednocení jednoduchých obklopujících obrazců a vratný převod uloženého nástroje se zachováním fyzické polohy |
@@ -93,6 +94,7 @@ Projekt obsahuje rozměry šuplíku, rastr, vůli, stěnu, dno, výšku a pole `
 - Volitelné `module.shape:'stepped'` a `module.cells:[{x,y}]` určují obsazená pole společného `project.grid`. Indexy jsou nezáporná celá čísla, kanonicky se řadí po řádcích; jejich minima jsou nula a bbox přesně odpovídá `width/height`. Nejvýše 4096 buněk musí být spojeno hranami a mít jedinou jednoduchou hranici bez otvorů. Schodové moduly mají i absolutní počátek v rastru. Starší moduly bez buněk zůstávají obdélníkové.
 - Nástroj má vlastní ID, lokální polygon `points`, polohu, rotaci ve stupních, hloubku a vazbu `moduleId`.
 - Volitelné `tool.fingerGrips` obsahuje nejvýše 12 výřezů `{id, x, y, radius}` v lokálních milimetrech nástroje. Nepřítomné pole označuje původní nástroj bez automatické změny kapsy; explicitní `[]` uchovává smazání. Normalizace souřadnic posouvá centra výřezů stejně jako body nástroje.
+- Volitelné `tool.pocketMagnets` obsahuje nejvýše 12 magnetů `{id, x, y, diameter, height}` v lokálních milimetrech nástroje. Ukládá skutečný rozměr magnetu; tisková díra přidává `MAGNET_HOLE_PLAY` (0,2 mm). Prázdné pole dialog ukládá jako nepřítomné.
 - `tool.nominalSize = {value, unit:'mm'|'in'}` uchovává zadanou jmenovitou velikost ve vlastní jednotce. `tool.sizeLabel` je volitelný ruční text do 24 znaků. Obě hodnoty procházejí validátorem a JSON; nejsou rozměrem obálky kontury a škálování je nemění.
 - `project.sizeLabels` zapíná výrobní popisky pro celý šuplík, výchozí hodnota je `false`. Vynechaný popisek neblokuje ostatní model; UI uvádí důvod z `SIZE_LABEL_REASONS`.
 - `project.jointClearance` je boční vůle zdířky v XY na každé straně v mm, výchozí `0.2`, validovaný rozsah `0..1`. Ukládá se do projektu a JSON; příčná šířka zdířky se zvětší o `2 * jointClearance`, geometrie výstupku a svislá vůle zůstávají stejné.
@@ -217,6 +219,14 @@ Jediná veřejná akce **Rozložit nástroje** spojuje dosavadní operace v `app
 Plné párové hledání používá nejvýše 24 nástrojů, 12 000 bodů kontur a 20 000 polí šuplíku. Nad některým z těchto limitů se použije `largeArrange()` do limitu projektu 3000 nástrojů a 4000 modulů. Tato cesta nemá pevný limit 20 000 polí: každý `pack()` má rozpočet 120 000 zkoušených pozic. Porovnává dvě pořadí základního plánu a případně dvě pořadí společného plánu nejvýše osmi podobných rodin. Každá rodina má jeden společný řadový kandidát bez opakované triangulace STL. Ruční reclaim zkouší nejvýše osm největších vhodných okrajů a odstraňuje z návrhu nepotřebná zmenšení; nikdy nesmí ztratit již umístěný nástroj. Vstupní i výsledná geometrie kapes a hloubek se ověřuje, `stats.strategy:'greedy'` a `manufacturingChecked:false` však výslovně označují odloženou kontrolu úplné výrobní sítě na export. `searchLimited` a `reason:'limit'` se použijí při vyčerpaném rozpočtu se zbývajícími neumístěnými nástroji; jinak se vrací `drawer` nebo `ok`.
 
 Volitelné `project.toolSets` uchovává ruční sady `{id, name, toolIds, layout}` s režimem `auto`, `uniform` nebo `shared` a volitelnými preferencemi `arrangement` a `order`. Jeden nástroj patří nejvýše do jedné ruční sady. Automatické návrhy vycházejí z normalizovaných geometrických profilů a nejsou vydávány za rozpoznaný výrobek. `analyzeToolShape()` určuje orientaci hlavní osy včetně rozlišení protilehlých konců; `findToolSets()` upřednostňuje ruční členství a `setCoherence()` nezávisle měří splnění zvolené varianty. Pouze explicitní `arrangement:'compact'` připouští protilehlé směry 0/180°; starší sady zachovávají požadavek na jediný směr. Moduly mohou nést `setId` a `setLayout`; běžné Auto zachovává společný půdorys samostatných sjednocených modulů. Při rozvržení sad lze znovu sestavit dřívější odemčené automatické skupiny, zatímco ruční rozměry, zámky a výplně zůstávají chráněné.
+
+### Magnety v kapse a výška modulu
+
+`print-material.js` je jediný zdroj výškových pravidel. `magnetFloorNeed()` vrací materiál mezi spodní plochou modulu a viditelným dnem kapsy: hloubka díry nebo tloušťka vložky dna, plus `MAGNET_COVER` (1,2 mm), plus hloubka spodního magnetu, pokud díra leží nad ním. `maxPocketDepth(project,tool)` a `requiredInsertHeight()` z toho počítají limity a `validateLayout()` hlásí nedostatek jako problém typu `depth`.
+
+Plný model mění jen materiál pod kapsou, výška `H` zůstává. Úsporný model má jednu plochou základnu, proto `moduleMagnetLift()` zvedne `baseTop` celého modulu a všechny jeho kapsy, popisky i stěny stoupají s ní. Lift se počítá ze všech nástrojů modulu, ne z nástrojů jednoho řezu, aby díly téhož modulu seděly na sebe.
+
+Moduly s dírou jdou v `buildPrintTriangles()` vždy obecnou cestou se společnými Z hladinami. `disjointComponents()` díry nezná. U vícebarevného tisku `buildColorZones()` předá vyřezanému tělu `floorInlay`, takže díra se měří od viditelného dna a vložka má stejný otvor.
 
 ## Spuštění a offline režim
 

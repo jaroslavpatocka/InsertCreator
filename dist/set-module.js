@@ -24,6 +24,8 @@ export function scaleTool(tool,factor,opts={}){
   const points=tool.points.map(p=>({x:num(p.x)*f,y:num(p.y)*f})),b=box(points);
   if(b.width>MAX_SIZE||b.height>MAX_SIZE)throw i18nError('Kontura nesmí v žádném směru přesáhnout {max}.',{max:fmtLen(MAX_SIZE)});
   const next={...copy(tool),points,...(opts.id!=null?{id:String(opts.id)}:{})};
+  // Centres follow the outline; a real magnet keeps its size.
+  if(Array.isArray(tool.pocketMagnets))next.pocketMagnets=tool.pocketMagnets.map(magnet=>({...magnet,x:num(magnet.x)*f,y:num(magnet.y)*f}));
   if(Array.isArray(tool.fingerGrips)&&tool.fingerGrips.length){
     next.fingerGrips=tool.fingerGrips.map(g=>({...g,x:num(g.x)*f,y:num(g.y)*f}));
     try{pocketOutline(next,0);}
