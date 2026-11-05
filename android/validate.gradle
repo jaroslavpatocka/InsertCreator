@@ -1,0 +1,17 @@
+// Build-time validation only. This dependency is never packaged in the app.
+configurations { bundleValidation }
+dependencies { bundleValidation 'com.android.tools.build:bundletool:1.18.3' }
+
+def releaseBundle = project(':app').layout.buildDirectory.file('outputs/bundle/release/app-release.aab')
+tasks.register('validateReleaseBundle', JavaExec) {
+    dependsOn ':app:bundleRelease'
+    classpath = configurations.bundleValidation
+    mainClass.set('com.android.tools.build.bundletool.BundleToolMain')
+    args 'validate', '--bundle=' + releaseBundle.get().asFile.absolutePath
+}
+tasks.register('dumpReleaseManifest', JavaExec) {
+    dependsOn ':app:bundleRelease'
+    classpath = configurations.bundleValidation
+    mainClass.set('com.android.tools.build.bundletool.BundleToolMain')
+    args 'dump', 'manifest', '--bundle=' + releaseBundle.get().asFile.absolutePath, '--module=base'
+}

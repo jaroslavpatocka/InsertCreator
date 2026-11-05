@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="48dp"
+    android:height="48dp"
+    android:viewportWidth="192"
+    android:viewportHeight="192">
+    <path android:fillColor="@color/insertcreator_amber"
+        android:pathData="M44,0 H148 A44,44 0,0 1,192 44 V148 A44,44 0,0 1,148 192 H44 A44,44 0,0 1,0 148 V44 A44,44 0,0 1,44 0 Z" />
+    <path android:fillColor="@color/insertcreator_ink"
+        android:pathData="M48,40 H80 A8,8 0,0 1,88 48 V80 A8,8 0,0 1,80 88 H48 A8,8 0,0 1,40 80 V48 A8,8 0,0 1,48 40 Z" />
+    <path android:fillColor="@color/insertcreator_ink"
+        android:pathData="M112,40 H144 A8,8 0,0 1,152 48 V80 A8,8 0,0 1,144 88 H112 A8,8 0,0 1,104 80 V48 A8,8 0,0 1,112 40 Z" />
+    <path android:fillColor="@color/insertcreator_ink"
+        android:pathData="M48,104 H80 A8,8 0,0 1,88 112 V144 A8,8 0,0 1,80 152 H48 A8,8 0,0 1,40 144 V112 A8,8 0,0 1,48 104 Z" />
+    <path android:fillColor="@android:color/transparent"
+        android:strokeColor="@color/insertcreator_ink"
+        android:strokeWidth="7"
+        android:pathData="M112,104 H144 A8,8 0,0 1,152 112 V144 A8,8 0,0 1,144 152 H112 A8,8 0,0 1,104 144 V112 A8,8 0,0 1,112 104 Z" />
+</vector>
