@@ -43,7 +43,14 @@ test('module margin affects only inheriting tools in that module and accepts exp
   const stored=validateProject(next);assert.deepEqual(validateProject(JSON.parse(JSON.stringify(stored))),stored);
   action('undo');assert.deepEqual(state(),before);
 });
-test('invalid margins, unsafe expansion and locked module edits leave project and undo unchanged',()=>{
-  select('inherit');const before=state();for(const value of ['-1','11','bad','10']){change('tool',value);assert.deepEqual(state(),before);assert.equal($('#app [data-action="undo"]').disabled,true);}
+test('invalid margins and locked module edits leave project and undo unchanged',()=>{
+  select('inherit');const before=state();for(const value of ['-1','11','bad']){change('tool',value);assert.deepEqual(state(),before);assert.equal($('#app [data-action="undo"]').disabled,true);}
   select('other');for(const scope of ['tool','module']){assert.equal($(`[data-scope="${scope}"][data-field="pocketMargin"]`).disabled,true);change(scope,'1');assert.deepEqual(state(),before);}
+});
+test('a larger margin uses existing spare space instead of rejecting the edit',()=>{
+  select('inherit');const before=state();change('tool','10');const next=state();
+  assert.equal(next.tools[0].pocketMargin,10);assert.deepEqual(validateLayout(next),[]);
+  assert.deepEqual(next.modules,before.modules);assert.deepEqual(next.tools[2],before.tools[2]);
+  assert.equal(next.tools[1].x-next.tools[0].x,before.tools[1].x-before.tools[0].x);
+  action('undo');assert.deepEqual(state(),before);
 });

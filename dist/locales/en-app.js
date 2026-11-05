@@ -956,5 +956,6 @@ export default {
   'Prázdné pole převezme margin modulu: {margin}. Nula znamená kapsu bez přídavku.':'Leave blank to use the module margin: {margin}. Zero creates a pocket without additional clearance.',
   'Přídavek na každé straně kapsy, pouze v tomto modulu. 1 mm přidá 2 mm k celkové šířce.':'Additional clearance on each side of the pocket, in this module only. 1 mm adds 2 mm to the total width.',
   'Margin kapsy upraven.':'Pocket margin updated.',
+  'Nástroje se s tímto přídavkem nevejdou. Zvětšete šuplík nebo uvolněte místo kolem modulu.':'The tools do not fit with this margin. Enlarge the drawer or free up space around the module.',
   'Přídavek kapsy musí být číslo od {min} do {max} mm.':'Pocket margin must be a number from {min} to {max} mm.',
 };

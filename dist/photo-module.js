@@ -1,18 +1,20 @@
-// One rigid module from calibrated photo coordinates. No packing, scaling or individual rotations.
+// One module from calibrated photo coordinates. No packing or scaling of contours.
 import {pocketOutline,validateLayout} from './geometry.js';
 import {moduleIntersects,modulePadding} from './module-footprint.js';
 import {clone,uid,validateProject} from './model.js';
 import {t,i18nError} from './i18n.js';
 import {fmtLen} from './units.js';
+import {spacePocketCenters} from './pocket-growth.js';
 
 const EPS=1e-7;
 
 /**
- * Add exactly one movable, rigid module, preserving calibrated tool x/y offsets and rotations.
+ * Add exactly one movable module, preserving calibrated tool x/y offsets and rotations.
+ * growMargins permits uniform centre spacing expansion when pocket walls need it.
  * Printer-bed limits apply on export only. An unplaceable module stays intact beside the drawer.
  * Neither the project nor the supplied tools are mutated, including on validation failure.
  */
-export function addPhotoModule(project,tools,{name,moduleId}={}){
+export function addPhotoModule(project,tools,{name,moduleId,growMargins=false}={}){
   if(!Array.isArray(tools)||!tools.length)throw i18nError('Sada neobsahuje žádné nástroje.');
   const ids=new Set((project.tools||[]).map(tool=>tool.id));
   for(const tool of tools){
@@ -25,7 +27,8 @@ export function addPhotoModule(project,tools,{name,moduleId}={}){
   }
   // Reuse model validation and its project limits without rewriting any existing project data.
   const validated=validateProject({...project,tools:[...(project.tools||[]),...tools]}),next=clone(project);
-  const own=validated.tools.slice((project.tools||[]).length).map(tool=>({...tool,locked:false}));
+  let own=validated.tools.slice((project.tools||[]).length).map(tool=>({...tool,locked:false}));
+  if(growMargins)own=spacePocketCenters(validated,own);
   const usedModules=new Set(next.modules.map(module=>module.id)),base=String(moduleId||`photo-${uid()}`).slice(0,90);
   let id=base;for(let suffix=2;usedModules.has(id);suffix++)id=`${base}-${suffix}`;
   const grid=validated.grid,padding=modulePadding(validated);

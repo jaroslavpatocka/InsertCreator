@@ -14,6 +14,7 @@ import {photoLayout} from './photo-layout.js';
 import {addPhotoModule} from './photo-module.js';
 import {effectivePocketMargin,validatePocketMargin} from './pocket-margin.js';
 import {prepareModuleMargins,applyCreatedModuleMargins} from './module-margin.js';
+import {growModuleForMargins} from './pocket-growth.js';
 import {getToolDimensions,resizeToolDimensions} from './tool-dimensions.js';
 import {smoothToolContour} from './tool-contour.js';
 import {functionalToolPocket,toolPocketPreview} from './tool-functional-pocket.js';
@@ -609,10 +610,16 @@ function editPocketMargin(scope,el){
   const current=scope==='tool'?tool():moduleFor();if(!current)return;
   const module=scope==='tool'?moduleFor():current;
   if(current.locked||module?.locked||(scope==='module'&&project.tools.some(tool=>tool.moduleId===current.id&&tool.locked)))throw i18nError('Nejprve odemkněte polohu modulu.');
-  const value=el.value.trim()===''?undefined:validatePocketMargin(readLength(el)),next=clone(project),item=(scope==='tool'?next.tools:next.modules).find(item=>item.id===current.id);
+  const value=el.value.trim()===''?undefined:validatePocketMargin(readLength(el));let next=clone(project);
+  const item=(scope==='tool'?next.tools:next.modules).find(item=>item.id===current.id);
   if(value===undefined)delete item.pocketMargin;else item.pocketMargin=value;
+  if(module)next=growModuleForMargins(next,module.id);
   validateProject(next);checkLayoutTransition(project,next);
-  if(same(next)!==same(project))commit(()=>project=next,tr('Margin kapsy upraven.'));else render();
+  if(same(next)!==same(project)){
+    const grown=module&&next.modules.find(item=>item.id===module.id),resized=grown&&(grown.width!==module.width||grown.height!==module.height);
+    let note='';commit(()=>{project=next;if(resized)note=releaseUniformSet(module.id,{ifUnsatisfied:true});});
+    toast(tr('Margin kapsy upraven.')+note);
+  }else render();
 }
 function toolPositionPanel(t,m){
   if(!m)return '';
@@ -971,9 +978,9 @@ function addTools(tools,opts={}){
   });
   let marginPlan;
   if(opts.pocketMargin!==undefined){const margin=prepareModuleMargins(project,prepared,opts.pocketMargin);prepared=margin.tools;marginPlan=margin.plan;}
-  // A photo module is translated as a whole, before any planner can rearrange its tools.
+  // Prepare one photo module, preserving its centre pattern before any packing.
   if(opts.layout==='photo'&&prepared.length){
-    const name=opts.name||tr('Sada z fotky'),result=addPhotoModule(project,prepared,{name});
+    const name=opts.name||tr('Sada z fotky'),result=addPhotoModule(project,prepared,{name,growMargins:true});
     result.project=applyCreatedModuleMargins(result.project,marginPlan);
     commit(()=>{project=result.project;cacheAddedTools(prepared.map(tool=>project.tools.find(item=>item.id===tool.id)));selected=null;selectedModule=result.moduleId;inspectorTab='tool';});
     if(result.placed)toast(tr('Modul přidán se zachovaným rozložením z fotky.'));

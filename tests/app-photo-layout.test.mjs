@@ -4,7 +4,7 @@ import fs from 'node:fs/promises';
 import {Window} from 'happy-dom';
 import {createCanvas,ImageData} from '@napi-rs/canvas';
 import {blankProject,validateProject} from '../dist/model.js';
-import {autoArrange,validateLayout} from '../dist/geometry.js';
+import {autoArrange,bounds,validateLayout} from '../dist/geometry.js';
 import {simpleOutline} from '../dist/finger-grip.js';
 
 const win=new Window({url:'http://localhost:5173'});
@@ -129,27 +129,30 @@ test('moving an oversized photo module to a new drawer keeps its arrangement and
   assert.deepEqual(logical(allSaved().find(project=>project.id===before.id)),logical(before),'the original drawer returns to its pre-import state');
 });
 
-test('insufficient photographed wall spacing rejects atomically and lets the same drafts use ordinary shared packing',async()=>{
-  const before=open('photo-reject'),library=localStorage.getItem('suplik-studio-library-v1');
-  const history=()=>({undo:$('#app [data-action="undo"]').disabled,redo:$('#app [data-action="redo"]').disabled});
-  const priorHistory=history();
-  // The raw outlines are separated by 1.75 mm, but their clearance and required
-  // wall do not fit. Preserving them must fail rather than inventing more space.
+test('a larger photo pocket margin expands the same arrangement and module without repacking',async()=>{
+  const before=open('photo-reject');
+  // The measured tools are separate, but the requested 8 mm allowance makes
+  // their pockets touch. Keep their centre pattern and grow the module.
   fixturePhoto=[photographed[0],photographed[1],{...photographed[2],x:34.25,y:20}];
   try{
-    await preparePhoto();click('#capture-add');
-    await waitFor(()=>$('#capture-error')?.textContent.includes('Rozložení z fotky nelze zachovat'),'wall spacing rejection');
-    assert.deepEqual(saved(),before,'rejection does not persist any partial project changes');
-    assert.deepEqual(history(),priorHistory,'rejection creates no undo or redo entry');
-    assert.equal(localStorage.getItem('suplik-studio-library-v1'),library,'rejection does not cache any tools in the library');
-    assert.ok($('#trace-canvas'),'the original capture stays open');assert.equal($('#capture-layout').value,'photo');
-    assert.equal($('[data-name="0"]').value,'Dílenský klíč');assert.equal($('[data-name="2"]').value,'Ráčna 3/8');
-    assert.equal($('[data-depth="0"]').value,'8,5');assert.equal($('[data-item="1"]').checked,false);assert.equal($('#capture-add').disabled,false);
-    change('#capture-layout','shared');click('#capture-add');await waitFor(()=>saved().tools.length===2,'retry with normal shared packing');
-    await waitFor(()=>!$('#modal-root').children.length,'successful repacking closes capture');
-    const packed=saved();assert.deepEqual(packed.tools.map(tool=>tool.name),['Dílenský klíč','Ráčna 3/8']);assert.deepEqual(packed.tools.map(tool=>tool.depth),[8.5,12]);
-    assert.equal(new Set(packed.tools.map(tool=>tool.moduleId)).size,1);assert.deepEqual(validateLayout(packed),[]);
-    assertHistory(before,packed);
+    await preparePhoto();type('#capture-pocket-margin','8');click('#capture-add');
+    await waitFor(()=>saved().tools.length===2,'photo margins and module committed');
+    await waitFor(()=>!$('#modal-root').children.length,'successful photo import closes capture');
+    const after=saved(),module=photoModule(after);
+    assert.equal(after.modules.length,2);assert.equal(module.pocketMargin,8);assert.ok(module.width>=126,'the larger allowance requires a larger module');
+    assert.deepEqual(after.tools.map(tool=>tool.name),['Dílenský klíč','Ráčna 3/8']);assert.deepEqual(after.tools.map(tool=>tool.depth),[8.5,12]);
+    const sources=[fixturePhoto[0],fixturePhoto[2]];
+    for(const [i,source] of sources.entries()){
+      assert.equal(after.tools[i].rotation,0);assert.deepEqual(after.tools[i].fingerGrips,[]);
+      assert.deepEqual(after.tools[i].points,simpleOutline([{x:0,y:0},{x:source.width,y:0},{x:source.width,y:source.height},{x:0,y:source.height}]),'margin growth keeps the measured tool dimensions');
+    }
+    const centers=after.tools.map(tool=>{const b=bounds(tool);return{x:b.x+b.width/2,y:b.y+b.height/2};});
+    const sourceDx=sources[1].x+sources[1].width/2-sources[0].x-sources[0].width/2;
+    const sourceDy=sources[1].y+sources[1].height/2-sources[0].y-sources[0].height/2;
+    const factor=(centers[1].x-centers[0].x)/sourceDx;
+    assert.ok(factor>1,'unsafe centre spacing grows instead of repacking');approximate(centers[1].y-centers[0].y,sourceDy*factor,'the photographed centre direction is preserved');
+    assertInside(after);assert.deepEqual(after.modules.find(item=>item.id===before.modules[0].id),before.modules[0],'existing modules stay in place');
+    assertHistory(before,after);
   }finally{fixturePhoto=photographed;$('#modal-root [data-modal-close]')?.click();}
 });
 
