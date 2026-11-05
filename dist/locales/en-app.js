@@ -256,7 +256,7 @@ export default {
   'Na mobilu klepněte na Přesunout, potom přetáhněte modul. Zamknutím zachováte jeho polohu.':'On mobile, tap Move, then drag the module. Lock it to keep its position.',
 
   // Adding tools, renaming, expanding, shapes
-  'V jednom projektu může být nejvýše 300 nástrojů. Založte další projekt.':'A project can hold at most 300 tools. Create another project.',
+  'V jednom projektu může být nejvýše 3000 nástrojů. Založte další projekt.':'A project can hold at most 3000 tools. Create another project.',
   'Výška inzertu musí být alespoň o {gap} větší než tloušťka dna.':'Insert height must be at least {gap} greater than the floor thickness.',
   'Přidán {n} nástroj. Kontura je také v knihovně.':'Added {n} tool. Its outline is also in the library.',
   'Přidány {n} nástroje. Kontury jsou také v knihovně.':'Added {n} tools. The outlines are also in the library.',
@@ -287,7 +287,7 @@ export default {
   'Modul se umístí do prvního volného místa v rastru.':'The module goes into the first free grid space.',
   'Přidat do sestavy':'Add to layout',
   'Zadejte rozměry od {min} do {max}.':'Enter sizes from {min} to {max}.',
-  'V projektu může být nejvýše 400 modulů.':'A project can hold at most 400 modules.',
+  'V projektu může být nejvýše 4000 modulů.':'A project can hold at most 4000 modules.',
   'Modul se nevejde. Zmenšete jej nebo rozšiřte sestavu.':'The module does not fit. Make it smaller or expand the layout.',
   'Prázdný modul přidán a zamčen.':'Empty module added and locked.',
 

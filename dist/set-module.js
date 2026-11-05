@@ -185,7 +185,7 @@ function begin(project,tools,opts,{forceLayout=null,maxModules=1}={}){
   const logicalOrder=arrangement!==null||opts.order!=null||toolSet?.order!=null,regular=arrangement==='ordered';
   const preferences={...(arrangement!==null?{arrangement}:{}),...(logicalOrder?{order}:{})};
   const addedModules=['auto','uniform'].includes(toolSet?.layout)?tools.length:maxModules;
-  if(next.tools.length+tools.length>300||next.modules.length+addedModules>400)throw i18nError('Projekt je příliš velký. Limit je 300 nástrojů a 400 modulů.');
+  if(next.tools.length+tools.length>3000||next.modules.length+addedModules>4000)throw i18nError('Projekt je příliš velký. Limit je 3000 nástrojů a 4000 modulů.');
   const name=String(opts.name||toolSet?.name||t('Sada nástrojů')).slice(0,100);
   let setId=null;
   if(toolSet){
@@ -444,7 +444,7 @@ export function splitForBed(project,tools,opts={}){
     const members=source.filter(tool=>oversize.includes(tool.id)),fitsDrawer=c=>inDrawer(c.width,c.height)&&!!spotFor(c);
     add(members,candidatesFor([members.map(t=>heads.get(t.id)[0])],ctx,{limits:[ctx.W-2*padding,ctx.H-2*padding],flips}).sort((a,b)=>fitsDrawer(b)-fitsDrawer(a)||byArea(a,b)),null);
   }
-  if(next.modules.length>400)throw i18nError('Projekt je příliš velký. Limit je 300 nástrojů a 400 modulů.');
+  if(next.modules.length>4000)throw i18nError('Projekt je příliš velký. Limit je 3000 nástrojů a 4000 modulů.');
   if(ctx.logicalOrder)created.sort((a,b)=>compareToolSize(orderTools(a.tools,ctx.order)[0],orderTools(b.tools,ctx.order)[0],ctx.order));
   const base=String(opts.moduleId||`set-${tools[0].id}`),moduleIds=[];
   for(const [k,{module,tools:members}] of created.entries()){

@@ -374,36 +374,36 @@ test('opts.toolSet validation and unique set ids',()=>{
 });
 
 const capacityTool=(id)=>({id,name:id,points:[{x:0,y:0},{x:10,y:0},{x:10,y:10},{x:0,y:10}],depth:8,x:0,y:0,rotation:0,locked:false,moduleId:null,fingerGrips:[]});
-const withFillers=count=>validateProject({...drawer({width:588,height:420,grid:10}),modules:Array.from({length:count},(_,i)=>({id:`filler-${i}`,x:i%20*10,y:Math.floor(i/20)*10,width:5,height:5,locked:false}))});
+const withFillers=count=>validateProject({...drawer({width:3000,height:3000,grid:10}),modules:Array.from({length:count},(_,i)=>({id:`filler-${i}`,x:i%100*10,y:Math.floor(i/100)*10,width:5,height:5,locked:false}))});
 const layoutOptions=layout=>layout?{toolSet:{layout}}:{};
-const isCapacityError=error=>error.i18n?.cs==='Projekt je příliš velký. Limit je 300 nástrojů a 400 modulů.';
+const isCapacityError=error=>error.i18n?.cs==='Projekt je příliš velký. Limit je 3000 nástrojů a 4000 modulů.';
 
-test('adding sets refuses more than 400 modules atomically for every layout and a singleton',()=>{
+test('adding sets refuses more than 4000 modules atomically for every layout and a singleton',()=>{
   for(const layout of [null,'shared','auto','uniform'])for(const count of [1,2]){
-    const project=withFillers(400),snapshot=structuredClone(project),tools=Array.from({length:count},(_,i)=>capacityTool(`new-${i}`)),original=structuredClone(tools);
+    const project=withFillers(4000),snapshot=structuredClone(project),tools=Array.from({length:count},(_,i)=>capacityTool(`new-${i}`)),original=structuredClone(tools);
     assert.throws(()=>addToolGroup(project,tools,layoutOptions(layout)),isCapacityError,`${layout||'plain'} with ${count} tools`);
     assert.deepEqual(project,snapshot,'The existing project is unchanged');
     assert.deepEqual(tools,original,'The supplied tool contours are unchanged');
   }
-  const project=withFillers(399),snapshot=structuredClone(project);
-  assert.throws(()=>addToolGroup(project,[capacityTool('a'),capacityTool('b')],layoutOptions('uniform')),isCapacityError,'Two uniform modules also refuse a total of 401');
+  const project=withFillers(3999),snapshot=structuredClone(project);
+  assert.throws(()=>addToolGroup(project,[capacityTool('a'),capacityTool('b')],layoutOptions('uniform')),isCapacityError,'Two uniform modules also refuse a total of 4001');
   assert.deepEqual(project,snapshot);
 });
 
-test('exactly 400 modules survive placement and saving for shared, automatic, plain and uniform sets',()=>{
+test('exactly 4000 modules survive placement and saving for shared, automatic, plain and uniform sets',()=>{
   for(const layout of [null,'shared','auto','uniform'])for(const count of [1,2]){
-    const added=layout==='uniform'||layout==='auto'?count:1,project=withFillers(400-added),snapshot=structuredClone(project),tools=Array.from({length:count},(_,i)=>capacityTool(`new-${i}`));
+    const added=layout==='uniform'||layout==='auto'?count:1,project=withFillers(4000-added),snapshot=structuredClone(project),tools=Array.from({length:count},(_,i)=>capacityTool(`new-${i}`));
     const result=addToolGroup(project,tools,layoutOptions(layout));
     assert.equal(result.placed,true,`${layout||'plain'} with ${count} tools`);
-    assert.equal(result.project.modules.length,400);
+    assert.equal(result.project.modules.length,4000);
     assert.deepEqual(validateLayout(result.project),[]);
-    assert.equal(validateProject(JSON.parse(JSON.stringify(result.project))).modules.length,400,'The result remains a loadable saved project');
+    assert.equal(validateProject(JSON.parse(JSON.stringify(result.project))).modules.length,4000,'The result remains a loadable saved project');
     assert.deepEqual(project,snapshot);
   }
 });
 
-test('the direct set API rejects a total above 300 tools before changing the project',()=>{
-  const project=validateProject({...drawer(),tools:Array.from({length:300},(_,i)=>capacityTool(`existing-${i}`))}),snapshot=structuredClone(project);
+test('the direct set API rejects a total above 3000 tools before changing the project',()=>{
+  const project=validateProject({...drawer(),tools:Array.from({length:3000},(_,i)=>capacityTool(`existing-${i}`))}),snapshot=structuredClone(project);
   for(const layout of [null,'shared','auto','uniform']){
     assert.throws(()=>addToolGroup(project,[capacityTool('new')],layoutOptions(layout)),isCapacityError);
     assert.deepEqual(project,snapshot);

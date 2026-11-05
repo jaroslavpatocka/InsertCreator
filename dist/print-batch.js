@@ -109,7 +109,7 @@ export async function preparePrintBatch(project,{moduleIds,signal,onProgress}={}
   if(!project||!Array.isArray(project.modules)||!Array.isArray(project.tools))throw i18nError('Soubor neobsahuje projekt InsertCreator.');
   const snapshot=clone(project),ids=moduleIds===undefined?snapshot.modules.map(module=>module.id):moduleIds;
   if(!Array.isArray(ids)||!ids.length||ids.some(id=>typeof id!=='string'||!id)||new Set(ids).size!==ids.length)throw i18nError('Vyberte alespoň jeden platný modul pro tisk.');
-  if(snapshot.tools.length>300||snapshot.modules.length>400)throw i18nError('Projekt je příliš velký. Limit je 300 nástrojů a 400 modulů.');
+  if(snapshot.tools.length>3000||snapshot.modules.length>4000)throw i18nError('Projekt je příliš velký. Limit je 3000 nástrojů a 4000 modulů.');
   const wanted=new Set(ids),selected=snapshot.modules.filter(module=>wanted.has(module.id));
   if(selected.length!==ids.length)throw i18nError('Některý vybraný modul už v projektu neexistuje.');
   const selectedTools=snapshot.tools.filter(tool=>wanted.has(tool.moduleId));

@@ -70,7 +70,7 @@ export function rotateModule(project,moduleId,degrees=90){
 /** Copy a complete module into the first free grid location, without moving any existing record. */
 export function duplicateModule(project,moduleId){
   const {next,module:source,tools:sourceTools}=select(project,moduleId);
-  if(next.modules.length>=400||next.tools.length+sourceTools.length>300)throw i18nError('Projekt je příliš velký. Limit je 300 nástrojů a 400 modulů.');
+  if(next.modules.length>=4000||next.tools.length+sourceTools.length>3000)throw i18nError('Projekt je příliš velký. Limit je 3000 nástrojů a 4000 modulů.');
   const grid=Number(next.grid),used=new Set([...next.modules.map(item=>item.id),...next.tools.map(item=>item.id),...(next.toolSets||[]).map(item=>item.id)]);
   const allocate=()=>{let id;do{id=uid();}while(used.has(id));used.add(id);return id;};
   let spot=null;

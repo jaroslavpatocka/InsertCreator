@@ -50,11 +50,11 @@ export function analyzeToolShape(tool){
 
 /** Strict persisted schema; deleted tool IDs are discarded without removing a singleton set. */
 export function validateToolSets(sets,knownToolIds){
-  if(!Array.isArray(sets)||sets.length>300)throw Error('Sady nástrojů musí být pole s nejvýše 300 položkami.');
+  if(!Array.isArray(sets)||sets.length>3000)throw Error('Sady nástrojů musí být pole s nejvýše 3000 položkami.');
   const known=knownToolIds instanceof Set?knownToolIds:new Set(knownToolIds),ids=new Set(),members=new Set(),result=[];
   for(const set of sets){
     if(!set||typeof set.id!=='string'||!set.id.trim()||set.id.length>100||ids.has(set.id))throw Error('Sady musí mít jedinečné platné identifikátory.');ids.add(set.id);
-    if(!Array.isArray(set.toolIds)||set.toolIds.length>300||set.toolIds.some(id=>typeof id!=='string'||!id||id.length>100))throw Error('Sada musí obsahovat platné identifikátory nástrojů.');
+    if(!Array.isArray(set.toolIds)||set.toolIds.length>3000||set.toolIds.some(id=>typeof id!=='string'||!id||id.length>100))throw Error('Sada musí obsahovat platné identifikátory nástrojů.');
     const layout=set.layout??'auto';if(!['auto','uniform','shared'].includes(layout))throw Error('Zvolte automatické, sjednocené nebo společné uspořádání sady.');
     if(Object.hasOwn(set,'arrangement')&&!['ordered','compact'].includes(set.arrangement))throw Error('Zvolte přehledné nebo úsporné uložení sady.');
     if(Object.hasOwn(set,'order')&&!['asc','desc'].includes(set.order))throw Error('Zvolte vzestupné nebo sestupné pořadí velikostí.');

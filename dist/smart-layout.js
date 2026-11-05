@@ -162,7 +162,7 @@ function pack(project,fixed,atoms,order,{moduleShape='rectangular',maxPositions=
 /** Large drawers use bounded greedy candidates, not exponential pair matching. */
 async function largeArrange(project,{mode='compact',moduleShape='rectangular',onProgress,signal}={}){
   const source=copy(project),before=metric(source,source),original={tools:source.tools,modules:source.modules},grid=number(source.grid,42),maxPositions=120000;
-  if(source.tools.length>300||source.modules.length>400)throw Error('Projekt je příliš velký. Limit je 300 nástrojů a 400 modulů.');
+  if(source.tools.length>3000||source.modules.length>4000)throw Error('Projekt je příliš velký. Limit je 3000 nástrojů a 4000 modulů.');
   const abort=()=>{if(signal?.aborted)throw new DOMException('Chytré rozvržení bylo zrušeno.','AbortError');};
   const progress=(value,message)=>{abort();try{onProgress?.({stage:'packing',progress:value,message});}catch{}abort();};
   const pause=async()=>{await new Promise(resolve=>setTimeout(resolve,0));abort();};

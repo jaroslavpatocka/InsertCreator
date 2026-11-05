@@ -16,7 +16,7 @@ const metaText=(s,max)=>typeof s==='string'?s.replace(/[\u0000-\u001f\u007f-\u00
 export function validateProject(input){
   const p=input?.project||input;
   if(!p||typeof p!=='object'||!Array.isArray(p.tools)||!Array.isArray(p.modules))throw i18nError('Soubor neobsahuje projekt InsertCreator.');
-  if(p.tools.length>300||p.modules.length>400)throw i18nError('Projekt je příliš velký. Limit je 300 nástrojů a 400 modulů.');
+  if(p.tools.length>3000||p.modules.length>4000)throw i18nError('Projekt je příliš velký. Limit je 3000 nástrojů a 4000 modulů.');
   const out={id:text(p.id||uid()),name:text(p.name||t('Nový šuplík')),width:finite(p.width,42,3000,'šířka'),height:finite(p.height,42,3000,'hloubka'),grid:finite(p.grid??42,10,100,'rastr'),gap:finite(p.gap??3,0,30,'mezera'),clearance:finite(p.clearance??.8,0,5,'vůle'),wall:finite(p.wall??2.4,1,15,'stěna'),base:finite(p.base??2.4,1,20,'dno'),insertHeight:finite(p.insertHeight??20,3,100,'výška inzertu'),tools:[],modules:[],updatedAt:text(p.updatedAt||new Date().toISOString())};
   out.printMode=['solid','light'].includes(p.printMode)?p.printMode:'solid';
   out.bottomMode=['plain','grid','magnet','adhesive'].includes(p.bottomMode)?p.bottomMode:'plain';
