@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "sourceCommit": "b820c376b5d1024b12fa72e344706fc73b6b2bc1",
+  "sourceCommit": "718a0570c65a4a7e34607ee7e50b35e80aae223b",
   "files": [
     {
       "path": "app.js",
@@ -49,8 +49,8 @@
     },
     {
       "path": "capture.js",
-      "sha256": "D111AE7ABFFDBC355F1C89E27D56E3B1F0557466DE8F76EEF5CB445173C04495",
-      "bytes": 52956
+      "sha256": "D9AAEF87C5AA88137A3FEFB920A2E6F919B5F3A208D92E407F81D89A6645AFCF",
+      "bytes": 53334
     },
     {
       "path": "catalog-ui.js",
@@ -349,8 +349,8 @@
     },
     {
       "path": "index.html",
-      "sha256": "F51F2881733922C00DB6EB073B13DF7F72453C4B46B3E608BCFAA64FB16223BC",
-      "bytes": 2205
+      "sha256": "41A0C5E7FC9D80BBD3BC128767CAE713A5D78DAA113E6FF97653F1E13A95023D",
+      "bytes": 2510
     },
     {
       "path": "joint-fit.js",
@@ -634,8 +634,8 @@
     },
     {
       "path": "sw.js",
-      "sha256": "C7244099A9F61FF5980A040F775FA4006C29CF0B83F4EBDB86F48E365A413083",
-      "bytes": 3981
+      "sha256": "3CD220AC86CB2289E4B263F20E669D088145CFAFB6AFBA69B4FB969E2FDD0F6F",
+      "bytes": 3982
     },
     {
       "path": "three-mf.js",

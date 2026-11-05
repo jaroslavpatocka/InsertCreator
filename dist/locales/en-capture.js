@@ -77,6 +77,7 @@ export default {
   'Vyfotit':'Take photo',
   'Vybrat fotku':'Choose photo',
   'Fotky z telefonu, JPG, PNG, WebP · nejvýše 20 MB':'Phone photos, JPG, PNG, WebP · up to 20 MB',
+  'Aplikace dostane jen fotku, kterou teď vyberete. Nevidí vaši galerii ani kameru, nečte z fotky polohu a nikam ji neodesílá.':'The app only receives the photo you choose now. It cannot see your gallery or camera, does not read the location from the photo and never uploads it.',
   'Automatické měřítko':'Automatic scale',
   'Najdeme rohy A4 a narovnáme perspektivu.':'We find the A4 corners and correct the perspective.',
   'Každý nástroj zvlášť':'Each tool separately',
