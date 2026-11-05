@@ -6,6 +6,7 @@ import {hasPocketMagnets,pocketMagnetHoles,pocketMagnetProblem} from './tool-mag
 import {layoutMeshToPhysical} from './manufacturing-coordinates.js';
 import {pocketOutline} from './finger-grip.js';
 import {effectivePocketMargin} from './pocket-margin.js';
+import {releaseSoloMargins,restoreSoloMargins} from './module-margin.js';
 export {pocketOutline} from './finger-grip.js';
 import {t as tr,i18nError} from './i18n.js';
 import {fmtLen} from './units.js';
@@ -171,7 +172,12 @@ export function refitModules(project,{includeManual=false,moduleIds=null}={}) {
 export function minimizeAutoModules(project){return refitModules(project);}
 
 /** Deterministic grid packing. Locked modules and every tool inside them stay in place. */
-export function autoArrange(project,{preserveLocked=true}={}) {
+export function autoArrange(project,options) {
+  const {project:source,released}=releaseSoloMargins(project);
+  return restoreSoloMargins(packModules(source,options),released);
+}
+
+function packModules(project,{preserveLocked=true}={}) {
   const minimized=minimizeAutoModules(project).project;
   const tools=copy(minimized.tools||[]),oldModules=copy(minimized.modules||[]),grid=Math.max(1,n(project.grid,42));
   // Rebuilt modules keep their own display unit (module.unit) by id.

@@ -8,6 +8,7 @@ import {addToolGroup} from './set-module.js';
 import {moduleOutline,moduleIntersects,modulePadding,steppedModuleFootprint} from './module-footprint.js';
 import {tightenLayout} from './space-layout.js';
 import {effectivePocketMargin} from './pocket-margin.js';
+import {releaseSoloMargins,restoreSoloMargins} from './module-margin.js';
 
 const EPS=.001,SCALE=10000,CELL=2,MAX_CANDIDATES=32000,footprints=new WeakMap();
 const copy=value=>typeof structuredClone==='function'?structuredClone(value):JSON.parse(JSON.stringify(value));
@@ -364,7 +365,12 @@ async function compactArrange(project,{onProgress,signal,moduleShape='rectangula
   return finish(best===original?'Úspornější bezpečné rozvržení nebylo nalezeno.':'Chytré rozvržení je připravené.');
 }
 
-export async function smartArrange(project,{mode='compact',moduleShape='rectangular',merge=false,onProgress,signal}={}){
+export async function smartArrange(project,options){
+  const {project:source,released}=releaseSoloMargins(project);
+  return restoreSoloMargins(await searchArrangement(source,options),released);
+}
+
+async function searchArrangement(project,{mode='compact',moduleShape='rectangular',merge=false,onProgress,signal}={}){
   if(!['compact','sets'].includes(mode))throw Error('Neznámý režim chytrého rozvržení.');
   if(!['rectangular','stepped'].includes(moduleShape))throw Error('Neznámý tvar modulů pro chytré rozvržení.');
   const run=source=>mode==='sets'?arrangeToolSets(source,{onProgress:progress,signal,compactArrange,moduleShape}):compactArrange(source,{onProgress:progress,signal,moduleShape});
