@@ -4,6 +4,7 @@ import { recognizeTools } from './recognize.js';
 import { captureToolPoints, captureItemDimensions, resizeCaptureItem, toolFromCaptureItem } from './capture-tools.js';
 import { drawCaptureContours, drawCaptureToolPreview } from './capture-preview.js';
 import { mountCaptureGuide } from './capture-guide.js';
+import { bindCaptureContextMenu } from './capture-context-menu.js';
 import { icon, esc, openModal } from './ui.js';
 import { t, plural, i18nError, errorText } from './i18n.js';
 import { unit, inputValue, parseLength, fmtSize, fmtLen } from './units.js';
@@ -54,7 +55,7 @@ function info(contour,scale){
 }
 
 export function openCapture({onAdd,toast=()=>{},maxDepth=()=>MAX_DEPTH}){
-  let closed=false,controller=null,observer=null,cancelCalibration=null,photoRun=0,guide=null,guided=false,resultMaskPixels=null,resultPhoto=null,resultPhotoMask=false;
+  let closed=false,controller=null,observer=null,cancelCalibration=null,photoRun=0,guide=null,guided=false,resultContext=null,resultMaskPixels=null,resultPhoto=null,resultPhotoMask=false;
   const state={step:0,reference:'a4',mode:'portrait',image:null,imageCanvas:null,corners:[],ruler:[],rulerMm:100,rulerSecond:false,rulerSecondMm:100,rulerPointer:null,calibrationView:{zoom:1,x:0,y:0},referencePoints:[],activePoint:0,detected:false,busy:false,work:null,scale:1,result:null,items:[],activeItem:null,showMask:false,error:'',progress:null,message:'Načítám fotografii…'};
   if(!document.getElementById('capture-guide-styles')){
     const stylesheet=document.createElement('link');stylesheet.id='capture-guide-styles';stylesheet.rel='stylesheet';
@@ -62,7 +63,7 @@ export function openCapture({onAdd,toast=()=>{},maxDepth=()=>MAX_DEPTH}){
   }
   // state.message, quality reasons and worker errors stay Czech source text; t()/errorText() translate them on display.
   const blurCalibration=()=>cancelCalibration?.();window.addEventListener('blur',blurCalibration);
-  const modal=openModal({title:t('Vyfoťte. Obrys připravíme my.'),subtitle:t('Automatické měřítko, rozpoznání nástroje i čisté hrany. Bez kreslení bodů.'),wide:true,body:'',footer:'',onClose:()=>{closed=true;guide?.destroy();controller?.abort();observer?.disconnect();cancelCalibration?.();window.removeEventListener('blur',blurCalibration);}});
+  const modal=openModal({title:t('Vyfoťte. Obrys připravíme my.'),subtitle:t('Automatické měřítko, rozpoznání nástroje i čisté hrany. Bez kreslení bodů.'),wide:true,body:'',footer:'',onClose:()=>{closed=true;resultContext?.();guide?.destroy();controller?.abort();observer?.disconnect();cancelCalibration?.();window.removeEventListener('blur',blurCalibration);}});
   const steps=()=>`<div class="capture-steps"><span class="${state.step===0?'active':'done'}">1 · ${t('Fotografie')}</span><span class="${state.step===1||state.step===3?'active':state.step===2?'done':''}">2 · ${t('Automatické rozpoznání')}</span><span class="${state.step===2?'active':''}">3 · ${t('Hotový obrys')}</span></div>`;
   const errorHTML=()=>`<div id="capture-error" role="alert" class="form-error" ${state.error?'':'hidden'}>${esc(state.error)}</div>`;
   const depthLimit=()=>Math.max(MIN_DEPTH,Math.min(MAX_DEPTH,maxDepth()));
@@ -260,6 +261,21 @@ export function openCapture({onAdd,toast=()=>{},maxDepth=()=>MAX_DEPTH}){
         onFinish:()=>list.querySelector('[data-active="true"]')?.scrollIntoView?.({block:'nearest'}),
         onError:message=>setError(typeof message==='string'?message:errorText(message))
       });
+      canvas.tabIndex=0;canvas.setAttribute('aria-haspopup','menu');
+      canvas.title=t('Pravé kliknutí na nástroj zobrazí údaje a možnosti úprav.');
+      resultContext=bindCaptureContextMenu(canvas,{
+        getItems:()=>state.items,getActiveIndex:()=>state.activeItem,isBusy:()=>closed||state.busy,
+        onSelect:index=>guided?guide.open(index):selectActiveItem(index),
+        getDescription:item=>{
+          const measured=captureItemDimensions(item,state.scale),raw=item.depth?.trim()||modal.body.querySelector('#capture-depth').value,depth=parseLength(raw);
+          return `${item.name.trim()||t('Nástroj')} · ${fmtSize(measured.length,measured.width)} · ${t('Hloubka kapsy')}: ${Number.isFinite(depth)?fmtLen(depth):raw}`;
+        },
+        onEdit:(index,field)=>{
+          guide.open(index);
+          const input=modal.body.querySelector(`#capture-guide-${field}`);
+          input?.scrollIntoView?.({block:'nearest'});input?.focus({preventScroll:true});
+        }
+      });
       modal.footer.querySelector('#capture-add').onclick=async()=>{
         if(state.busy||!guide.validate())return;
         const chosen=state.items.filter(i=>i.checked);if(state.busy||!chosen.length)return;
@@ -297,6 +313,7 @@ export function openCapture({onAdd,toast=()=>{},maxDepth=()=>MAX_DEPTH}){
     if(item.editedPoints){const points=captureToolPoints(item,state.scale),xs=points.map(p=>p.x),ys=points.map(p=>p.y);row.querySelector('span:last-child').textContent=fmtSize(Math.max(...xs)-Math.min(...xs),Math.max(...ys)-Math.min(...ys));}
   }
   function updateSummary(){
+    if(state.busy)resultContext?.dismiss();
     const count=state.items.filter(i=>i.checked).length,el=modal.body.querySelector('#trace-summary'),button=modal.footer.querySelector('#capture-add');
     const layout=modal.body.querySelector('#capture-layout-field');if(layout)layout.hidden=guided||count<2;
     if(el)el.textContent=t('{tools} · měřítko načteno',{tools:plural(count,['{n} nástroj připraven','{n} nástroje připraveny','{n} nástrojů připraveno'])});
@@ -330,7 +347,7 @@ export function openCapture({onAdd,toast=()=>{},maxDepth=()=>MAX_DEPTH}){
     }
   }
   function render(){
-    if(closed)return;guide?.destroy();guide=null;guided=false;resultMaskPixels=null;resultPhoto=null;cancelCalibration?.();cancelCalibration=null;observer?.disconnect();
+    if(closed)return;resultContext?.();resultContext=null;guide?.destroy();guide=null;guided=false;resultMaskPixels=null;resultPhoto=null;cancelCalibration?.();cancelCalibration=null;observer?.disconnect();
     if(state.step===0)renderUpload();else if(state.step===1)renderCalibration();else if(state.step===3)renderProcessing();else renderResult();
     const canvas=modal.body.querySelector('canvas');if(canvas&&typeof ResizeObserver==='function'&&state.step!==3){observer=new ResizeObserver(()=>{if(!closed)state.step===1?drawCalibration():drawResult();});observer.observe(canvas);}
   }
