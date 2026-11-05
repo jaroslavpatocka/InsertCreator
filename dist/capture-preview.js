@@ -1,14 +1,25 @@
+import {capturePhotoGeometry} from './capture-tools.js';
+
 // Keep the edited tool distinct from the checkboxes that decide what to add.
 const ACTIVE = '#577b67';
 
-function outline(ctx, item) {
+function outline(ctx, points) {
   ctx.beginPath();
-  item.contour.points.forEach((point, index) => index ? ctx.lineTo(point.x, point.y) : ctx.moveTo(point.x, point.y));
+  points.forEach((point, index) => index ? ctx.lineTo(point.x, point.y) : ctx.moveTo(point.x, point.y));
   ctx.closePath();
 }
 
-function drawItem(ctx, item, index, scale, active = false) {
-  outline(ctx, item);
+function drawItem(ctx, item, index, scale, active = false, photoScale = 1) {
+  const regular=item.pocketShape==='functional'||item.pocketShape==='hybrid';
+  const geometry=regular||item.editedPoints?capturePhotoGeometry(item,photoScale):{points:item.contour.points,axis:null};
+  if(active&&regular){
+    outline(ctx,item.contour.points);ctx.strokeStyle='#ffffff99';ctx.lineWidth=scale;ctx.stroke();
+  }
+  if(active&&geometry.axis){
+    ctx.save();ctx.beginPath();ctx.moveTo(geometry.axis.start.x,geometry.axis.start.y);ctx.lineTo(geometry.axis.end.x,geometry.axis.end.y);
+    ctx.setLineDash?.([7*scale,5*scale]);ctx.strokeStyle='#233c31';ctx.lineWidth=1.5*scale;ctx.stroke();ctx.restore();
+  }
+  outline(ctx, geometry.points);
   ctx.fillStyle = active ? '#577b6740' : item.checked ? '#efb74e22' : '#ffffff60';
   ctx.fill();
   if (active) {
@@ -37,25 +48,26 @@ function drawItem(ctx, item, index, scale, active = false) {
   ctx.fillText(String(index + 1), center.x, center.y);
 }
 
-export function drawCaptureContours(ctx, items, {activeIndex = null, scale = 1} = {}) {
+export function drawCaptureContours(ctx, items, {activeIndex = null, scale = 1, photoScale = 1} = {}) {
   ctx.save();
   ctx.lineJoin = 'round';
   for (const [index, item] of items.entries()) {
-    if (index !== activeIndex) drawItem(ctx, item, index, scale);
+    if (index !== activeIndex) drawItem(ctx, item, index, scale, false, photoScale);
   }
   // Draw the active tool last so neighbouring contours cannot obscure its edge.
-  if (Number.isInteger(activeIndex) && items[activeIndex]) drawItem(ctx, items[activeIndex], activeIndex, scale, true);
+  if (Number.isInteger(activeIndex) && items[activeIndex]) drawItem(ctx, items[activeIndex], activeIndex, scale, true, photoScale);
   ctx.restore();
 }
 
 /** An enlarged photo of the current tool; manufacturing corrections never warp the photo. */
-export function drawCaptureToolPreview(canvas, photo, item, index, view = { zoom: 1, x: 0, y: 0 }) {
+export function drawCaptureToolPreview(canvas, photo, item, index, view = { zoom: 1, x: 0, y: 0 }, photoScale = 1) {
   if (!canvas || !photo || !item) return;
   canvas.width = 640;
   canvas.height = 360;
   const ctx = canvas.getContext('2d');
   let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-  for (const point of item.contour.points) {
+  const displayed=item.pocketShape==='functional'||item.pocketShape==='hybrid'||item.editedPoints?capturePhotoGeometry(item,photoScale).points:item.contour.points;
+  for (const point of [...item.contour.points,...displayed]) {
     minX = Math.min(minX, point.x); minY = Math.min(minY, point.y);
     maxX = Math.max(maxX, point.x); maxY = Math.max(maxY, point.y);
   }
@@ -71,6 +83,6 @@ export function drawCaptureToolPreview(canvas, photo, item, index, view = { zoom
   ctx.translate(-(minX + maxX) / 2, -(minY + maxY) / 2);
   ctx.drawImage(photo, 0, 0);
   ctx.lineJoin = 'round';
-  drawItem(ctx, item, index, displayScale / (zoom * view.zoom), true);
+  drawItem(ctx, item, index, displayScale / (zoom * view.zoom), true, photoScale);
   ctx.restore();
 }

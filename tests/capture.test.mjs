@@ -61,6 +61,9 @@ test('capture A4 flow uses real neural workers without user calibration or conto
     typed('#capture-depth','150');assert.equal($('[data-depth="0"]').placeholder,'150','the list shows the shared depth');
     click('#capture-add');await pause(5);assert.equal(added.length,0);assert.match($('#capture-error').textContent,/musí být od/);
     typed('#capture-depth','15');typed('[data-depth="1"]','9,5');assert.equal($('#capture-error').hidden,true);
+    // Keep this calibration regression about the original measured tool size.
+    // The separate functional-pocket tests cover the containing pocket modes.
+    const shape=$('#capture-pocket-shape');shape.value='measured';shape.dispatchEvent(new win.Event('change',{bubbles:true}));
     click('#capture-add');await waitFor(()=>!$('#modal-root').children.length,'capture closes after adding');assert.equal(added.length,2);
     assert.deepEqual(added.map(tool=>tool.depth),[15,9.5]);
     const sizes=added.map(bounds).sort((a,b)=>b.height-a.height),expected=[{width:46.8,height:203.4},{width:23.5,height:149.6}];

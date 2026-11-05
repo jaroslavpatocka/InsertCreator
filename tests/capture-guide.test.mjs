@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
+import {createHash} from 'node:crypto';
 import {Worker as NodeWorker} from 'node:worker_threads';
 import {Window} from 'happy-dom';
 import {createCanvas,ImageData} from '@napi-rs/canvas';
@@ -12,7 +13,7 @@ Object.defineProperty(globalThis,'navigator',{value:win.navigator,configurable:t
 globalThis.ImageData=ImageData;
 globalThis.requestAnimationFrame=callback=>setTimeout(()=>callback(performance.now()),0);
 globalThis.cancelAnimationFrame=clearTimeout;
-const canvases=new WeakMap(),paints=new WeakMap();
+const canvases=new WeakMap(),paints=new WeakMap(),photoHashes=new WeakMap();
 function actual(element){
   if(!canvases.has(element))canvases.set(element,createCanvas(element.width||300,element.height||150));
   const canvas=canvases.get(element);
@@ -27,7 +28,7 @@ win.HTMLCanvasElement.prototype.getContext=function(type){
   let path=[];
   return new Proxy(ctx,{get:(target,key)=>{
     if(key==='drawImage')return (source,...args)=>target.drawImage(source instanceof win.HTMLCanvasElement?actual(source):source,...args);
-    if(key==='putImageData')return (...args)=>{paints.set(element,[]);return target.putImageData(...args);};
+    if(key==='putImageData')return (...args)=>{paints.set(element,[]);photoHashes.set(element,createHash('sha256').update(args[0].data).digest('hex'));return target.putImageData(...args);};
     if(key==='beginPath')return ()=>{path=[];return target.beginPath();};
     if(['moveTo','lineTo','arc','closePath'].includes(key))return (...args)=>{path.push([key,...args]);return target[key](...args);};
     if(key==='stroke')return (...args)=>{paints.get(element).push({color:target.strokeStyle,path:path.map(point=>[...point])});return target.stroke(...args);};
@@ -104,7 +105,10 @@ test('optional capture guide preserves edits, validates chosen tools and exports
       approximate(parseLength($('#capture-guide-length').value),100,'length is displayed in inches');
       approximate(parseLength($('#capture-guide-width').value),20,'width is displayed in inches');
       assert.match(panel().textContent,/\bin\b/,'imperial fields identify their unit');
-      const originalPath=structuredClone(greenPath());
+      const originalPath=structuredClone(greenPath()),originalPhotoHash=photoHashes.get($('#trace-canvas'));
+      const measuredPath=()=>paints.get($('#trace-canvas')).find(stroke=>stroke.color==='rgba(255, 255, 255, 0.6)')?.path;
+      const originalMeasuredPath=structuredClone(measuredPath());
+      assert.ok(originalMeasuredPath?.length,'the original measured outline remains visible under the functional pocket');
       typed('#capture-guide-length','1000 mm');click('#capture-guide-resize');
       await waitFor(()=>!$('#capture-guide-resize').disabled&&!$('#capture-guide-error').hidden,'unsupported correction reports an error');
       assert.equal(win.document.activeElement,$('#capture-guide-length'),'a resize error focuses an enabled correction field');
@@ -117,7 +121,18 @@ test('optional capture guide preserves edits, validates chosen tools and exports
       assert.deepEqual(greenPath(),originalPath,'typing corrections leaves the photographed contour fixed');
       click('#capture-guide-resize');
       await waitFor(()=>!$('#capture-guide-resize').disabled&&$('#capture-guide-error').hidden,'dimension correction is applied');
-      assert.deepEqual(greenPath(),originalPath,'applied manufacturing dimensions do not deform the photo contour');
+      assert.notDeepEqual(greenPath(),originalPath,'applied dimensions update the manufacturing pocket shown in the preview');
+      assert.deepEqual(measuredPath(),originalMeasuredPath,'the calibrated source contour stays fixed underneath the resized pocket');
+      assert.equal(photoHashes.get($('#trace-canvas')),originalPhotoHash,'the underlying photograph is unchanged');
+      const pathBounds=path=>{
+        const points=path.filter(part=>part[0]==='moveTo'||part[0]==='lineTo'),xs=points.map(part=>part[1]),ys=points.map(part=>part[2]);
+        return{width:Math.max(...xs)-Math.min(...xs),height:Math.max(...ys)-Math.min(...ys),x:(Math.min(...xs)+Math.max(...xs))/2,y:(Math.min(...ys)+Math.max(...ys))/2};
+      };
+      const originalBounds=pathBounds(originalPath),resizedBounds=pathBounds(greenPath());
+      approximate(resizedBounds.x,originalBounds.x,'the resized pocket keeps the measured photo centre X',1e-6);
+      approximate(resizedBounds.y,originalBounds.y,'the resized pocket keeps the measured photo centre Y',1e-6);
+      approximate(resizedBounds.width/originalBounds.width,25.4/20,'the preview shows the applied width',1e-6);
+      approximate(resizedBounds.height/originalBounds.height,127/100,'the preview shows the applied length',1e-6);
       approximate(parseLength($('#capture-guide-length').value),127,'applied length remains visible');
       approximate(parseLength($('#capture-guide-width').value),25.4,'applied width remains visible');
       if(process.env.CAPTURE_GUIDE_PREVIEW){

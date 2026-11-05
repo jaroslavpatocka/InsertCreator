@@ -2,6 +2,11 @@
 // Keep {placeholders} identical in both languages.
 // Worker progress messages, quality reasons and worker errors travel as Czech text and are translated in capture.js.
 export default {
+  'Tvar kapsy':'Pocket shape',
+  'Vyvážený obrys (50 : 50)':'Balanced outline (50 : 50)',
+  'Pravidelné tvary podél osy':'Regular shapes along the axis',
+  'Naměřený obrys':'Measured outline',
+  'Vyvážený obrys je napůl mezi naměřeným obrysem a pravidelnými tvary. Přerušovaná čára ukazuje osu. Vůli přidá nastavení šuplíku.':'The balanced outline is halfway between the measured outline and regular shapes. The dashed line shows the axis. Drawer settings add the clearance.',
   'Zachovat rozložení z fotky (jeden modul)':'Keep the photo layout (one module)',
   'Zachová polohu, natočení a rozestupy vybraných nástrojů v jednom modulu. Mezi nástroji musí zbýt místo na vůli kapes a stěny.':'Keeps the selected tools’ positions, orientations and spacing in one module. Leave room between tools for pocket clearance and walls.',
   'Modul přidán se zachovaným rozložením z fotky.':'Module added with the photo layout preserved.',
