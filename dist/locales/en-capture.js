@@ -2,6 +2,11 @@
 // Keep {placeholders} identical in both languages.
 // Worker progress messages, quality reasons and worker errors travel as Czech text and are translated in capture.js.
 export default {
+  'Zachovat rozložení z fotky (jeden modul)':'Keep the photo layout (one module)',
+  'Zachová polohu, natočení a rozestupy vybraných nástrojů v jednom modulu. Mezi nástroji musí zbýt místo na vůli kapes a stěny.':'Keeps the selected tools’ positions, orientations and spacing in one module. Leave room between tools for pocket clearance and walls.',
+  'Modul přidán se zachovaným rozložením z fotky.':'Module added with the photo layout preserved.',
+  'Rozložení z fotky je větší než největší povolený modul ({max}).':'The photo layout exceeds the maximum module size ({max}).',
+  'Rozložení z fotky nelze zachovat: {reason}':'The photo layout cannot be preserved: {reason}',
   'Kolečko přibližuje, levé tlačítko posouvá. Pravé kliknutí na nástroj zobrazí údaje a možnosti úprav.':'Wheel zooms, left button pans. Right-click a tool to see its details and editing options.',
   'Kolečko přibližuje, levé tlačítko posouvá.':'Wheel zooms, left button pans.',
   'Prázdné pole převezme společnou hloubku {depth}. Nejvýše {max}.':'Leave blank to use the shared depth of {depth}. Maximum {max}.',

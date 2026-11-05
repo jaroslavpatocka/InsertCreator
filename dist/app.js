@@ -11,6 +11,7 @@ import {mountLibraryFolders} from './catalog-ui.js';
 import {CATEGORIES,toolCategory} from './tool-categories.js';
 import {addToolGroup,scaleTool} from './set-module.js';
 import {photoLayout} from './photo-layout.js';
+import {addPhotoModule} from './photo-module.js';
 import {getToolDimensions,resizeToolDimensions} from './tool-dimensions.js';
 import {smoothToolContour} from './tool-contour.js';
 import {openContextMenu,closeContextMenu} from './context-menu.js';
@@ -917,9 +918,17 @@ function addTools(tools,opts={}){
   if(depthLimit<.5)throw i18nError('Pro kapsu musí zbýt alespoň {depth}. Zvyšte výšku vložky nebo zmenšete tloušťku dna.',{depth:fmtLen(.5)});
   const prepared=tools.map(t=>{
     const item=validateProject({...blankProject(),tools:[{...t,id:uid(),depth:Math.min(t.depth||12,depthLimit),locked:false,moduleId:null}]}).tools[0];
-    if(!Object.prototype.hasOwnProperty.call(t,'fingerGrips'))item.fingerGrips=fittingFingerGrips(item,{radius:9});
+    if(!Object.prototype.hasOwnProperty.call(t,'fingerGrips'))item.fingerGrips=opts.layout==='photo'?[]:fittingFingerGrips(item,{radius:9});
     pocketOutline(item,project.clearance);return item;
   });
+  // A photo module is translated as a whole, before any planner can rearrange its tools.
+  if(opts.layout==='photo'&&prepared.length){
+    const name=opts.name||tr('Sada z fotky'),result=addPhotoModule(project,prepared,{name});
+    commit(()=>{project=result.project;cacheAddedTools(prepared);selected=null;selectedModule=result.moduleId;inspectorTab='tool';});
+    if(result.placed)toast(tr('Modul přidán se zachovaným rozložením z fotky.'));
+    else offerFit(new Set(prepared.map(item=>item.id)),{name,group:true});
+    return;
+  }
   // opts.group={name,unit}: the whole set as ONE module (finger grips are already on the tools, so the packing includes them).
   if(opts.layout&&prepared.length>1){
     const info={name:opts.name||tr('Sada z fotky')},plan=photoLayout(project,prepared,opts.layout,info);

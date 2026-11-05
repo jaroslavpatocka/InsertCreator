@@ -11,7 +11,7 @@ import { t, plural, i18nError, errorText } from './i18n.js';
 import { unit, inputValue, parseLength, fmtSize, fmtLen } from './units.js';
 import { loadingMarkup, updateLoading } from './loading-ui.js';
 
-const LAYOUTS = [['auto', 'Automaticky podle místa v šuplíku'], ['shared', 'Jeden modul pro všechny nástroje'], ['each', 'Samostatný modul pro každý nástroj']];
+const LAYOUTS = [['auto', 'Automaticky podle místa v šuplíku'], ['photo', 'Zachovat rozložení z fotky (jeden modul)'], ['shared', 'Jeden modul pro všechny nástroje'], ['each', 'Samostatný modul pro každý nástroj']];
 let lastLayout = 'auto', lastDepth = 12; // The choices stay for the next photo of this session.
 const MIN_DEPTH = .5, MAX_DEPTH = 99;
 const frame = () => new Promise(resolve => requestAnimationFrame(resolve));
@@ -245,7 +245,11 @@ export function openCapture({onAdd,toast=()=>{},maxDepth=()=>MAX_DEPTH}){
     modal.body.querySelector('#retake-photo').onclick=reset;modal.footer.querySelector('#capture-calibration-back').onclick=returnToCalibration;
     if(hasCandidates){
       modal.body.querySelector('#trace-mask').onchange=e=>{state.showMask=e.target.checked;drawResult();};
-      modal.body.querySelector('#capture-layout').onchange=e=>{lastLayout=e.target.value;};
+      const layoutSelect=modal.body.querySelector('#capture-layout');
+      const layoutHint=document.createElement('small');layoutHint.id='capture-layout-hint';layoutHint.textContent=t('Zachová polohu, natočení a rozestupy vybraných nástrojů v jednom modulu. Mezi nástroji musí zbýt místo na vůli kapes a stěny.');
+      layoutSelect.setAttribute('aria-describedby',layoutHint.id);layoutSelect.after(layoutHint);
+      const updateLayoutHint=()=>{layoutHint.hidden=lastLayout!=='photo';};
+      layoutSelect.onchange=e=>{lastLayout=e.target.value;updateLayoutHint();};updateLayoutHint();
       modal.body.querySelector('#capture-depth').oninput=e=>{state.depth=e.target.value;setError('');for(const field of modal.body.querySelectorAll('[data-depth]'))field.placeholder=e.target.value;guide?.refresh();};
       const list=modal.body.querySelector('#trace-items');list.oninput=e=>{if(e.target.dataset.depth!=null){const item=state.items[Number(e.target.dataset.depth)];if(item)item.depth=e.target.value;setError('');if(!guided)guide?.refresh();return;}const index=Number(e.target.dataset.name);if(e.target.matches('input[type=text]')&&state.items[index]){state.items[index].name=e.target.value.slice(0,80);if(!guided)guide?.refresh();}};
       list.onchange=e=>{const index=Number(e.target.dataset.item);if(e.target.matches('input[type=checkbox]')&&state.items[index]){state.items[index].checked=e.target.checked;updateSummary();drawResult();if(!guided)guide?.refresh();}};
@@ -295,7 +299,7 @@ export function openCapture({onAdd,toast=()=>{},maxDepth=()=>MAX_DEPTH}){
           // potentially synchronous layout work block the main thread.
           await frame();await new Promise(resolve=>setTimeout(resolve,0));
           if(closed||photoRun!==run)return;
-          const tools=chosen.map(i=>toolFromCaptureItem(i,{scale:state.scale,depth:depthOf(i),id:uid()}));
+          const tools=chosen.map(i=>toolFromCaptureItem(i,{scale:state.scale,depth:depthOf(i),id:uid(),preservePosition:layout==='photo'}));
           await onAdd(tools,{layout});if(!closed)modal.close();
         }catch(error){if(closed)return;state.busy=false;setError(errorText(error));updateSummary();}
       };
