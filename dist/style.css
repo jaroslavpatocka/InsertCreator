@@ -397,7 +397,7 @@
 .preview-loading>.preview-state strong{font-size:15px;color:#4b5942}
 .preview-loading>.preview-state>span:not(.preview-spinner){max-width:440px}
 .preview-loading>.preview-state progress{width:min(240px,80%);height:7px;accent-color:#81976a}
-.preview-loading .preview-spinner{width:30px;height:30px;border-width:3px}
 .preview-loading>.preview-error{justify-content:flex-start;overflow:auto;padding-top:32px;color:#a35840}
 .preview-loading>.preview-error strong{color:#a35840}
 .pocket-height-fix{display:flex;flex-direction:column;align-items:flex-start;gap:10px;margin:12px 0;max-width:440px;font-size:12px;line-height:1.6}.pocket-height-fix p{margin:0}.pocket-height-fix small{color:var(--muted)}.preview-error .pocket-height-fix{align-items:center}
+.loading-operation{position:sticky;top:0;z-index:3;margin-bottom:14px;background:#fbfcf9;box-shadow:0 8px 14px #fbfcf9}.app-startup{min-height:100dvh;display:grid;place-items:center;padding:24px;background:#f6f8f2}.app-startup>.loading-ui{max-width:460px}

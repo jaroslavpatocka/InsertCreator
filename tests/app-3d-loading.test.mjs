@@ -44,7 +44,7 @@ const reply=({error}={})=>{
 test('3D keeps partial models hidden behind loading and safely returns from 2D to cached meshes',async()=>{
   action('3d');
   assert.ok($('#board-area').classList.contains('preview-loading'));
-  assert.equal($('#board-area').getAttribute('aria-busy'),'true');
+  assert.equal($('#board-area').getAttribute('data-preview-busy'),'true');
   assert.equal($('#board-svg').getAttribute('aria-hidden'),'true');
   assert.match($('[data-preview-state]').textContent,/Načítání 3D náhledu/);
   assert.ok($('[data-preview-state] .preview-spinner'),'loading has a visible spinner');
@@ -63,7 +63,7 @@ test('3D keeps partial models hidden behind loading and safely returns from 2D t
   assert.equal($('#board-svg').classList.contains('view-3d'),false);
   const requested=meshJobs().length;action('3d');
   assert.equal($('#board-svg').dataset.meshReady,'5/5');
-  assert.equal($('#board-area').classList.contains('preview-loading'),false);assert.equal($('#board-area').getAttribute('aria-busy'),'false');
+  assert.equal($('#board-area').classList.contains('preview-loading'),false);assert.equal($('#board-area').getAttribute('data-preview-busy'),'false');
   assert.equal($('#board-svg').hasAttribute('aria-hidden'),false);assert.equal($('[data-preview-state]').hidden,true);
   assert.notEqual(win.getComputedStyle($('#board-svg')).visibility,'hidden');assert.notEqual(win.getComputedStyle($('.board-gl')).visibility,'hidden');
   action('2d');action('3d');assert.equal(meshJobs().length,requested,'cached re-entry starts no mesh workers');
@@ -74,14 +74,14 @@ test('a failed mesh keeps the incomplete model hidden and a successful retry rev
   assert.ok($('#board-area').classList.contains('preview-loading'));
   reply({error:'Mesh unavailable'});await flush();
   assert.equal($('#board-area').classList.contains('preview-loading'),true);
-  assert.equal($('#board-area').getAttribute('aria-busy'),'false');assert.equal($('#board-svg').getAttribute('aria-hidden'),'true');
-  assert.equal($('[data-preview-state]').hidden,false);assert.equal($('[data-preview-state]').getAttribute('aria-busy'),'false');
+  assert.equal($('#board-area').getAttribute('data-preview-busy'),'false');assert.equal($('#board-svg').getAttribute('aria-hidden'),'true');
+  assert.equal($('[data-preview-state]').hidden,false);assert.equal($('[data-preview-state]').getAttribute('data-preview-busy'),'false');
   assert.match($('[data-preview-state]').textContent,/Mesh unavailable/);assert.equal($('[data-preview-state] progress'),null);
   assert.equal($('[data-preview-state] .preview-spinner'),null);
   assert.match($('[data-preview-state]').textContent,/3D náhled se nepodařilo dokončit/);
   assert.equal(win.getComputedStyle($('#board-svg')).visibility,'hidden');assert.equal(win.getComputedStyle($('.board-gl')).visibility,'hidden');
   action('retry-preview');
-  assert.equal($('#board-area').getAttribute('aria-busy'),'true');assert.ok($('[data-preview-state] .preview-spinner'));
+  assert.equal($('#board-area').getAttribute('data-preview-busy'),'true');assert.ok($('[data-preview-state] .preview-spinner'));
   reply();await flush();
   assert.equal($('#board-svg').dataset.meshReady,'1/1');assert.equal($('#board-area').classList.contains('preview-loading'),false);
   assert.equal($('#board-svg').hasAttribute('aria-hidden'),false);assert.equal($('[data-preview-state]').hidden,true);

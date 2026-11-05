@@ -7,6 +7,7 @@ import {unitFor,fmtSize,fmtLen,inputValue,parseLength} from './units.js';
 import {scaleTool} from './set-module.js';
 import {automaticFingerGrips,validateFingerGrips} from './finger-grip.js';
 import {CATEGORIES,toolCategory} from './tool-categories.js';
+import {loadingMarkup,updateLoading} from './loading-ui.js';
 
 const defaultSource=async()=>{const m=await import('./catalog/index.js');return{categories:m.CATEGORIES,items:m.catalogItems(),sets:typeof m.catalogSets==='function'?m.catalogSets():[]};};
 let source=defaultSource,loaded=null;
@@ -26,7 +27,8 @@ function normalizeCatalog(r){
 }
 async function loadCatalog(){
   if(!loaded)loaded=Promise.resolve().then(source).then(normalizeCatalog);
-  try{return await loaded;}catch(error){loaded=null;throw error;}
+  const attempt=loaded;
+  try{return await attempt;}catch(error){if(loaded===attempt)loaded=null;throw error;}
 }
 
 // Session state: the last opened folder and each folder's filters survive closing the modal.
@@ -175,13 +177,14 @@ export function mountLibraryFolders(modal,{mine,onAdd,onSave}){
   const tabs=[...modal.body.querySelectorAll('[data-library-folder]')],panel=modal.body.querySelector('#library-panel');
   const selected=new Set(),selectedSets=new Set(),unticked=new Map(),setOpen={mine:new Map(),catalog:new Map()}; // set contents, like member ticks, last for one opening
   const scales=new Map(),scaleOpen=new Set(); // key 's:<set id>' | 'i:<item id>' → {mode:'percent'|'length',text}
-  let items=[],categories=[],sets=[],timer=null,token=0,library=null,sections=new Map(),autoOpen=false;
+  let items=[],categories=[],sets=[],timer=null,loadingTimer=null,token=0,library=null,sections=new Map(),autoOpen=false,catalogLoading=false,operation=null;
   const byId=id=>items.find(i=>i.id===id),setById=id=>sets.find(s=>s.id===id);
   const checkedTools=set=>{const off=unticked.get(set.id);return off?set.tools.filter((_,i)=>!off.has(i)):set.tools;};
   const setCard=id=>[...panel.querySelectorAll('[data-catalog-set]')].find(el=>el.dataset.catalogSet===id);
 
   function show(folder,focus=false){
-    state.folder=folder;clearTimeout(timer);token++;
+    state.folder=folder;clearTimeout(timer);clearTimeout(loadingTimer);token++;catalogLoading=false;
+    operation?.finish();
     for(const tab of tabs){const on=tab.dataset.libraryFolder===folder;tab.setAttribute('aria-selected',String(on));tab.tabIndex=on?0:-1;tab.classList.toggle('active',on);if(on&&focus)tab.focus();}
     panel.setAttribute('aria-labelledby','library-tab-'+folder);
     if(folder==='mine'){
@@ -202,10 +205,23 @@ export function mountLibraryFolders(modal,{mine,onAdd,onSave}){
 
   async function openCatalog(){
     const my=++token;
-    panel.innerHTML=`<p class="empty-note" role="status">${esc(t('Načítám katalog…'))}</p>`;modal.footer.innerHTML=footerHTML();
-    try{({items,categories,sets}=await loadCatalog());}
-    catch(error){if(my===token)panel.innerHTML=`<p class="empty-note" role="alert">${esc(t('Katalog se nepodařilo načíst: {error}',{error:errorText(error)}))}</p>`;return;}
-    if(my!==token||state.folder!=='catalog'||!panel.isConnected)return;
+    const current=()=>my===token&&state.folder==='catalog'&&panel.isConnected;
+    catalogLoading=true;
+    panel.innerHTML=loadingMarkup({title:t('Načítám katalog…'),message:t('Připravuji nástroje a sady pro výběr.')});modal.footer.innerHTML=footerHTML();
+    loadingTimer=setTimeout(()=>{if(current())updateLoading(panel,{message:t('Načítání trvá déle než obvykle'),detail:t('Katalog se stále načítá. Můžete přejít do svých nástrojů a vrátit se později.')});},8000);
+    loadingTimer?.unref?.();
+    let catalog;
+    try{catalog=await loadCatalog();}
+    catch(error){
+      if(current()){
+        catalogLoading=false;
+        panel.innerHTML=`<div class="empty-note"><p role="alert">${esc(t('Katalog se nepodařilo načíst: {error}',{error:errorText(error)}))}</p><button type="button" class="btn btn-light" data-catalog-retry>${esc(t('Zkusit znovu'))}</button></div>`;
+        modal.footer.innerHTML=footerHTML();
+      }
+      return;
+    }finally{if(my===token){clearTimeout(loadingTimer);loadingTimer=null;}}
+    if(!current())return;
+    ({items,categories,sets}=catalog);catalogLoading=false;
     panel.innerHTML=items.length?browserHTML(sets.length?'Hledat nástroj, sadu, velikost nebo normu':'Hledat nástroj, velikost nebo normu','Hledat v katalogu')
       :`<div class="empty-note catalog-empty">${icon('folder')}<p>${esc(t('Katalog je zatím prázdný. Nástroje můžete přidat vyfocením.'))}</p></div>`;
     modal.footer.innerHTML=footerHTML();
@@ -213,7 +229,7 @@ export function mountLibraryFolders(modal,{mine,onAdd,onSave}){
   }
   const browserHTML=(placeholder,label)=>`<div class="catalog-controls"><label class="catalog-search"><input type="search" data-catalog-search value="${esc(views[state.folder].query)}" placeholder="${esc(t(placeholder))}" aria-label="${esc(t(label))}" autocomplete="off"></label><div class="catalog-toggles"></div></div><div class="catalog-chips" role="group" aria-label="${esc(t('Kategorie'))}"></div><div class="catalog-results" aria-live="polite"></div>`;
   function openBrowser(){
-    const search=panel.querySelector('[data-catalog-search]'),apply=()=>{const view=views[state.folder];view.query=search.value;if(state.folder==='mine')setOpen.mine.clear();narrowed(view);renderBrowser();};
+    const search=panel.querySelector('[data-catalog-search]'),apply=()=>{if(operation){operation.afterFilter=apply;return;}const view=views[state.folder];view.query=search.value;if(state.folder==='mine')setOpen.mine.clear();narrowed(view);renderBrowser();};
     search.oninput=()=>{clearTimeout(timer);timer=setTimeout(()=>{if(panel.isConnected)apply();},120);};
     search.onkeydown=e=>{if(e.key==='Enter'){e.preventDefault();clearTimeout(timer);apply();}};
     renderBrowser();
@@ -222,7 +238,7 @@ export function mountLibraryFolders(modal,{mine,onAdd,onSave}){
   function footerHTML(){
     if(state.folder!=='catalog')return'';
     const n=selectedCount();
-    return`<span class="footnote catalog-note">${icon('info')} ${esc(t('Obrysy jsou jmenovité. Před tiskem je porovnejte se skutečným nástrojem – vytiskněte zkušební PDF 1:1.'))}</span><span class="catalog-foot-actions"><button type="button" class="btn btn-light" data-catalog-save-selected ${n?'':'disabled'}>${icon('save')}${esc(t('Uložit vybrané'))}</button><button type="button" class="btn btn-primary" data-catalog-add-selected ${n?'':'disabled'}>${icon('plus')}${esc(t('Přidat vybrané ({n})',{n}))}</button></span>`;
+    return`<span class="footnote catalog-note">${icon('info')} ${esc(t('Obrysy jsou jmenovité. Před tiskem je porovnejte se skutečným nástrojem – vytiskněte zkušební PDF 1:1.'))}</span><span class="catalog-foot-actions"><button type="button" class="btn btn-light" data-catalog-save-selected ${n&&!catalogLoading?'':'disabled'}>${icon('save')}${esc(t('Uložit vybrané'))}</button><button type="button" class="btn btn-primary" data-catalog-add-selected ${n&&!catalogLoading?'':'disabled'}>${icon('plus')}${esc(t('Přidat vybrané ({n})',{n}))}</button></span>`;
   }
   // Changing what is shown starts from the default open state again, so a narrowed list is never hidden by an earlier "Sbalit vše".
   const narrowed=view=>{view.open.clear();view.limits.clear();};
@@ -368,33 +384,59 @@ export function mountLibraryFolders(modal,{mine,onAdd,onSave}){
   const scaledTools=(list,key)=>{const target=scaleTarget(key),f=scaleFactor(scales.get(key),target?.list||list,target?.unit);return list.map(i=>{const tool=catalogTool(i);return f===1?tool:scaleTool(tool,f);});};
   const itemTools=item=>scaledTools([item],'i:'+item.id);
   const setTools=set=>scaledTools(checkedTools(set),'s:'+set.id).map(tool=>({...tool,setNames:[localName(set)]}));
+  // Render the status and allow a paint before contour scaling / packing can occupy the main thread.
+  // Tabs and the close button stay available: leaving the view cancels work that has not started.
+  const paint=()=>new Promise(resolve=>{
+    const frame=globalThis.requestAnimationFrame||((callback)=>setTimeout(callback,0));
+    frame(()=>setTimeout(resolve,0));
+  });
+  async function runOperation(title,message,run){
+    if(operation||catalogLoading||state.folder!=='catalog'||!panel.isConnected)return;
+    const my=token,indicator=document.createElement('div');indicator.dataset.catalogOperation='';
+    indicator.innerHTML=loadingMarkup({title:t(title),message:t(message),compact:true});panel.prepend(indicator);
+    const controls=[...panel.querySelectorAll('button,input,select'),...modal.footer.querySelectorAll('button')].map(el=>[el,el.disabled]);
+    for(const [el] of controls)el.disabled=true;
+    const current=()=>my===token&&state.folder==='catalog'&&panel.isConnected;
+    const task={finish:()=>{
+      for(const [el,disabled] of controls)el.disabled=disabled;
+      indicator.remove();if(operation===task){operation=null;const after=task.afterFilter;task.afterFilter=null;if(current())after?.();}
+    }};operation=task;
+    try{await paint();if(current()&&operation===task)await run(current);}
+    catch(error){if(current())toast(errorText(error));}
+    finally{task.finish();}
+  }
   // `make` builds the tool list lazily, so an invalid scale only shows a toast and adds nothing.
-  const add=(make,opts={})=>{let list;try{list=make();}catch(error){toast(errorText(error));return;}if(!list.length)return;try{onAdd(list,opts);selected.clear();selectedSets.clear();}catch(error){toast(errorText(error));}};
-  const save=(make,already='Tento obrys už v mých nástrojích je.')=>{
-    let list;try{list=make();}catch(error){toast(errorText(error));return;}
-    if(!list.length)return;
-    try{const n=onSave(list);toast(n?plural(n,['{n} obrys uložen do mých nástrojů.','{n} obrysy uloženy do mých nástrojů.','{n} obrysů uloženo do mých nástrojů.']):t(already));}
-    catch(error){toast(errorText(error));}
-  };
+  const add=(make,opts={})=>runOperation('Přidávám nástroje do šuplíku…','Připravuji obrysy a jejich rozložení.',async current=>{
+    const list=make();if(!list.length)return;
+    await onAdd(list,opts);if(current()){selected.clear();selectedSets.clear();}
+  });
+  const save=(make,already='Tento obrys už v mých nástrojích je.',after)=>runOperation('Ukládám nástroje…','Ukládám obrysy do vaší knihovny.',async current=>{
+    const list=make();if(!list.length)return;
+    const n=await onSave(list);if(!current())return;
+    toast(n?plural(n,['{n} obrys uložen do mých nástrojů.','{n} obrysy uloženy do mých nástrojů.','{n} obrysů uloženo do mých nástrojů.']):t(already));after?.();
+  });
   const chosen=()=>[...[...selected].map(byId).filter(Boolean).flatMap(itemTools),...[...selectedSets].map(setById).filter(Boolean).flatMap(setTools)];
   // Build the complete batch before calling onAdd, so one invalid scale cannot add a partial selection.
   // Ranges refer to this flattened list; each set keeps its own scale, members and editable layout.
   const addChosen=()=>{
-    try{
-      const tools=[...selected].map(byId).filter(Boolean).flatMap(itemTools),collections=[];
+    const opts={collections:[]};
+    return add(()=>{
+      const tools=[...selected].map(byId).filter(Boolean).flatMap(itemTools);
       for(const set of [...selectedSets].map(setById).filter(Boolean)){
         const members=setTools(set),start=tools.length;
         tools.push(...members);
         const p=preferences(set);
-        if(members.length>1)collections.push({start,count:members.length,name:localName(set),unit:set.unit==='in'?'in':'mm',layout:p.layout==='group'?'shared':'auto',arrangement:p.layout==='each'?'ordered':p.arrangement,order:p.order});
+        if(members.length>1)opts.collections.push({start,count:members.length,name:localName(set),unit:set.unit==='in'?'in':'mm',layout:p.layout==='group'?'shared':'auto',arrangement:p.layout==='each'?'ordered':p.arrangement,order:p.order});
       }
-      add(()=>tools,{collections});
-    }catch(error){toast(errorText(error));}
+      return tools;
+    },opts);
   };
   // set: the added tools become one project tool set; group: ONE module for them (default layout).
   const setAddOpts=(set,n)=>{const p=preferences(set),info={name:localName(set),unit:set.unit==='in'?'in':'mm',arrangement:p.layout==='each'?'ordered':p.arrangement,order:p.order};return n>1?{set:{...info,layout:p.layout==='group'?'shared':'auto'},...(p.layout==='group'?{group:info}:{})}:{};};
   panel.addEventListener('click',e=>{
+    if(operation||catalogLoading)return;
     if(browserClick(e)||state.folder!=='catalog')return;
+    if(e.target.closest('[data-catalog-retry]')){openCatalog();return;}
     const summary=e.target.closest('.catalog-scale > summary');
     if(summary){const d=summary.parentElement,key=d.dataset.scale;if(d.open)scaleOpen.delete(key);else scaleOpen.add(key);return;}
     const one=e.target.closest('[data-catalog-add]'),keep=e.target.closest('[data-catalog-save]');
@@ -410,12 +452,14 @@ export function mountLibraryFolders(modal,{mine,onAdd,onSave}){
     }else{if(ds.setAll!=null)unticked.delete(set.id);else unticked.set(set.id,new Set(set.tools.map((_,i)=>i)));updateSet(set);}
   });
   panel.addEventListener('input',e=>{
+    if(operation||catalogLoading)return;
     const field=e.target.closest('[data-scale-pct],[data-scale-len]');if(!field)return;
     const details=field.closest('[data-scale]'),pctField=field.hasAttribute('data-scale-pct');
     scales.set(details.dataset.scale,{mode:pctField?'percent':'length',text:field.value});
     refreshScale(details,pctField?'pct':'len');
   });
   panel.addEventListener('change',e=>{
+    if(operation||catalogLoading)return;
     const layout=e.target.closest('[data-set-layout],[data-set-arrangement],[data-set-order]');
     if(layout){
       const key=layout.hasAttribute('data-set-layout')?'layout':layout.hasAttribute('data-set-arrangement')?'arrangement':'order',id=layout.dataset.setLayout||layout.dataset.setArrangement||layout.dataset.setOrder;
@@ -446,9 +490,9 @@ export function mountLibraryFolders(modal,{mine,onAdd,onSave}){
     box.closest('.catalog-item')?.classList.toggle('selected',box.checked);modal.footer.innerHTML=footerHTML();
   });
   modal.footer.addEventListener('click',e=>{
-    if(state.folder!=='catalog')return;
+    if(state.folder!=='catalog'||operation||catalogLoading)return;
     if(e.target.closest('[data-catalog-add-selected]'))addChosen();
-    else if(e.target.closest('[data-catalog-save-selected]')){save(chosen);selected.clear();selectedSets.clear();renderBrowser();modal.footer.innerHTML=footerHTML();}
+    else if(e.target.closest('[data-catalog-save-selected]'))save(chosen,undefined,()=>{selected.clear();selectedSets.clear();renderBrowser();modal.footer.innerHTML=footerHTML();});
   });
   show(state.folder);
   return{refresh:()=>{if(state.folder==='mine')show('mine');}};

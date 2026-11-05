@@ -52,7 +52,7 @@ const saved=()=>JSON.parse(localStorage.getItem('suplik-studio-projects-v1')).fi
 const stable=project=>{const {updatedAt,...rest}=project;return rest;};
 const exports=()=>requests.filter(request=>request.operation==='export');
 async function until(predicate,message){const start=performance.now();while(!predicate()){if(performance.now()-start>5000)assert.fail(message+': '+$('#modal-root').textContent);await pause(5);}}
-const analyzed=()=>until(()=>$('[data-export-analysis]')?.getAttribute('aria-busy')!=='true','manufacturing analysis must finish');
+const analyzed=()=>until(()=>$('[data-export-analysis]')?.getAttribute('data-analysis-busy')!=='true','manufacturing analysis must finish');
 
 test('known inlay depth blocks ZIP immediately and after analysis, and stale clicks cannot start preparation',async()=>{
   const before=saved(),exportCount=exports().length;action('export');

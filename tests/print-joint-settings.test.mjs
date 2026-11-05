@@ -35,7 +35,7 @@ const pause=ms=>new Promise(resolve=>nativeTimeout(resolve,ms));
 async function waitFor(predicate){const started=performance.now();while(!predicate()){if(performance.now()-started>10000)assert.fail('UI did not finish: '+$('#modal-root').textContent+' '+$('#toast').textContent);await pause(2);}}
 function change(selector,value){const element=$(selector);assert.ok(element,'Missing '+selector);element.value=String(value);element.dispatchEvent(new win.Event('change',{bubbles:true}));}
 function close(){if($('[data-modal-close]'))click('[data-modal-close]');}
-const analysisReady=()=>waitFor(()=>$('[data-export-analysis]')?.getAttribute('aria-busy')!=='true');
+const analysisReady=()=>waitFor(()=>$('[data-export-analysis]')?.getAttribute('data-analysis-busy')!=='true');
 async function open(id){close();action('projects');click(`[data-open="${id}"]`);action('export');click('[data-format="stl"]');await analysisReady();}
 async function downloadedFrom(selector){await analysisReady();const count=downloads.length;click(selector);await waitFor(()=>downloads.length===count+1);assert.ok(downloads.at(-1).blob);return downloads.at(-1);}
 function assertReadOnly(before,undo){assert.equal(store(),before,'this action must preserve the whole persisted project, including updatedAt');assert.deepEqual(history(),undo,'this action must not add undo history');}

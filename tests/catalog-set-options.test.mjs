@@ -65,6 +65,7 @@ const $=s=>win.document.querySelector(s);
 const $$=s=>[...win.document.querySelectorAll(s)];
 const click=s=>{const el=typeof s==='string'?$(s):s;assert.ok(el,'Missing '+s);el.click();};
 const waitFor=async fn=>{const start=Date.now();while(!fn()){if(Date.now()-start>5000)throw Error('Timed out waiting for UI');await new Promise(r=>setTimeout(r,10));}};
+const clickOperation=async target=>{click(target);await waitFor(()=>!$('[data-catalog-operation]'));};
 const saved=()=>JSON.parse(localStorage.getItem('suplik-studio-projects-v1')).find(p=>p.id===JSON.parse(localStorage.getItem('suplik-studio-current')));
 const tab=id=>$(`[data-library-folder="${id}"]`);
 async function openSets(){click('#app [data-action="library"]');if(tab('catalog').getAttribute('aria-selected')!=='true')click(tab('catalog'));await waitFor(()=>$('.catalog-section')||$('.catalog-empty'));click('[data-catalog-kind="sets"]');}
@@ -97,7 +98,7 @@ test('"Přidat sadu" adds ONE module with every tool by default, registered as a
   await openSets();
   assert.equal($('[data-set-layout="key-set"]').value,'group','one module is the default');
   assert.deepEqual($$('[data-set-layout="key-set"] option').map(o=>o.textContent),['Jeden modul pro celou sadu','Samostatný modul pro každý nástroj']);
-  click('[data-set-add="key-set"]');
+  await clickOperation('[data-set-add="key-set"]');
   assert.ok($('.modal')===null,'no extra dialog when the set fits');
   const p=saved(),added=newOf(old,p);
   assert.equal(added.length,3);
@@ -122,7 +123,7 @@ test('"Samostatný modul pro každý nástroj" adds individually minimal modules
   await openSets();
   chooseLayout('key-set','each');
   assert.equal($('[data-set-layout="hex-set"]').value,'each','all cards follow the choice');
-  click('[data-set-add="key-set"]');
+  await clickOperation('[data-set-add="key-set"]');
   const p=saved(),added=newOf(old,p);
   assert.equal(added.length,3);assert.equal(new Set(added.map(t=>t.moduleId)).size,3,'n modules');
   const set=(p.toolSets||[]).find(s=>s.toolIds.includes(added[0].id));
@@ -154,10 +155,10 @@ test('footer batch passes exact collection ranges and scales once, and rejects a
   type('[data-scale="s:key-set"] [data-scale-pct]','110');
   type('[data-scale="s:hex-set"] [data-scale-pct]','600');
   chooseLayout('key-set','each');
-  click('[data-catalog-add-selected]');
+  await clickOperation('[data-catalog-add-selected]');
   assert.equal(calls.length,0,'no callback before every scale is valid');
   type('[data-scale="s:hex-set"] [data-scale-pct]','80');
-  click('[data-catalog-add-selected]');
+  await clickOperation('[data-catalog-add-selected]');
   assert.equal(calls.length,1,'one callback for the whole batch');
   const {tools,options}=calls[0];
   assert.equal(tools.length,6);
@@ -183,7 +184,7 @@ test('footer adds two separately scaled sets with the chosen layout in one undo 
       click('[data-catalog-select-set="key-set"]');click('[data-catalog-select-set="hex-set"]');
       click('[data-set-toggle="key-set"]');click('[data-set-member="key-set"][data-index="1"]');
       type('[data-scale="s:key-set"] [data-scale-pct]','110');type('[data-scale="s:hex-set"] [data-scale-pct]','80');
-      click('[data-catalog-add-selected]');
+      await clickOperation('[data-catalog-add-selected]');
       assert.ok(!$('.modal'),'both collections fit without a follow-up choice');
       const p=saved();assert.equal(p.tools.length,before.tools.length+6);
       assert.equal(p.toolSets.length,2);
@@ -216,7 +217,7 @@ test('scale 110 % makes every tool 1.1× larger; preview shows the resulting len
   assert.equal($('[data-scale="s:key-set"] [data-scale-len]').value,'123.2');
   assert.match($('[data-scale="s:key-set"] [data-scale-preview]').textContent,/112 mm → 123,2 mm/);
   assert.match($('[data-scale="s:key-set"] [data-scale-badge]').textContent,/110/);
-  click('[data-set-add="key-set"]');
+  await clickOperation('[data-set-add="key-set"]');
   const added=newOf(old);assert.equal(added.length,3);
   for(const s of [8,10,13]){const t=added.find(x=>x.name===`Klíček ${s} mm`),b=bbox(t.points);assert.ok(Math.abs(b.w-(60+s*4)*1.1)<.01&&Math.abs(b.h-(10+s)*1.1)<.01,`tool ${s} scaled: ${b.w}×${b.h}`);}
   click('#app [data-action="undo"]');
@@ -228,7 +229,7 @@ test('longest tool length "200 mm" and "8 in" scale the set accordingly',async()
     await openSets();
     type('[data-scale="s:key-set"] [data-scale-len]',text);
     assert.equal($('[data-scale="s:key-set"] [data-scale-pct]').value,String(Math.round(target/112*1000)/10));
-    click('[data-set-add="key-set"]');
+    await clickOperation('[data-set-add="key-set"]');
     const added=newOf(old),longest=Math.max(...added.map(t=>{const b=bbox(t.points);return Math.max(b.w,b.h);}));
     assert.ok(Math.abs(longest-target)<.01,`${text}: longest ${longest}`);
     click('#app [data-action="undo"]');
@@ -241,11 +242,11 @@ test('invalid scale shows a translated toast and adds nothing',async()=>{
   type('[data-scale="s:key-set"] [data-scale-pct]','1000');
   assert.match($('[data-scale="s:key-set"] [data-scale-preview]').textContent,/od 20 do 500 %/);
   assert.ok($('[data-scale="s:key-set"] [data-scale-preview]').classList.contains('invalid'));
-  click('[data-set-add="key-set"]');
+  await clickOperation('[data-set-add="key-set"]');
   assert.equal($('#toast').textContent,'Měřítko musí být od 20 do 500 %.');
   assert.ok($('.modal'),'catalogue stays open');
   type('[data-scale="s:key-set"] [data-scale-len]','abc');
-  click('[data-set-add="key-set"]');
+  await clickOperation('[data-set-add="key-set"]');
   assert.equal($('#toast').textContent,'Zadejte platné měřítko, například 110 % nebo délku 200 mm.');
   assert.equal(saved().tools.length,count);
   click('[data-modal-close]');
@@ -257,10 +258,10 @@ test('a single catalogue item can be scaled, also when saved to my tools',async(
   const sel='[data-scale="i:hex-4"]';assert.ok($(sel),'scale on the single item card');
   type(sel+' [data-scale-pct]','50');
   assert.match($(sel+' [data-scale-preview]').textContent,/90 mm → 45 mm/);
-  click('[data-catalog-save="hex-4"]');
+  await clickOperation('[data-catalog-save="hex-4"]');
   const lib=JSON.parse(localStorage.getItem('suplik-studio-library-v1'));
   assert.ok(lib.some(t=>t.name==='Imbus 4 mm'&&Math.abs(bbox(t.points).w-45)<.01),'saved scaled');
-  click('[data-catalog-add="hex-4"]');
+  await clickOperation('[data-catalog-add="hex-4"]');
   const added=newOf(old);assert.equal(added.length,1);
   const b=bbox(added[0].points);assert.ok(Math.abs(b.w-45)<.01&&Math.abs(b.h-11)<.01);
   click('#app [data-action="undo"]');
@@ -276,11 +277,11 @@ test('English labels for the set options',async()=>{
     assert.match($('[data-scale="s:key-set"]').textContent,/Longest tool length/);
     assert.match($('[data-scale="s:key-set"] [data-scale-preview]').textContent,/Longest tool: 112 mm → 112 mm/);
     type('[data-scale="s:key-set"] [data-scale-pct]','600');
-    click('[data-set-add="key-set"]');
+    await clickOperation('[data-set-add="key-set"]');
     assert.equal($('#toast').textContent,'Scale must be between 20 and 500 %.');
     type('[data-scale="s:key-set"] [data-scale-pct]','100');
     const before=saved().tools.length;
-    click('[data-set-add="key-set"]');
+    await clickOperation('[data-set-add="key-set"]');
     assert.equal($('#toast').textContent,'Set added as one module.');
     assert.equal(saved().tools.length,before+3);
     click('#app [data-action="undo"]');
@@ -295,7 +296,7 @@ test('real combination wrench set in the demo drawer: placed or an explicit choi
     const before=saved(),old=ids(before),size=[before.width,before.height];
     click('#app [data-action="library"]');if(tab('catalog').getAttribute('aria-selected')!=='true')click(tab('catalog'));
     await waitFor(()=>$('[data-catalog-kind="sets"]'));click('[data-catalog-kind="sets"]');
-    click('[data-set-add="combination-wrench-set-8-19mm"]');
+    await clickOperation('[data-set-add="combination-wrench-set-8-19mm"]');
     let p=saved(),added=newOf(old,p),addedIds=new Set(added.map(t=>t.id));
     assert.equal(added.length,12);
     assert.equal(new Set(added.map(t=>t.moduleId)).size,1,'one module for the set');
@@ -316,7 +317,7 @@ test('real combination wrench set in the demo drawer: placed or an explicit choi
     const drawers=JSON.parse(localStorage.getItem('suplik-studio-projects-v1')).length,current=saved().id;
     click('#app [data-action="library"]');await waitFor(()=>$('[data-set-layout="combination-wrench-set-6-32mm"]'));
     chooseLayout('combination-wrench-set-6-32mm','each');
-    click('[data-set-add="combination-wrench-set-6-32mm"]');
+    await clickOperation('[data-set-add="combination-wrench-set-6-32mm"]');
     p=saved();added=newOf(old,p);addedIds=new Set(added.map(t=>t.id));
     assert.equal(added.length,26);
     assert.ok(added.some(t=>!placedInDrawer(p,t)),'precondition: some tool modules are missing or parked outside the drawer');
@@ -347,7 +348,7 @@ const freshDrawer=()=>{
 const unplacedOf=(p,toolIds)=>p.tools.filter(t=>toolIds.has(t.id)&&!placedInDrawer(p,t)).length;
 const onBed=m=>(m.width-.5<=220&&m.height-.5<=220)||(m.height-.5<=220&&m.width-.5<=220);
 const finishDrawer=()=>{const grow=$('[data-fit="grow"]');if(grow){assert.equal(grow.disabled,false);click(grow);}};
-async function addRealSet(id,layout){await openRealSets();chooseLayout(id,layout);click('[data-set-add="'+id+'"]');}
+async function addRealSet(id,layout){await openRealSets();chooseLayout(id,layout);await clickOperation('[data-set-add="'+id+'"]');}
 
 test('a catalogue set larger than the saved bed is placed as one module with no printer dialog, and one undo',async()=>{
   setCatalogSource(null);
@@ -385,11 +386,11 @@ test('export cuts an oversized shared 3D model into STL parts without changing t
   setCatalogSource(async()=>({categories:CATEGORIES,items:bars,sets:[{id:'bar-set',category:'wrenches',name:{cs:'Sada tyček',en:'Rod set'},items:bars.map(b=>b.id),unit:'mm'}],setsCategory:{id:'sets',cs:'Sady nářadí',en:'Tool sets'}}));
   try{
     const before=freshDrawer(),old=ids(before);
-    await openSets();chooseLayout('bar-set','group');click('[data-set-add="bar-set"]');finishDrawer();
+    await openSets();chooseLayout('bar-set','group');await clickOperation('[data-set-add="bar-set"]');finishDrawer();
     const inserted=saved(),added=newOf(old,inserted),addedIds=new Set(added.map(t=>t.id)),moduleId=added[0].moduleId;
     assert.equal(new Set(added.map(t=>t.moduleId)).size,1);assert.ok($('.modal')===null);
     const serialized=localStorage.getItem('suplik-studio-projects-v1'),history=()=>[$('#app [data-action="undo"]').disabled,$('#app [data-action="redo"]').disabled],undo=history(),count=downloads.length;
-    click('#app [data-action="export"]');await waitFor(()=>$('[data-export-analysis]')?.getAttribute('aria-busy')!=='true');assert.equal($('[data-do-export]').disabled,false,'A valid oversized model can export using geometric cuts');
+    click('#app [data-action="export"]');await waitFor(()=>$('[data-export-analysis]')?.getAttribute('data-analysis-busy')!=='true');assert.equal($('[data-do-export]').disabled,false,'A valid oversized model can export using geometric cuts');
     assert.equal(localStorage.getItem('suplik-studio-projects-v1'),serialized,'Opening export cannot split or repack the module');
     click('[data-export-split-module="'+moduleId+'"]');await waitFor(()=>downloads.length>count);
     const downloaded=downloads.at(-1);assert.match(downloaded.name,/\.zip$/);const bytes=new Uint8Array(await downloaded.blob.arrayBuffer()),view=new DataView(bytes.buffer),files=new Map();let offset=0;

@@ -40,7 +40,7 @@ test('tools longer than the saved bed stay placed with no editor printer warning
 });
 
 test('STL export prepares automatic mesh cuts for oversized parts while other formats keep their original outlines',async()=>{
-  const ready=async()=>{const start=performance.now();while($('[data-export-analysis]')?.getAttribute('aria-busy')==='true'){if(performance.now()-start>5000)assert.fail('Background export analysis did not finish');await new Promise(resolve=>nativeSetTimeout(resolve,5));}};
+  const ready=async()=>{const start=performance.now();while($('[data-export-analysis]')?.getAttribute('data-analysis-busy')==='true'){if(performance.now()-start>5000)assert.fail('Background export analysis did not finish');await new Promise(resolve=>nativeSetTimeout(resolve,5));}};
   const before=localStorage.getItem('suplik-studio-projects-v1');action('export');
   await ready();
   assert.equal($('[data-do-export]').disabled,false,'A valid oversized part can be printed in cut pieces');assert.ok($('.modal [data-field=bedWidth]'));assert.ok($('.modal [data-field=bedHeight]'));

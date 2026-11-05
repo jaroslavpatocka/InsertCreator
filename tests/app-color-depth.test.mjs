@@ -63,7 +63,7 @@ async function until(predicate,description){
 test('an existing too-deep coloured pocket has an explicit one-undo height fix and then a complete 3D model',async()=>{
   const before=saved();assert.equal($('[data-action="undo"]').disabled,true);
   action('3d');
-  await until(()=>$('[data-preview-state][aria-busy="false"]'),'the invalid model should display its recovery action');
+  await until(()=>$('[data-preview-state][data-preview-busy="false"]'),'the invalid model should display its recovery action');
   assert.deepEqual(stable(saved()),stable(before),'opening 3D must not silently change saved geometry');
   assert.equal($('#board-svg').getAttribute('aria-hidden'),'true');
   const fix=$('[data-preview-state] [data-action="fit-pocket-height"]');assert.ok(fix,'the depth error offers a height repair');
@@ -101,7 +101,7 @@ test('single and bulk pocket depth fields reserve the enabled floor inlay',()=>{
 
 test('a floor requiring more than the maximum insert height cannot offer an invalid height repair',async()=>{
   click('[data-drawer-open="height-over-limit"]');action('3d');
-  await until(()=>$('[data-preview-state][aria-busy="false"]'),'an over-limit inlay must finish with an actionable error');
+  await until(()=>$('[data-preview-state][data-preview-busy="false"]'),'an over-limit inlay must finish with an actionable error');
   assert.equal($('[data-preview-state] [data-action="fit-pocket-height"]'),null,'the editor must not propose a height above its 100 mm project limit');
   assert.ok($('[data-preview-state] [data-action="retry-preview"]'));
   const stored=JSON.parse(localStorage.getItem('suplik-studio-projects-v1')).find(project=>project.id===overLimit.id);
@@ -116,6 +116,7 @@ test('a newly added catalogue tool reserves the floor without rewriting existing
   const catalog=$('[data-library-folder="catalog"]');assert.ok(catalog);if(catalog.getAttribute('aria-selected')!=='true')catalog.click();
   await until(()=>$('[data-catalog-add="deep-catalog-key"]'),'the fixture catalogue item should be available');
   click('[data-catalog-add="deep-catalog-key"]');
+  await until(()=>saved().tools.length>before.tools.length,'the catalogue insertion should finish after showing its loading state');
   const after=saved(),oldIds=new Set(before.tools.map(tool=>tool.id)),added=after.tools.filter(tool=>!oldIds.has(tool.id));
   assert.equal(added.length,1);assert.equal(added[0].depth,17,'new pockets keep room for the 0.6 mm floor inlay');
   assert.equal(after.tools.find(tool=>tool.id==='deep').depth,17.6,'existing user pockets remain unchanged');

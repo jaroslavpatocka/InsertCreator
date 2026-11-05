@@ -53,6 +53,7 @@ const $=s=>win.document.querySelector(s);
 const $$=s=>[...win.document.querySelectorAll(s)];
 const click=s=>{const el=typeof s==='string'?$(s):s;assert.ok(el,'Missing '+s);el.click();};
 const waitFor=async fn=>{const start=Date.now();while(!fn()){if(Date.now()-start>5000)throw Error('Timed out waiting for UI');await new Promise(r=>setTimeout(r,10));}};
+const clickOperation=async target=>{click(target);await waitFor(()=>!$('[data-catalog-operation]'));};
 const saved=()=>JSON.parse(localStorage.getItem('suplik-studio-projects-v1')).find(p=>p.id===JSON.parse(localStorage.getItem('suplik-studio-current')));
 const libraryStore=()=>JSON.parse(localStorage.getItem('suplik-studio-library-v1')||'[]');
 const tab=id=>$(`[data-library-folder="${id}"]`);
@@ -132,7 +133,7 @@ test('search and measurement filter apply to sets; matching sets are surfaced ab
 test('"Přidat sadu" adds every tool of the set in one step (one undo, one arrangement)',async()=>{
   const previous=saved(),before=previous.tools.length;
   await openCatalog();chooseKind('sets');
-  click('[data-set-add="wrench-set-8-17"]');
+  await clickOperation('[data-set-add="wrench-set-8-17"]');
   const needsFit=!!$('.modal');
   if(needsFit){
     assert.equal($('#modal-title').textContent,'Sada se do šuplíku nevešla');
@@ -183,7 +184,7 @@ test('unticked members are left out; the add button counts the selection',async(
   assert.equal($('[data-set-member="wrench-set-8-17"][data-index="0"]').checked,false);
   assert.equal($('[data-set-member="wrench-set-8-17"][data-index="1"]').checked,true);
   click('[data-catalog-system="all"]');
-  click('[data-set-add="wrench-set-8-17"]');
+  await clickOperation('[data-set-add="wrench-set-8-17"]');
   const tools=saved().tools;assert.equal(tools.length,before+2);
   assert.deepEqual(tools.slice(-2).map(t=>t.name).sort(),['Očkoplochý klíč 10 mm','Očkoplochý klíč 17 mm']);
   click('#app [data-action="undo"]');assert.equal(saved().tools.length,before);
@@ -192,11 +193,11 @@ test('unticked members are left out; the add button counts the selection',async(
 test('a whole set can be saved to my tools without duplicates',async()=>{
   await openCatalog();chooseKind('sets');
   const count=libraryStore().length;
-  click('[data-set-save="hex-set"]');
+  await clickOperation('[data-set-save="hex-set"]');
   const lib=libraryStore();assert.equal(lib.length,count+3);
   assert.deepEqual(lib.slice(-3).map(t=>t.name),['Imbusový klíč 2 mm','Imbusový klíč 3 mm','Imbusový klíč 4 mm']);
   assert.match($('#toast').textContent,/3 obrysy uloženy/);
-  click('[data-set-save="hex-set"]');assert.equal(libraryStore().length,count+3);
+  await clickOperation('[data-set-save="hex-set"]');assert.equal(libraryStore().length,count+3);
   assert.equal($('#toast').textContent,'Všechny obrysy této sady už v mých nástrojích jsou.');
   click('[data-modal-close]');
 });
@@ -210,7 +211,7 @@ test('whole sets can be multi-selected together with single outlines',async()=>{
   assert.match($('[data-catalog-add-selected]').textContent,/\(3\)/);
   chooseKind('all');chooseCategory('pliers');pick('[data-catalog-select="pliers-combi"]');
   assert.match($('[data-catalog-add-selected]').textContent,/\(4\)/);
-  click('[data-catalog-add-selected]');
+  await clickOperation('[data-catalog-add-selected]');
   assert.equal(saved().tools.length,before+4);
   click('#app [data-action="undo"]');assert.equal(saved().tools.length,before,'one undo step');
 });
@@ -221,7 +222,7 @@ test('a large set that does not fit keeps every tool and the app reports what is
   try{
     const before=saved().tools.length,oldIds=new Set(saved().tools.map(t=>t.id));
     await openCatalog();chooseKind('sets');
-    click('[data-set-add="big-set"]');
+    await clickOperation('[data-set-add="big-set"]');
     const p=saved();assert.equal(p.tools.length,before+30,'nothing is dropped');
     const added=p.tools.filter(t=>!oldIds.has(t.id)),unplaced=added.filter(t=>!placedInDrawer(p,t)).length;
     assert.ok(unplaced>0,'the default drawer cannot hold 30 large bars');
@@ -263,7 +264,7 @@ test('English labels for the sets view',async()=>{
     await search('sada imbusu');assert.deepEqual(setIds(),['hex-set'],'Czech set names are searchable in English UI');
     await search('');
     const before=saved().tools.length;
-    click('[data-set-add="hex-set"]');
+    await clickOperation('[data-set-add="hex-set"]');
     assert.deepEqual(saved().tools.slice(before).map(t=>t.name),['Hex key 2 mm','Hex key 4 mm'],'tools are named in the current language');
   }finally{setLang('cs');setAppUnit('mm');}
 });

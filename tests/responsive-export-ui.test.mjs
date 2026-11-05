@@ -69,14 +69,14 @@ function change(selector,value){const el=$(selector);assert.ok(el,selector);if(e
 const analysis=(volume=12)=>({issues:[],stats:{volumeMm3:volume*1000,volumeCm3:volume,solidVolumeMm3:volume*1000,savingPercent:0,heightMm:20,effectiveBaseMm:2.4,footHeightMm:0,printMode:'light',bottomMode:'plain',triangles:1000,notes:[]},printError:'',bedError:'',labels:{count:0,skipped:[]},joints:{count:12,cutCount:0,moduleCount:12,skipped:0,unjoined:[],unsupported:false},jointError:''});
 const completedExport=()=>({zip:zipFiles([{name:'assembly.json',data:'{}'}]),fileCount:1,parts:[],manifest:{joints:{unjoined:[]}},joints:0});
 async function openPending(id){const count=analyses().length;open(id);await waitFor(()=>analyses().length>count,'a background analysis must start');return analyses().at(-1);}
-async function finish(job,result=analysis()){job.reply(result);await waitFor(()=>$('[data-export-analysis]')?.getAttribute('aria-busy')!=='true','analysis must finish');}
+async function finish(job,result=analysis()){job.reply(result);await waitFor(()=>$('[data-export-analysis]')?.getAttribute('data-analysis-busy')!=='true','analysis must finish');}
 after(()=>{close();win.happyDOM.abort();});
 
 test('a 95-tool export opens a live loading shell before background manufacturing work starts',async()=>{
   const before=store(),count=analyses().length;action('export');
   assert.ok($('.modal'),'the form must be present immediately');
   const status=$('[data-export-analysis]');assert.ok(status,'the export has a persistent status region');
-  assert.equal(status.getAttribute('role'),'status');assert.equal(status.getAttribute('aria-busy'),'true');
+  assert.equal(status.querySelector('[data-loading-ui]').getAttribute('role'),'status');assert.equal(status.getAttribute('role'),null);assert.equal(status.getAttribute('data-analysis-busy'),'true');
   let heartbeat=false;nativeTimeout(()=>heartbeat=true,0);await pause(20);
   assert.equal(heartbeat,true,'the event loop remains available while the job is pending');
   await waitFor(()=>analyses().length>count,'worker analysis did not start');
@@ -123,7 +123,7 @@ test('invalid printer input does not schedule geometry or mutate the stored proj
 
 test('a worker failure leaves the form usable and a corrected request can finish',async()=>{
   const job=await openPending('worker-error');job.fail('Kontrolní chyba výpočtu');
-  await waitFor(()=>$('[data-export-analysis]')?.getAttribute('aria-busy')!=='true','a failed job must not leave a permanent loading state');
+  await waitFor(()=>$('[data-export-analysis]')?.getAttribute('data-analysis-busy')!=='true','a failed job must not leave a permanent loading state');
   assert.match($('.modal').textContent,/Kontrolní chyba výpočtu/);assert.equal($('.modal [data-field="bedWidth"]').disabled,false);
   const count=analyses().length;change('.modal [data-field="bedWidth"]',310);
   await waitFor(()=>analyses().length>count,'editing after a failure must allow a new job');await finish(analyses().at(-1));close();
@@ -142,7 +142,7 @@ test('changing puzzle connectors cancels a queued analysis until the rearrangeme
   await waitFor(()=>jobs.slice(requests).some(job=>job.message.operation==='connectors'),'connector preparation must run in the background');
   const rearranging=jobs.slice(requests).find(job=>job.message.operation==='connectors');await pause(160);
   assert.equal(analyses().length,count,'the old 90 ms analysis timer must not run during connector preparation');
-  assert.equal($('[data-do-export]').disabled,true);assert.equal($('[data-export-analysis]').getAttribute('aria-busy'),'true');
+  assert.equal($('[data-do-export]').disabled,true);assert.equal($('[data-export-analysis]').getAttribute('data-analysis-busy'),'true');
   const next=structuredClone(rearranging.message.project);next.connectors=false;rearranging.reply({fits:true,project:next});
   await waitFor(()=>analyses().length>count,'the final geometry must receive a new analysis');const latest=analyses().at(-1);
   assert.equal(latest.message.project.connectors,false);await finish(latest,{...analysis(),joints:null});close();

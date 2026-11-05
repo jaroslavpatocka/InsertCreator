@@ -29,9 +29,10 @@ function cacheKey(project,options){
   const config=materialConfig(project),material={enabled:config.enabled,floor:config.floor,text:config.text,floorThickness:config.floorThickness};
   return JSON.stringify([{...shape,multiMaterial:material},options.lang||'cs',options.unit||'mm']);
 }
-function packageResult(result,options){
+function packageResult(result,options,onProgress=()=>{}){
   if(!options.package&&!Array.isArray(options.extraFiles))return result;
-  const files=[...result.files,...(options.extraFiles||[])],zip=makeZip(files),{files:unused,...metadata}=result;
+  const files=[...result.files,...(options.extraFiles||[])];onProgress({stage:'packaging',files:files.length});
+  const zip=makeZip(files),{files:unused,...metadata}=result;onProgress({stage:'packaged',progress:1,files:files.length});
   return{...metadata,zip,fileCount:files.length};
 }
 function makeZip(files){
@@ -46,16 +47,16 @@ export async function executeManufacturingTask(operation,input={},options={},con
   const {signal,onProgress=()=>{},cache=createManufacturingTaskCache()}=context;
   const progress=event=>{aborted(signal);onProgress(event);};
   aborted(signal);setLang(options.lang||'cs',{save:false});setAppUnit(options.unit||'mm',{save:false});setProjectUnit(input.unit||'');
-  if(operation==='zip')return{zip:makeZip(options.files||[]),fileCount:options.files?.length||0};
+  if(operation==='zip'){const files=options.files||[];progress({stage:'packaging',files:files.length});const zip=makeZip(files);progress({stage:'packaged',progress:1,files:files.length});return{zip,fileCount:files.length};}
   if(operation==='preview')return printPreview(input,options.selected??null,options.selectedModule??null,options.camera||{},options.viewport||{width:1000,height:600},options.selectedToolIds||[]);
-  if(operation==='joint-fit')return packageResult(await prepareJointFitTest(input,{signal,onProgress:progress}),options);
+  if(operation==='joint-fit')return packageResult(await prepareJointFitTest(input,{signal,onProgress:progress}),options,progress);
   if(operation==='export'){
     const result=await preparePrintBatch(input,{moduleIds:options.moduleIds,signal,onProgress:progress});
-    if(!options.bundle)return packageResult(result,options);
+    if(!options.bundle)return packageResult(result,options,progress);
     const colorNote=result.manifest?.colors?'\n\n'+t('Vícebarevný tisk: otevřete soubory 3MF a nastavte filamenty podle čísel:')+'\n'+result.manifest.colors.filaments.map((color,index)=>`${index+1}: ${color} (${Object.entries({body:'Tělo',floor:'Dno kapes',text:'Text'}).filter(([zone])=>result.manifest.colors.zones[zone]===index+1).map(([,label])=>t(label)).join(', ')})`).join('\n'):'';
     const jointNote=result.joints&&options.jointNote?'\n\n'+options.jointNote:'',unjoined=result.manifest?.joints?.unjoined?.length||0;
     const readme=(options.readme??'InsertCreator\n\n'+t('Tiskové díly sestavte podle assembly.json. Souřadnice jsou v mm. Dělení je pouze pro tisk; rozvržení šuplíku zůstává původní.'))+colorNote+jointNote+(unjoined?'\n'+t('Na {n} vnitřních hranách mezi díly není bezpečné místo pro spojku. Podrobnosti jsou v assembly.json.',{n:unjoined}):'');
-    return packageResult(result,{...options,package:true,extraFiles:[...(options.extraFiles||[]),{name:'projekt.json',data:JSON.stringify({schemaVersion:1,app:'InsertCreator',project:input},null,2)},{name:'README.txt',data:readme}]});
+    return packageResult(result,{...options,package:true,extraFiles:[...(options.extraFiles||[]),{name:'projekt.json',data:JSON.stringify({schemaVersion:1,app:'InsertCreator',project:input},null,2)},{name:'README.txt',data:readme}]},progress);
   }
   if(operation==='connectors'){
     const enabled=options.enabled===true;progress({stage:'planning',progress:.05});await pause();aborted(signal);
@@ -72,7 +73,7 @@ export async function executeManufacturingTask(operation,input={},options={},con
       files.push({name:`gridfinity-${String(index+1).padStart(3,'0')}-${tile.columns}x${tile.rows}.stl`,data});
     }
     const manifest={schemaVersion:2,units:'mm',pitch:42,layout:plan.layout,layoutSize:{width:input.width,height:input.height},coordinates:'physical-world',layoutAxes:'X right, Y down',assemblyAxes:'X right, Y up, Z up',rotateForPrinting:plan.rotated,tiles:plan.tiles.map((tile,i)=>({...tile,file:files[i].name,xMm:tile.x*42,yMm:tile.y*42,assemblyTransform:[1,0,0,tile.x*42,0,1,0,input.height-(tile.y+tile.rows)*42,0,0,1,0,0,0,0,1]}))};
-    files.push({name:'assembly.json',data:JSON.stringify(manifest,null,2)});progress({stage:'complete',progress:1});return packageResult({files,manifest,plan},options);
+    files.push({name:'assembly.json',data:JSON.stringify(manifest,null,2)});progress({stage:'complete',progress:1});return packageResult({files,manifest,plan},options,progress);
   }
   const source=validateProject(selected(input,options.moduleIds));
   if(operation==='svg')return{data:new TextEncoder().encode(exportSVG(source,{moduleId:options.moduleId??null}))};
@@ -84,7 +85,7 @@ export async function executeManufacturingTask(operation,input={},options={},con
       progress({stage:'cutting',progress:index/modules.length,completed:index,total:modules.length});await pause();aborted(signal);
       files.push({name:`${String(index+1).padStart(2,'0')}-${slug(module.name)}-zkouska.stl`,data:exportFitSTL(source,{moduleId:module.id})});
     }
-    return packageResult({files},options);
+    return packageResult({files},options,progress);
   }
   if(operation!=='analyze'&&operation!=='labels')throw new Error('Neznámý výrobní výpočet.');
   const key=cacheKey(source,options);

@@ -65,7 +65,7 @@ async function arrange(){
 }
 const change=(selector,value)=>{const element=$(selector);assert.ok(element,'Missing '+selector);if(element.type==='checkbox')element.checked=Boolean(value);else element.value=String(value);element.dispatchEvent(new win.Event('change',{bubbles:true}));};
 const createDrawerFromUI=(name,width,height)=>{action('projects');click('[data-new]');change('[data-field=drawerName]',name);change('[data-field=drawerWidth]',width);change('[data-field=drawerHeight]',height);click('[data-create-drawer]');return saved();};
-const exportReady=()=>waitFor(()=>$('[data-export-analysis]')?.getAttribute('aria-busy')!=='true');
+const exportReady=()=>waitFor(()=>$('[data-export-analysis]')?.getAttribute('data-analysis-busy')!=='true');
 const downloadFrom=async selector=>{await exportReady();const count=downloads.length;click(selector);await waitFor(()=>downloads.length>count);assert.ok(downloads.at(-1).blob,'A generated file Blob must be present');return downloads.at(-1);};
 function storedZip(bytes){
   const view=new DataView(bytes.buffer,bytes.byteOffset,bytes.byteLength),files=[];let offset=0;
@@ -130,7 +130,7 @@ test('new finger grips support editing, individual removal, undo and explicit em
   action('finger-grips-clear');assert.deepEqual(saved().tools[0].fingerGrips,[]);const arranged=await arrange();assert.deepEqual(saved().tools[0].fingerGrips,[]);
   if(arranged)action('undo');assert.deepEqual(saved().tools[0].fingerGrips,[]);action('undo');assert.deepEqual(saved().tools[0].fingerGrips,edited);action('redo');assert.deepEqual(saved().tools[0].fingerGrips,[]);
   action('duplicate');const copy=saved().tools.at(-1);assert.deepEqual(copy.fingerGrips,[],'Duplicating explicit removal must not generate new defaults');assert.deepEqual(copy.points,points);
-  action('library');const copyCard=[...win.document.querySelectorAll('.library-item')].find(el=>el.querySelector('strong').textContent===copy.name);assert.ok(copyCard);copyCard.querySelector('[data-library-add]').click();assert.deepEqual(saved().tools.at(-1).fingerGrips,[],'The library must preserve explicit removal');
+  action('library');const copyCard=[...win.document.querySelectorAll('.library-item')].find(el=>el.querySelector('strong').textContent===copy.name);assert.ok(copyCard);const beforeLibraryCount=saved().tools.length;copyCard.querySelector('[data-library-add]').click();await waitFor(()=>saved().tools.length===beforeLibraryCount+1);assert.deepEqual(saved().tools.at(-1).fingerGrips,[],'The library must preserve explicit removal');
   const backup=await downloadFrom('#app [data-action=save-project]'),json=await backup.blob.text();assert.ok(JSON.parse(json).project.tools.every(t=>Array.isArray(t.fingerGrips)&&t.fingerGrips.length===0));
   const fileInput=$('#project-file');Object.defineProperty(fileInput,'files',{configurable:true,value:[{size:json.length,text:async()=>json}]});
   fileInput.dispatchEvent(new win.Event('change',{bubbles:true}));await waitFor(()=>saved().id!==scratch.id);delete fileInput.files;
@@ -397,7 +397,7 @@ test('editor workflows and actual photo pipeline integrate with persistent proje
   action('3d');await waitFor(()=>win.document.querySelectorAll('#board-svg polygon').length>6);assert.ok(win.document.querySelectorAll('#board-svg polygon').length>6);action('2d');
   action('expand');const expandWidth=$('[data-field=expandWidth]');expandWidth.value='588';click('[data-confirm]');
   assert.equal(saved().width,588);assert.ok(saved().modules.every(m=>m.locked));
-  action('library');click('[data-library-add="0"]');assert.equal(saved().tools.length,7);
+  action('library');click('[data-library-add="0"]');await waitFor(()=>saved().tools.length===7);assert.equal(saved().tools.length,7);
   const lockedPositions=saved().modules.filter(m=>m.locked).map(m=>[m.id,m.x,m.y]);
   const arranged=await arrange();assert.deepEqual(saved().modules.filter(m=>m.locked).map(m=>[m.id,m.x,m.y]),lockedPositions);
   if(arranged){action('undo');assert.equal(saved().tools.length,7);action('redo');}

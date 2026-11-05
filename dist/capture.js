@@ -5,6 +5,7 @@ import { simpleOutline } from './finger-grip.js';
 import { icon, esc, openModal } from './ui.js';
 import { t, plural, i18nError, errorText } from './i18n.js';
 import { unit, inputValue, parseLength, fmtSize, fmtLen } from './units.js';
+import { loadingMarkup, updateLoading } from './loading-ui.js';
 
 const LAYOUTS = [['auto', 'Automaticky podle místa v šuplíku'], ['shared', 'Jeden modul pro všechny nástroje'], ['each', 'Samostatný modul pro každý nástroj']];
 let lastLayout = 'auto', lastDepth = 12; // The choices stay for the next photo of this session.
@@ -51,8 +52,8 @@ function info(contour,scale){
 }
 
 export function openCapture({onAdd,toast=()=>{},maxDepth=()=>MAX_DEPTH}){
-  let closed=false,controller=null,observer=null,cancelCalibration=null;
-  const state={step:0,reference:'a4',mode:'portrait',image:null,imageCanvas:null,corners:[],ruler:[],rulerMm:100,rulerSecond:false,rulerSecondMm:100,rulerPointer:null,calibrationView:{zoom:1,x:0,y:0},referencePoints:[],activePoint:0,detected:false,busy:false,work:null,scale:1,result:null,items:[],showMask:false,error:'',progress:0,message:'Načítám fotografii…'};
+  let closed=false,controller=null,observer=null,cancelCalibration=null,photoRun=0;
+  const state={step:0,reference:'a4',mode:'portrait',image:null,imageCanvas:null,corners:[],ruler:[],rulerMm:100,rulerSecond:false,rulerSecondMm:100,rulerPointer:null,calibrationView:{zoom:1,x:0,y:0},referencePoints:[],activePoint:0,detected:false,busy:false,work:null,scale:1,result:null,items:[],showMask:false,error:'',progress:null,message:'Načítám fotografii…'};
   // state.message, quality reasons and worker errors stay Czech source text; t()/errorText() translate them on display.
   const blurCalibration=()=>cancelCalibration?.();window.addEventListener('blur',blurCalibration);
   const modal=openModal({title:t('Vyfoťte. Obrys připravíme my.'),subtitle:t('Automatické měřítko, rozpoznání nástroje i čisté hrany. Bez kreslení bodů.'),wide:true,body:'',footer:'',onClose:()=>{closed=true;controller?.abort();observer?.disconnect();cancelCalibration?.();window.removeEventListener('blur',blurCalibration);}});
@@ -60,14 +61,24 @@ export function openCapture({onAdd,toast=()=>{},maxDepth=()=>MAX_DEPTH}){
   const errorHTML=()=>`<div id="capture-error" role="alert" class="form-error" ${state.error?'':'hidden'}>${esc(state.error)}</div>`;
   const depthLimit=()=>Math.max(MIN_DEPTH,Math.min(MAX_DEPTH,maxDepth()));
   function setError(text){state.error=text;const el=modal.body.querySelector('#capture-error');if(el){el.textContent=text;el.hidden=!text;}}
-  function reset(){controller?.abort();controller=null;state.step=0;state.error='';state.busy=false;state.image=null;state.work=null;state.items=[];state.result=null;render();}
+  function reset(){photoRun++;controller?.abort();controller=null;state.step=0;state.error='';state.busy=false;state.image=null;state.work=null;state.items=[];state.result=null;render();}
   function progress(event){
     if(closed)return;
-    state.progress=Math.max(state.progress,Math.min(.98,Number(event.progress)||0));
-    if(event.message)state.message=event.message;
-    const label=modal.body.querySelector('#auto-progress-message'),bar=modal.body.querySelector('#auto-progress-bar');
-    if(label)label.textContent=t(state.message);
-    if(bar)bar.style.width=`${Math.round(state.progress*100)}%`;
+    // Parallel recognisers report unrelated stage fractions. There is no shared
+    // denominator, so explain the current work without claiming a total percent.
+    const value=event.progress;
+    state.progress=null;
+    if(event.message)state.message=value>=1?'Dokončuji rozpoznávání a ověřuji rozměry…':event.message;
+    updateLoading(modal.body,{message:t(state.message),progress:state.progress});
+  }
+  function photoLoading(message='Otevírám fotografii a kontroluji její rozlišení…'){
+    state.busy=true;
+    const zone=modal.body.querySelector('.upload-zone');
+    if(zone){
+      zone.setAttribute('data-loading-busy','true');zone.removeAttribute('role');zone.removeAttribute('tabindex');
+      zone.innerHTML=loadingMarkup({title:t('Připravuji fotografii'),message:t(message),detail:t('Fotka se zpracuje ve vašem zařízení a nikam se neodesílá.')});
+    }
+    modal.body.querySelectorAll('#sample-scan,#photo-reference').forEach(element=>element.disabled=true);
   }
   async function loadFile(file){
     if(!file||state.busy)return;
@@ -75,21 +86,19 @@ export function openCapture({onAdd,toast=()=>{},maxDepth=()=>MAX_DEPTH}){
     if(file.size>20*1024*1024)return setError(t('Fotografie je větší než 20 MB. Vyberte menší soubor.'));
     const heic=/\.(heic|heif)$/i.test(file.name)||/^image\/hei[cf](?:-sequence)?(?:;|$)/i.test(file.type);
     if(!/^image\//i.test(file.type)&&!/\.(jpe?g|png|webp|avif|bmp|heic|heif)$/i.test(file.name))return setError(t('Vyberte fotografii z telefonu nebo soubor JPG, PNG či WebP.'));
-    state.busy=true;let bitmap,url;
-    const button=modal.body.querySelector('#gallery-pick');if(button)button.textContent=t('Načítám…');
-    modal.body.querySelector('.upload-zone')?.setAttribute('aria-busy','true');
-    modal.body.querySelectorAll('.upload-zone button,#sample-scan,#photo-reference').forEach(element=>element.disabled=true);
+    const run=++photoRun,current=()=>!closed&&photoRun===run;
+    photoLoading();let bitmap,url;
     try{
-      await frame();if(closed)return;
+      await frame();await frame();if(!current())return;
       // The system image decoder may support HEIC even when ImageBitmap does not
       // (notably phone browsers), so try both native paths before asking for JPG.
       try{
         try{bitmap=await createImageBitmap(file,{imageOrientation:'from-image'});}
-        catch{if(closed)return;url=URL.createObjectURL(file);bitmap=new Image();bitmap.src=url;await bitmap.decode();}
+        catch{if(!current())return;url=URL.createObjectURL(file);bitmap=new Image();bitmap.src=url;await bitmap.decode();}
       }catch{
         throw i18nError(heic?'Tento prohlížeč nedokáže otevřít HEIC. V telefonu fotku nasdílejte nebo uložte jako JPG a vyberte ji znovu.':'Fotografii se nepodařilo otevřít. Zkuste jinou fotku nebo soubor JPG, PNG či WebP.');
       }
-      if(closed)return;
+      if(!current())return;
       const w=bitmap.width||bitmap.naturalWidth,h=bitmap.height||bitmap.naturalHeight;
       if(!Number.isFinite(w)||!Number.isFinite(h)||w<=0||h<=0)throw i18nError('Fotografie nemá platné rozlišení. Zkuste jinou fotku.');
       if(w<100||h<100)throw i18nError('Fotografie je příliš malá. Vyfoťte nástroj znovu blíž a ostřeji.');
@@ -99,9 +108,11 @@ export function openCapture({onAdd,toast=()=>{},maxDepth=()=>MAX_DEPTH}){
       const pixels=ctx.getImageData(0,0,canvas.width,canvas.height);
       // Release the full camera bitmap before recognition allocates its working data.
       bitmap?.close?.();bitmap=null;if(url){URL.revokeObjectURL(url);url=null;}
+      updateLoading(modal.body,{message:t('Hledám měřítko a připravuji nástroje k rozpoznání…')});
+      await frame();if(!current())return;
       await beginPhoto(pixels);
-    }catch(error){if(!closed&&error.name!=='AbortError'){state.busy=false;setError(errorText(error)||t('Fotografii se nepodařilo otevřít.'));toast(t('Fotografii se nepodařilo zpracovat.'));}}
-    finally{bitmap?.close?.();if(url)URL.revokeObjectURL(url);if(!closed){state.busy=false;if(state.step===0)render();}}
+    }catch(error){if(current()&&error.name!=='AbortError'){state.busy=false;setError(errorText(error)||t('Fotografii se nepodařilo otevřít.'));toast(t('Fotografii se nepodařilo zpracovat.'));}}
+    finally{bitmap?.close?.();if(url)URL.revokeObjectURL(url);if(current()){state.busy=false;if(state.step===0)render();}}
   }
   async function beginPhoto(image){
     state.image=image;state.imageCanvas=canvasFromImage(image);state.calibrationView={zoom:1,x:0,y:0};state.error='';state.items=[];state.result=null;
@@ -119,7 +130,7 @@ export function openCapture({onAdd,toast=()=>{},maxDepth=()=>MAX_DEPTH}){
   async function processPhoto(){
     controller?.abort();const run=new AbortController();controller=run;
     const current=()=>!closed&&!run.signal.aborted&&controller===run;
-    state.busy=true;state.step=3;state.progress=.02;state.message='Narovnávám papír a určuju skutečné rozměry…';render();
+    state.busy=true;state.step=3;state.progress=null;state.message='Narovnávám papír a určuju skutečné rozměry…';render();
     try{
       await frame();await frame();if(!current())return;
       if(state.mode==='ruler'){
@@ -148,11 +159,11 @@ export function openCapture({onAdd,toast=()=>{},maxDepth=()=>MAX_DEPTH}){
     modal.body.querySelector('#camera-pick').onclick=e=>{e.stopPropagation();pick('#camera-file');};modal.body.querySelector('#gallery-pick').onclick=e=>{e.stopPropagation();pick('#gallery-file');};
     for(const el of modal.body.querySelectorAll('input[type=file]'))el.onchange=()=>loadFile(el.files[0]);
     zone.ondragover=e=>{e.preventDefault();zone.classList.add('dragover');};zone.ondragleave=()=>zone.classList.remove('dragover');zone.ondrop=e=>{e.preventDefault();zone.classList.remove('dragover');loadFile(e.dataTransfer.files[0]);};
-    modal.body.querySelector('#sample-scan').onclick=async()=>{if(state.busy)return;state.busy=true;await frame();if(!closed)await beginPhoto(samplePhoto());};
+    modal.body.querySelector('#sample-scan').onclick=async()=>{if(state.busy)return;const run=++photoRun;photoLoading('Hledám měřítko a připravuji nástroje k rozpoznání…');await frame();await frame();if(!closed&&photoRun===run)await beginPhoto(samplePhoto());};
     modal.footer.querySelector('#capture-cancel').onclick=modal.close;
   }
   function renderProcessing(){
-    modal.body.innerHTML=steps()+`<div class="capture-grid"><div class="capture-canvas"><canvas id="processing-canvas" aria-label="${esc(t('Zpracovávaná fotografie'))}"></canvas><div class="auto-photo-sweep"></div></div><div class="capture-sidebar auto-sidebar"><div class="auto-status-symbol">${icon('spark')}</div><h3>${t('Pracuji za vás.')}</h3><p>${t('Hledám předměty, odděluji je od pozadí a zpřesňuji hrany. Kontrast ani body nemusíte nastavovat.')}</p><div class="auto-progress" role="progressbar" aria-label="${esc(t('Automatické rozpoznávání'))}"><div id="auto-progress-bar" style="width:${Math.round(state.progress*100)}%"></div></div><p id="auto-progress-message" aria-live="polite">${esc(t(state.message))}</p><p class="muted-note">${t('První použití může chvíli trvat, než se načte rozpoznávač. Další fotky už využijí uložené soubory.')}</p></div></div>`;
+    modal.body.innerHTML=steps()+`<div class="capture-grid"><div class="capture-canvas"><canvas id="processing-canvas" aria-label="${esc(t('Zpracovávaná fotografie'))}"></canvas><div class="auto-photo-sweep" aria-hidden="true"></div></div><div class="capture-sidebar auto-sidebar">${loadingMarkup({title:t('Automatické rozpoznávání'),message:t(state.message),detail:t('Hledám předměty, odděluji je od pozadí a zpřesňuji hrany. Kontrast ani body nemusíte nastavovat.'),progress:state.progress,hooks:{message:{id:'auto-progress-message'},progress:{id:'auto-progress-bar'}}})}<p class="muted-note">${t('První použití může chvíli trvat, než se načte rozpoznávač. Další fotky už využijí uložené soubory.')}</p></div></div>`;
     modal.footer.innerHTML=`<span class="footnote">${t('Fotografie zůstává ve vašem zařízení.')}</span><button class="btn btn-light" id="cancel-processing">${t('Zrušit')}</button>`;
     const canvas=modal.body.querySelector('#processing-canvas');canvas.width=state.image.width;canvas.height=state.image.height;canvas.getContext('2d').putImageData(state.image,0,0);
     modal.footer.querySelector('#cancel-processing').onclick=reset;
@@ -238,8 +249,16 @@ export function openCapture({onAdd,toast=()=>{},maxDepth=()=>MAX_DEPTH}){
         const wrong=chosen.find(i=>!valid(depthOf(i)));
         if(wrong){setError(t('Hloubka kapsy u nástroje {name} musí být od {min} do {max}. Hlubší kapsa potřebuje vyšší inzert.',{name:wrong.name.trim()||t('Nástroj'),min:fmtLen(MIN_DEPTH),max:fmtLen(limit)}));return;}
         if(valid(parseLength(general)))lastDepth=parseLength(general);
-        const tools=chosen.map(i=>({id:uid(),name:i.name.trim()||t('Nástroj'),points:simpleOutline(i.contour.points.map(p=>({x:+((p.x-i.info.minX)/state.scale).toFixed(4),y:+((p.y-i.info.minY)/state.scale).toFixed(4)}))),depth:depthOf(i),x:0,y:0,rotation:0,locked:false,moduleId:null}));
-        state.busy=true;updateSummary();try{await onAdd(tools,{layout:lastLayout});modal.close();}catch(error){state.busy=false;setError(errorText(error));updateSummary();}
+        const run=photoRun,layout=lastLayout;
+        state.busy=true;updateSummary();
+        try{
+          // Leave a paint opportunity before contour conversion and the caller's
+          // potentially synchronous layout work block the main thread.
+          await frame();await new Promise(resolve=>setTimeout(resolve,0));
+          if(closed||photoRun!==run)return;
+          const tools=chosen.map(i=>({id:uid(),name:i.name.trim()||t('Nástroj'),points:simpleOutline(i.contour.points.map(p=>({x:+((p.x-i.info.minX)/state.scale).toFixed(4),y:+((p.y-i.info.minY)/state.scale).toFixed(4)}))),depth:depthOf(i),x:0,y:0,rotation:0,locked:false,moduleId:null}));
+          await onAdd(tools,{layout});if(!closed)modal.close();
+        }catch(error){if(closed)return;state.busy=false;setError(errorText(error));updateSummary();}
       };
       updateSummary();
     }
@@ -249,7 +268,13 @@ export function openCapture({onAdd,toast=()=>{},maxDepth=()=>MAX_DEPTH}){
     const count=state.items.filter(i=>i.checked).length,el=modal.body.querySelector('#trace-summary'),button=modal.footer.querySelector('#capture-add');
     const layout=modal.body.querySelector('#capture-layout-field');if(layout)layout.hidden=count<2;
     if(el)el.textContent=t('{tools} · měřítko načteno',{tools:plural(count,['{n} nástroj připraven','{n} nástroje připraveny','{n} nástrojů připraveno'])});
-    if(button){button.disabled=state.busy||count===0||state.result?.quality.status!=='ready';button.textContent=state.busy?t('Přidávám…'):count?t('Přidat do šuplíku ({n})',{n:count}):t('Vyberte alespoň jeden nástroj');}
+    modal.body.querySelectorAll('input,select,#retake-photo').forEach(element=>element.disabled=state.busy);
+    const back=modal.footer.querySelector('#capture-calibration-back');if(back)back.disabled=state.busy;
+    if(button){
+      button.disabled=state.busy||count===0||state.result?.quality.status!=='ready';
+      if(state.busy){button.setAttribute('data-loading-busy','true');if(!button.querySelector('[data-loading-ui]'))button.innerHTML=loadingMarkup({title:t('Přidávám nástroje do šuplíku…'),compact:true});}
+      else{button.removeAttribute('data-loading-busy');button.textContent=count?t('Přidat do šuplíku ({n})',{n:count}):t('Vyberte alespoň jeden nástroj');}
+    }
   }
   function drawResult(){
     const canvas=modal.body.querySelector('#trace-canvas');if(!canvas)return;const ctx=canvas.getContext('2d'),image=state.work||state.image;

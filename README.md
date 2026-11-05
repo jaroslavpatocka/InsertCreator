@@ -99,6 +99,8 @@ V režimu **3D** otáčíte pohledem tažením levým tlačítkem myši, posouv�
 
 Navigace mění pouze kameru. Nepřesouvá moduly, neotáčí nástroje a nepřidává záznamy do historie úprav projektu.
 
+Načítání a výpočty používají společné animované panely s popisem aktuální činnosti. Při rozpoznávání fotografie vidíte právě probíhající krok; 3D a tvorba tiskových dílů ukazují skutečný počet hotových částí. Balení ZIPu má vlastní stav. Loading se zobrazí také před načtením katalogu, přidáním nástrojů a otevřením projektu. Opakovaný klik nespustí tutéž operaci podruhé a zrušené výsledky se nepoužijí. Při systémovém omezení pohybu zůstává stav čitelný bez rotace a přejíždění.
+
 Hloubka kapes zohledňuje také barevnou vložku dna. Pokud po změně provedení chybí místo, 3D náhled i výrobní dialog nabídnou potřebné zvýšení výšky vložky. Tato výslovná úprava zachová hloubky kapes a lze ji vrátit jedním krokem Zpět.
 
 Příprava ZIPu čeká na opravu nedostatečné výšky. Kontrola zahrnuje právě vybrané moduly a platí i pro jejich jednotlivá tlačítka „Stáhnout tiskové díly“.

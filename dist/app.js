@@ -1,4 +1,5 @@
 import {FLOOR_THICKNESS,materialConfig,materialSlots,maxPocketDepth,requiredInsertHeight} from './print-material.js';
+import {loadingMarkup,updateLoading} from './loading-ui.js';
 import {createManufacturingClient} from './manufacturing-client.js';
 import {bounds,transformedPoints,autoArrange,resizeModule,validateLayout,createDemoProject} from './geometry.js';
 import {previewGeometryKey,createCamera3D,normalizeCamera3D} from './preview3d.js';
@@ -188,7 +189,7 @@ function smartArrangeProject(){
 }
 async function runSmartArrange(mode,merge){
   const before=clone(project),definitions=mode==='sets'?findToolSets(before).sets:[],controller=new AbortController(),job={controller,key:same(project),done:false};
-  const modal=openModal({title:tr('Rozložit nástroje'),subtitle:mode==='sets'?tr('Sady nástrojů: společný směr a sjednocené moduly.'):tr('Nejmenší plocha: porovnám bezpečné varianty a společné moduly.'),body:tr('<div class="smart-layout-progress" role="status" aria-live="polite"><p data-smart-message>Připravuji výpočet…</p><progress data-smart-progress max="1" value="0" aria-label="Průběh chytrého rozvržení"></progress><small data-smart-percent>0 %</small></div>'),footer:tr('<span class="footnote">Sestavu můžete během výpočtu ponechat beze změny.</span><button class="btn btn-light" data-smart-cancel>Zrušit</button>'),onClose:()=>{if(!job.done)controller.abort();}});
+  const modal=openModal({title:tr('Rozložit nástroje'),subtitle:mode==='sets'?tr('Sady nástrojů: společný směr a sjednocené moduly.'):tr('Nejmenší plocha: porovnám bezpečné varianty a společné moduly.'),body:loadingMarkup({title:tr('Rozkládám nástroje'),message:tr('Připravuji výpočet…'),detail:tr('Porovnávám rozmístění a kontroluji místo pro každý nástroj.'),hooks:{message:{'data-smart-message':''},progress:{'data-smart-progress':''},percent:{'data-smart-percent':''}}}),footer:tr('<span class="footnote">Sestavu můžete během výpočtu ponechat beze změny.</span><button class="btn btn-light" data-smart-cancel>Zrušit</button>'),onClose:()=>{if(!job.done)controller.abort();}});
   smartLayoutRun=job;
   const finishUI=(title,body)=>{modal.body.innerHTML=`<div class="smart-layout-result"><h3>${esc(title)}</h3>${body}</div>`;modal.footer.innerHTML=`<span></span><button class="btn btn-primary" data-smart-close>${tr('Hotovo')}</button>`;modal.footer.querySelector('[data-smart-close]').onclick=modal.close;};
   modal.el.querySelector('[data-smart-cancel]').onclick=()=>{controller.abort();modal.close();toast(tr('Chytré rozvržení zrušeno. Sestava se nezměnila.'));};
@@ -202,8 +203,10 @@ async function runSmartArrange(mode,merge){
     let result,optimizerError=null;
     try{result=await runSmartLayout(baseline,{mode,moduleShape:smartShape,merge,signal:controller.signal,onProgress:event=>{
       if(smartLayoutRun!==job||controller.signal.aborted||!modal.el.isConnected)return;
-      const value=Math.max(0,Math.min(1,Number(event?.progress)||0));job.lastMessage=event?.message?smartMessage(event.message):job.lastMessage;modal.body.querySelector('[data-smart-progress]').value=value;modal.body.querySelector('[data-smart-percent]').textContent=Math.round(value*100)+' %';modal.body.querySelector('[data-smart-message]').textContent=smartMessage(event?.message);
+      const value=Number.isFinite(event?.progress)?Math.max(0,Math.min(1,event.progress)):null;job.lastMessage=event?.message?smartMessage(event.message):job.lastMessage;updateLoading(modal.body,{message:smartMessage(event?.message),progress:value});
     }});}catch(error){if(controller.signal.aborted)throw error;optimizerError=error;result={tools:baseline.tools,modules:baseline.modules};}
+    if(controller.signal.aborted||smartLayoutRun!==job||!modal.el.isConnected)return;
+    updateLoading(modal.body,{message:tr('Ověřuji výsledné rozložení…'),progress:null});await paintOpportunity();
     if(controller.signal.aborted||smartLayoutRun!==job||!modal.el.isConnected)return;
     if(same(project)!==job.key)throw Error(tr('Sestava se během výpočtu změnila. Spusťte chytré rozvržení znovu.'));
     let next=baseline;
@@ -607,7 +610,7 @@ function labelStatus(modules=project.modules,summary=null){
   const ids=new Set(modules.map(module=>module.id)),known=cachedLabels();
   const plan=summary||known&&{labels:known.labels.filter(label=>ids.has(label.moduleId)),skipped:known.skipped.filter(label=>ids.has(label.moduleId))};
   if(!plan)ensureLabels();
-  return '<div data-label-status="'+esc(JSON.stringify([...ids]))+'">'+(plan?labelStatusContent(plan):'<p class="muted-note" role="status">'+tr('Připravuji popisky…')+'</p>')+'</div>';
+  return '<div data-label-status="'+esc(JSON.stringify([...ids]))+'">'+(plan?labelStatusContent(plan):loadingMarkup({title:tr('Připravuji popisky…'),compact:true}))+'</div>';
 }
 function inspectorSection(key,title,body){return `<details class='inspector-section' data-inspector-section='${key}'><summary>${title}</summary><div class='inspector-section-body'>${body}</div></details>`;}
 function bulkSelectionPanel(){
@@ -828,17 +831,19 @@ function liveEngine(){
 }
 function previewNotice(svg,text,busy=false,progress=null){
   let notice=svg.parentElement?.querySelector('[data-preview-state]');
-  if(!notice){notice=document.createElement('div');notice.dataset.previewState='';notice.className='preview-state';notice.setAttribute('role','status');notice.setAttribute('aria-live','polite');svg.parentElement?.append(notice);}
+  if(!notice){notice=document.createElement('div');notice.dataset.previewState='';notice.className='preview-state';svg.parentElement?.append(notice);}
   const failed=Number(progress?.failed)>0,blocked=busy||failed,area=svg.parentElement;
-  area?.classList.toggle('preview-loading',blocked);area?.setAttribute('aria-busy',String(busy));
+  area?.classList.toggle('preview-loading',blocked);area?.setAttribute('data-preview-busy',String(busy));
   if(blocked)svg.setAttribute('aria-hidden','true');else svg.removeAttribute('aria-hidden');
-  notice.hidden=!(text||blocked);notice.setAttribute('aria-busy',String(busy));notice.classList.toggle('preview-error',failed);
+  notice.hidden=!(text||blocked);notice.dataset.previewBusy=String(busy);notice.classList.toggle('preview-error',failed&&!busy);
   if(busy){
     const total=Number(progress?.total)||0,ready=Number(progress?.ready)||0;
-    notice.innerHTML=`<span class="spinner preview-spinner" aria-hidden="true"></span><strong>${esc(tr('Načítání 3D náhledu…'))}</strong><span>${esc(text)}</span>${total?`<progress max="${total}" value="${ready}" aria-label="${esc(tr('Načítání 3D náhledu…'))}"></progress>`:''}`;
+    const state={title:tr('Načítání 3D náhledu…'),message:text,detail:tr('Model se zobrazí po dokončení všech modulů.'),progress:total?{value:ready,max:total}:null};
+    if(!updateLoading(notice,state))notice.innerHTML=loadingMarkup(state);
+    notice.querySelector('.loading-ui__indicator')?.classList.add('preview-spinner');
   }else if(failed){
-    notice.innerHTML=`<strong>${esc(tr('3D náhled se nepodařilo dokončit.'))}</strong><span>${esc(text)}</span>${pocketHeightControls(false)}<button class="btn btn-light" data-action="retry-preview">${esc(tr('Zkusit znovu'))}</button>`;
-  }else notice.textContent=text;
+    notice.innerHTML=`<strong>${esc(tr('3D náhled se nepodařilo dokončit.'))}</strong><span role="alert">${esc(text)}</span>${pocketHeightControls(false)}<button class="btn btn-light" data-action="retry-preview">${esc(tr('Zkusit znovu'))}</button>`;
+  }else notice.innerHTML=text?`<span role="status">${esc(text)}</span>`:'';
 }
 function applyPreviewFrame(svg,result,signature,viewport){
   const aspect=viewport.width/viewport.height,fit=result.frame.fitSize;
@@ -1067,7 +1072,7 @@ function moveToCategory(index,category){
   writeLocal(libraryKey,library);return moved.length;
 }
 function libraryCard(t,i){const current=toolCategory(t);return`<div class="library-item"><span class="tool-thumb">${thumb(t)}</span><div><strong>${esc(t.name)}${unitBadge(t.unit)}</strong><p>${fmtSize(bounds(t).width,bounds(t).height,{unit:toolUnit(t)})}</p><select class="library-category" data-library-category="${i}" aria-label="${tr('Kategorie nástroje {name}',{name:esc(t.name)})}">${CATEGORIES.map(c=>`<option value="${c.id}" ${c.id===current?'selected':''}>${esc(categoryName(c))}</option>`).join('')}</select></div><button class="btn btn-light" data-library-add="${i}" aria-label="${tr('Přidat {name} do sestavy',{name:esc(t.name)})}">${icon('plus')}</button><button class="icon-btn" data-library-remove="${i}" aria-label="${tr('Odstranit {name} z knihovny',{name:esc(t.name)})}">${icon('trash')}</button></div>`;}
-function openLibrary(){const mine=()=>({tools:library,card:libraryCard,empty:`<p class="empty-note">${tr('Vyfoťte první nástroj nebo vyberte obrys z Katalogu.')}</p>`,footer:`<span class="footnote">${tr('Knihovna je uložená v tomto prohlížeči.')}</span><button class="btn btn-primary" data-capture>${icon('camera')}${tr('Vyfotit nástroj')}</button>`});const m=openModal({title:tr('Vaše knihovna nástrojů'),subtitle:tr('Jednou načtený obrys můžete použít v každém dalším šuplíku.'),wide:true});const folders=mountLibraryFolders(m,{mine,onAdd:(tools,opts={})=>{addTools(tools,{...opts,offerFit:true,name:opts.set?.name||opts.group?.name});m.close();},onSave:saveToLibrary});m.el.onclick=e=>{const add=e.target.closest('[data-library-add]'),remove=e.target.closest('[data-library-remove]');if(add){try{addTools([clone(library[Number(add.dataset.libraryAdd)])]);m.close();}catch(error){toast(errorText(error));}}if(remove){library.splice(Number(remove.dataset.libraryRemove),1);writeLocal(libraryKey,library);folders.refresh();}if(e.target.closest('[data-capture]'))capture();};m.el.onchange=e=>{const select=e.target.closest('[data-library-category]');if(!select)return;const index=select.dataset.libraryCategory,category=select.value,moved=moveToCategory(Number(index),category),name=categoryName(CATEGORIES.find(c=>c.id===category));folders.refresh();m.el.querySelector(`[data-library-category="${index}"]`)?.focus();toast(tr(moved>1?'Sada přesunuta do kategorie {name}.':'Nástroj přesunut do kategorie {name}.',{name}));};}
+function openLibrary(){const mine=()=>({tools:library,card:libraryCard,empty:`<p class="empty-note">${tr('Vyfoťte první nástroj nebo vyberte obrys z Katalogu.')}</p>`,footer:`<span class="footnote">${tr('Knihovna je uložená v tomto prohlížeči.')}</span><button class="btn btn-primary" data-capture>${icon('camera')}${tr('Vyfotit nástroj')}</button>`});const m=openModal({title:tr('Vaše knihovna nástrojů'),subtitle:tr('Jednou načtený obrys můžete použít v každém dalším šuplíku.'),wide:true});const folders=mountLibraryFolders(m,{mine,onAdd:(tools,opts={})=>{addTools(tools,{...opts,offerFit:true,name:opts.set?.name||opts.group?.name});m.close();},onSave:saveToLibrary});m.el.onclick=e=>{if(m.el.dataset.libraryBusy==='true')return;const add=e.target.closest('[data-library-add]'),remove=e.target.closest('[data-library-remove]');if(add){void addLibraryItem(m,Number(add.dataset.libraryAdd));return;}if(remove){library.splice(Number(remove.dataset.libraryRemove),1);writeLocal(libraryKey,library);folders.refresh();}if(e.target.closest('[data-capture]'))capture();};m.el.onchange=e=>{if(m.el.dataset.libraryBusy==='true')return;const select=e.target.closest('[data-library-category]');if(!select)return;const index=select.dataset.libraryCategory,category=select.value,moved=moveToCategory(Number(index),category),name=categoryName(CATEGORIES.find(c=>c.id===category));folders.refresh();m.el.querySelector(`[data-library-category="${index}"]`)?.focus();toast(tr(moved>1?'Sada přesunuta do kategorie {name}.':'Nástroj přesunut do kategorie {name}.',{name}));};}
 function createDrawer(){
   const draft=blankProject(),u=getAppUnit();
   const modal=openModal({title:tr('Nový šuplík'),subtitle:tr('Zadejte název a skutečné vnitřní rozměry šuplíku.'),body:`${input(tr('Název šuplíku'),'','drawerName',{type:'text'})}<div class="fields-row">${input(tr('Vnitřní šířka'),draft.width,'drawerWidth',{unit:u,min:42,max:3000})}${input(tr('Vnitřní hloubka'),draft.height,'drawerHeight',{unit:u,min:42,max:3000})}</div><p class="muted-note unit-hint">${tr('Lze zadat i jiné jednotky: 12 in, 3 1/2" nebo 30 cm.')}</p>`,footer:`<span class="footnote">${tr('Každý šuplík má vlastní rozměry a sestavu.')}</span><button class="btn btn-primary" data-create-drawer>${tr('Vytvořit šuplík')}</button>`});
@@ -1077,6 +1082,31 @@ function createDrawer(){
     if(width<42-.02||height<42-.02||width>3000.02||height>3000.02)return toast(tr('Zadejte hodnotu od {min} do {max}.',{min:fmtLen(42,{unit:u}),max:fmtLen(3000,{unit:u})}));
     try{const next=validateProject({...draft,name,width:Math.min(3000,Math.max(42,width)),height:Math.min(3000,Math.max(42,height))});switchProject(next);toast(tr('Nový šuplík vytvořen.'));}catch(error){toast(errorText(error));}
   };
+}
+async function addLibraryItem(modal,index){
+  if(modal.el.dataset.libraryBusy==='true'||!library[index])return;
+  const item=clone(library[index]);modal.el.dataset.libraryBusy='true';
+  const controls=[...modal.body.querySelectorAll('button,input,select')].map(element=>({element,disabled:element.disabled}));controls.forEach(({element})=>element.disabled=true);
+  const status=document.createElement('div');status.dataset.libraryOperation='';status.className='loading-operation';status.innerHTML=loadingMarkup({title:tr('Přidávám nástroje do šuplíku…'),message:tr('Připravuji obrysy a jejich rozložení.'),compact:true});modal.body.prepend(status);
+  try{await paintOpportunity();if(!modal.el.isConnected)return;addTools([item]);modal.close();}
+  catch(error){if(modal.el.isConnected)toast(errorText(error));}
+  finally{delete modal.el.dataset.libraryBusy;status.remove();controls.forEach(({element,disabled})=>element.disabled=disabled);}
+}
+async function importProjectFile(file){
+  if(file.size>12*1024*1024)return toast(tr('Projekt je příliš velký. Maximum je 12 MB.'));
+  let closed=false;
+  const modal=openModal({title:tr('Otevírám projekt…'),body:`<div data-project-import-progress>${loadingMarkup({title:tr('Otevírám projekt…'),message:tr('Načítám uložené rozměry a nástroje.'),detail:file.name||''})}</div>`,footer:`<button class="btn btn-light" data-import-cancel>${tr('Zrušit')}</button>`,onClose:()=>{closed=true;}});
+  modal.el.querySelector('[data-import-cancel]').onclick=modal.close;
+  try{
+    await paintOpportunity();if(closed)return;
+    const text=await file.text();if(closed||!modal.el.isConnected)return;
+    updateLoading(modal.body,{message:tr('Kontroluji rozměry a uložené nástroje…')});await paintOpportunity();if(closed)return;
+    const data=JSON.parse(text);if(data.schemaVersion&&data.schemaVersion!==1)throw i18nError('Tato verze projektu zatím není podporovaná.');
+    const imported=validateProject(data);imported.id=uid();switchProject(imported);toast(tr('Projekt otevřen. Původní projekty zůstaly uložené.'));
+  }catch(error){
+    if(closed)return;const message=tr('Projekt nelze otevřít: {error}',{error:errorText(error)});
+    modal.body.innerHTML=`<div class="issue-box" role="alert">${esc(message)}</div>`;modal.footer.innerHTML=`<button class="btn btn-light" data-import-close>${tr('Zavřít')}</button>`;modal.el.querySelector('[data-import-close]').onclick=modal.close;toast(message);
+  }
 }
 function openProjects(){persist();const m=openModal({title:tr('Moje šuplíky'),subtitle:tr('Každý šuplík má vlastní název, rozměry a sestavu. Pro přenos si stáhněte JSON.'),body:`<button class="btn btn-primary" data-new>${icon('plus')}${tr('Nový šuplík')}</button><button class="btn btn-light" data-import>${icon('upload')}${tr('Otevřít JSON')}</button>${projects.map(p=>`<div class="project-card"><div><h3>${esc(p.name)}</h3><p>${fmtSize(p.width,p.height,{unit:p.unit||getAppUnit()})} · ${plural(p.tools.length,['{n} nástroj','{n} nástroje','{n} nástrojů'])} · ${plural(p.modules.length,['{n} modul','{n} moduly','{n} modulů'])}${p.id===project.id?' · '+tr('otevřený'):''}</p></div><button class="btn btn-light" data-open="${esc(p.id)}">${tr('Otevřít')}</button>${p.id!==project.id?`<button class="icon-btn" data-remove-project="${esc(p.id)}" aria-label="${tr('Smazat šuplík {name}',{name:esc(p.name)})}">${icon('trash')}</button>`:''}</div>`).join('')}`,footer:`<span class="footnote">${tr('Smazání dat prohlížeče odstraní místní šuplíky. JSON je vaše přenosná záloha.')}</span><button class="btn btn-light" data-demo>${tr('Ukázkový šuplík')}</button>`});m.el.onclick=e=>{if(e.target.closest('[data-new]'))createDrawer();if(e.target.closest('[data-import]'))$('#project-file').click();if(e.target.closest('[data-demo]'))switchProject(demoProject());const op=e.target.closest('[data-open]'),rm=e.target.closest('[data-remove-project]');if(op)switchProject(projects.find(p=>p.id===op.dataset.open));if(rm){projects=projects.filter(p=>p.id!==rm.dataset.removeProject);writeLocal(storageKey,projects);render();openProjects();}};}
 function help(){
@@ -1108,17 +1138,38 @@ function exportModulePicker(){
   const ids=exportModuleIds();
   return `<section class='export-module-picker' aria-label='${tr('Moduly pro tisk')}'><div class='export-module-controls'><strong>${tr('Vybráno {n} z {total}',{n:ids.size,total:project.modules.length})}</strong><button type='button' class='btn btn-light' data-export-select='all'>${tr('Označit vše')}</button><button type='button' class='btn btn-light' data-export-select='none'>${tr('Zrušit označení')}</button></div><div class='export-module-list'>${project.modules.map(module=>`<label class='export-module-row'><input type='checkbox' data-export-module='${esc(module.id)}' ${ids.has(module.id)?'checked':''}><span><strong>${esc(module.name)}</strong><small>${fmtSize(module.width-.5,module.height-.5)} · ${tr(fitsExportBed(module)?'Vejde se na podložku':'Model se rozřeže na tiskové díly')}</small></span></label>`).join('')||`<p>${tr('Zatím žádné moduly.')}</p>`}</div><p class='muted-note'>${tr('Řeže se pouze 3D model. Moduly, nástroje ani jejich poloha v šuplíku se nemění.')}</p></section>`;
 }
+function fileLoadingState(operation,snapshot,event={}){
+  const titles={export:tr('Vytvářím tiskové díly'),baseplate:tr('Vytvářím základnu Gridfinity'),'joint-fit':tr('Vytvářím zkušební spojku'),'fit-pdf':tr('Připravuji PDF v měřítku 1:1'),'fit-stl':tr('Vytvářím zkušební díly'),svg:tr('Vytvářím soubor {format}',{format:'SVG'}),dxf:tr('Vytvářím soubor {format}',{format:'DXF'})};
+  let message=operation==='fit-pdf'?tr('Sestavuji stránky ve skutečném měřítku…'):tr('Kontroluji podklady a připravuji výpočet…'),progress=null,detail='';
+  if(event.stage==='planning')message=tr('Plánuji tiskové díly…');
+  if(event.stage==='cutting'){
+    message=tr('Vytvářím geometrii tiskových dílů…');
+    if(Number.isFinite(event.completed)&&event.total>0){progress={value:event.completed,max:event.total};detail=tr('Hotovo {completed} z {total} dílů',{completed:event.completed,total:event.total});}
+    const module=snapshot.modules?.find(module=>module.id===event.moduleId);if(module)detail=[module.name,detail].filter(Boolean).join(' · ');
+  }
+  if(event.stage==='complete')message=tr('Dokončuji výrobní data…');
+  if(event.stage==='packaging')message=tr('Baluji hotové soubory do ZIPu…');
+  if(event.stage==='packaged'){message=tr('ZIP je připravený ke stažení.');progress=1;}
+  if(Number.isFinite(event.files))detail=tr('Soubory v balíčku: {n}',{n:event.files});
+  if(event.message)message=tr(event.message);
+  return{title:titles[operation]||tr('Připravuji soubory…'),message,detail,progress};
+}
+function analysisLoadingMarkup(title=tr('Kontroluji tiskové díly na pozadí…')){
+  return loadingMarkup({title,message:tr('Ověřuji rozměry, kapsy a tiskové provedení.'),compact:true});
+}
+function showAnalysisLoading(element,title){
+  element.dataset.analysisBusy='true';element.innerHTML=analysisLoadingMarkup(title);
+}
 async function runFileTask(operation,snapshot,options,title,delivery,success=''){
   analysisClient.cancel();previewClient.cancel();previewSequence++;fileBusy=true;const jobId=++fileJobId,key=same(project),controller=new AbortController();let finished=false;
   const release=()=>{if(jobId!==fileJobId)return;fileBusy=false;if(view==='3d')setTimeout(()=>renderBoard(),0);else ensureLabels();};
-  const modal=openModal({title,body:'<progress data-print-batch-progress max="1" value="0"></progress><p data-print-batch-status data-baseplate-progress role="status" aria-live="polite">'+tr('Připravuji…')+'</p>',footer:'<button class="btn btn-light" data-print-batch-cancel data-baseplate-cancel>'+tr('Zrušit')+'</button>',onClose:()=>{if(!finished)controller.abort();release();}});
+  const modal=openModal({title,body:loadingMarkup({...fileLoadingState(operation,snapshot),hooks:{progress:{'data-print-batch-progress':''},message:{'data-print-batch-status':'','data-baseplate-progress':''}}}),footer:'<button class="btn btn-light" data-print-batch-cancel data-baseplate-cancel>'+tr('Zrušit')+'</button>',onClose:()=>{if(!finished)controller.abort();release();}});
   modal.el.querySelector('[data-print-batch-cancel]').onclick=modal.close;
   try{
     await paintOpportunity();if(controller.signal.aborted||!modal.el.isConnected)return null;
     const result=await fileClient.run(operation,snapshot,{...backgroundOptions(),...options,signal:controller.signal,onProgress:event=>{
       if(!modal.el.isConnected||controller.signal.aborted)return;
-      modal.el.querySelector('[data-print-batch-progress]').value=Math.max(0,Math.min(1,Number(event?.progress)||0));
-      modal.el.querySelector('[data-print-batch-status]').textContent=event?.message?tr(event.message):tr('Připravuji…');
+      updateLoading(modal.body,fileLoadingState(operation,snapshot,event));
     }});
     if(controller.signal.aborted||!modal.el.isConnected)return null;
     if(same(project)!==key)throw i18nError('Sestava se mezitím změnila. Spusťte export znovu.');
@@ -1149,9 +1200,12 @@ function exportGridfinityBaseplate(){
 // A layout that would leave tools outside the drawer is not applied; joints then appear only where there is room.
 async function setConnectors(on,modal,session,redraw){
   const snapshot=clone(project),key=same(project),status=modal.el.querySelector('[data-export-analysis]');clearTimeout(session.timer);session.connectorsBusy=true;session.done=false;analysisClient.cancel();
-  status.setAttribute('aria-busy','true');status.textContent=tr('Připravuji spojky…');modal.el.querySelector('[data-do-export]').disabled=true;modal.el.querySelectorAll('[data-fit-pdf],[data-fit-stl],#export-joint-fit').forEach(button=>button.disabled=true);
+  status.dataset.analysisBusy='true';status.innerHTML=loadingMarkup({title:tr('Připravuji spojky…'),message:tr('Hledám bezpečné spojení tiskových dílů.'),compact:true});modal.el.querySelector('[data-do-export]').disabled=true;modal.el.querySelectorAll('[data-fit-pdf],[data-fit-stl],#export-joint-fit').forEach(button=>button.disabled=true);
   try{
-    const result=await fileClient.run('connectors',snapshot,{...backgroundOptions(),enabled:on,signal:session.controller.signal});
+    const result=await fileClient.run('connectors',snapshot,{...backgroundOptions(),enabled:on,signal:session.controller.signal,onProgress:event=>{
+      if(session.closed||!modal.el.isConnected)return;
+      updateLoading(status,{message:event.progress>=.5?tr('Ověřuji nové rozložení a spojky…'):tr('Hledám bezpečné spojení tiskových dílů.'),progress:null});
+    }});
     if(session.closed||!modal.el.isConnected||same(project)!==key)return;
     remember();project=result.project;persist();editorNeedsRefresh=true;redraw();
     toast(result.fits?(on?tr('Moduly jsme upravili, aby se spojky vešly mimo nástroje. Krok lze vrátit.'):tr('Moduly mají zase nejmenší možnou velikost. Krok lze vrátit.')):tr('Větší moduly by se do šuplíku nevešly, rozložení zůstává. Spojky vzniknou jen tam, kde je místo.'));
@@ -1177,7 +1231,7 @@ function jointStatus(source,entries,summary=null,jointError=""){
   return toggle+settings+'<p class="muted-note" data-joint-status>'+jointSummary(summary,jointError)+'</p>';
 }
 function jointSummary(plan,error=''){
-  if(error)return esc(errorText(error));if(!plan)return '<span class="spinner"></span> '+tr('Připravuji spojky…');
+  if(error)return esc(errorText(error));if(!plan)return loadingMarkup({title:tr('Připravuji spojky…'),compact:true});
   const n=plan.count??plan.joints?.length??0;
   const count=n?plural(n,['Vznikne {n} spojka.','Vzniknou {n} spojky.','Vznikne {n} spojek.']):tr('Vybrané moduly nemají společnou hranu s místem pro spojku.');
   const cuts=plan.cutCount?' '+tr('Z toho {n} spojek propojuje díly rozdělené podle podložky.',{n:plan.cutCount}):'';
@@ -1207,7 +1261,7 @@ function openExport(){
   let stats=cached?.stats||null,printError=cached?.printError||'',bedError='';
   if(exportFormat==='stl'&&entries.length){try{validatePrintBed({...project,limitToBed:true},entries);}catch(e){bedError=errorText(e);}}
   const bottoms=bottomNames(),mmNote=unit()!=='mm'?`<p class="muted-note">${tr('Exportované soubory jsou vždy v milimetrech, i když editor zobrazuje {unit}.',{unit:unit()})}</p>`:'';
-  const modal=openModal({title:tr('Připraveno k výrobě'),subtitle:tr('Vyberte provedení. Každý modul se stáhne zvlášť v jednom ZIPu.'),body:`<p data-export-analysis role="status" aria-live="polite" aria-busy="${!cached&&exportFormat!=='json'}">${!cached&&exportFormat!=='json'?'<span class="spinner"></span> '+tr('Kontroluji tiskové díly na pozadí…'):''}</p><div class="format-grid">${Object.entries(formats).map(([key,[title,desc]])=>`<button class="format ${exportFormat===key?'active':''}" data-format="${key}"><strong>${title}</strong><span>${desc}</span></button>`).join('')}</div>${exportFormat==='stl'?exportModulePicker():''}${exportFormat!=='json'?`<label class="field"><span>${tr('Co exportovat')}</span><select id="export-scope">${exportFormat==='stl'&&exportScope==='custom'?`<option value="custom" selected>${tr('Označené moduly')}</option>`:''}<option value="all" ${exportScope==='all'?'selected':''}>${tr('Celou sestavu')}</option><option value="selected" ${exportScope==='selected'?'selected':''} ${selectedId?'':'disabled'}>${tr('Vybraný modul')}${m?' · '+esc(m.name):''}</option></select></label>`:''}${exportFormat==='stl'?`<label class="print-toggle"><input id="print-light" type="checkbox" ${project.printMode==='light'?'checked':''}><span><strong>${tr('Úsporný tisk')}</strong><small>${tr('Tenké dno a stěny kolem nástroje. Okolí zůstane otevřené.')}</small></span>${icon('spark')}</label><label class="field"><span>${tr('Dno a uchycení')}</span><select id="print-bottom">${Object.entries(bottoms).map(([key,label])=>`<option value="${key}" ${project.bottomMode===key?'selected':''}>${label}</option>`).join('')}</select></label><p class="muted-note">${project.bottomMode==='grid'?tr('Patky pro podložku Gridfinity. Rastr a rozměry modulů musí být v násobcích 42 mm.'):project.bottomMode==='magnet'?tr('Čtyři kapsy zespodu pro magnety 6 × 2 mm. Strop nad magnetem se automaticky zesílí.'):project.bottomMode==='adhesive'?tr('Rovné spodní plochy pro lepidlo či tenkou oboustrannou pásku. Tloušťku pásky přičtěte k výšce sestavy.'):tr('Rovné dno pro volné položení do šuplíku.')}</p><div data-export-stats>${printSummary(stats)}</div><section class="export-printer"><h3>${tr('Tisková podložka')}</h3><div class="fields-row">${input(tr('Tisková plocha · šířka'),project.bedWidth,'bedWidth',{min:50,max:2000})}${input(tr('Tisková plocha · hloubka'),project.bedHeight,'bedHeight',{min:50,max:2000})}</div>${project.bottomMode==='magnet'?`<div class="fields-row">${input(tr('Průměr kapsy'),project.magnetDiameter,'magnetDiameter',{min:3,max:20})}${input(tr('Hloubka kapsy'),project.magnetDepth,'magnetDepth',{min:1,max:8})}</div>`:''}<p class="muted-note">${tr('Rozměry podložky se kontrolují pouze při exportu STL. Rozvržení šuplíku neovlivňují.')}</p></section><label class="check-row"><input id="export-size-labels" type="checkbox" ${project.sizeLabels?'checked':''}>${tr('Popisky velikostí v modelu')}</label><div data-export-labels>${labelStatus(entries,cached?.labels)}</div>${colorPrintPanel(exportProject)}${jointStatus(exportProject,entries,cached?.joints,cached?.jointError)}${gridfinitySummary()}<div id="bed-warnings"></div>`:''}<div data-export-issues>${exportFormat!=='json'?exportIssues(issues,printError):''}</div>${exportFormat==='svg'||exportFormat==='dxf'?`<p class="muted-note">${tr('Černá / MODULES = obrys modulu, červená / POCKETS = kapsa včetně vůle. Všechny rozměry jsou v mm.')}</p>`:''}${exportFormat!=='json'?mmNote:''}${exportFormat==='json'?`<p class="muted-note">${tr('Uloží kontury, rozměry, provedení a polohy modulů. Na jiném zařízení otevřete JSON přes Moje šuplíky.')}</p>`:`<details class="advanced fit-check"><summary>${tr('Nejdřív ověřit velikost')}</summary><p>${tr('Přiložte nástroj na papír nebo zkuste tenký rámeček. Nemusíte hned tisknout celý inzert.')}</p><div class="test-actions"><button class="btn btn-light" data-fit-pdf ${issues.length||!entries.length?'disabled':''}>${icon('print')}${tr('PDF v měřítku 1:1')}</button><button class="btn btn-light" data-fit-stl ${issues.length||!entries.length?'disabled':''}>${icon('cube')}${tr('Tenká zkouška STL')}</button></div><p class="muted-note">${tr('PDF tiskněte na 100 % a přeměřte kontrolní úsečku 100 mm. Fotografie nemusí zachytit nejširší část vysokého nástroje.')}</p></details>`}`,footer:`<span class="footnote">${exportFormat==='stl'?tr('STL v mm · samostatné uzavřené díly'):tr('Soubory vznikají ve vašem zařízení')}</span><button class="btn btn-primary" data-do-export ${exportFormat!=='json'&&(heightError||issues.length||!entries.length||(exportFormat!=='stl'&&(printError||bedError)))?'disabled':''}>${icon('download')}${exportFormat==='stl'?tr('Připravit a stáhnout ZIP'):tr('Stáhnout {format}',{format:exportFormat.toUpperCase()})}</button>`,onClose:()=>{session.closed=true;clearTimeout(session.timer);session.controller.abort();if(exportSession===session){exportSession=null;resumeEditor();}}});
+  const modal=openModal({title:tr('Připraveno k výrobě'),subtitle:tr('Vyberte provedení. Každý modul se stáhne zvlášť v jednom ZIPu.'),body:`<p data-export-analysis data-analysis-busy="${!cached&&exportFormat!=='json'}">${!cached&&exportFormat!=='json'?analysisLoadingMarkup():''}</p><div class="format-grid">${Object.entries(formats).map(([key,[title,desc]])=>`<button class="format ${exportFormat===key?'active':''}" data-format="${key}"><strong>${title}</strong><span>${desc}</span></button>`).join('')}</div>${exportFormat==='stl'?exportModulePicker():''}${exportFormat!=='json'?`<label class="field"><span>${tr('Co exportovat')}</span><select id="export-scope">${exportFormat==='stl'&&exportScope==='custom'?`<option value="custom" selected>${tr('Označené moduly')}</option>`:''}<option value="all" ${exportScope==='all'?'selected':''}>${tr('Celou sestavu')}</option><option value="selected" ${exportScope==='selected'?'selected':''} ${selectedId?'':'disabled'}>${tr('Vybraný modul')}${m?' · '+esc(m.name):''}</option></select></label>`:''}${exportFormat==='stl'?`<label class="print-toggle"><input id="print-light" type="checkbox" ${project.printMode==='light'?'checked':''}><span><strong>${tr('Úsporný tisk')}</strong><small>${tr('Tenké dno a stěny kolem nástroje. Okolí zůstane otevřené.')}</small></span>${icon('spark')}</label><label class="field"><span>${tr('Dno a uchycení')}</span><select id="print-bottom">${Object.entries(bottoms).map(([key,label])=>`<option value="${key}" ${project.bottomMode===key?'selected':''}>${label}</option>`).join('')}</select></label><p class="muted-note">${project.bottomMode==='grid'?tr('Patky pro podložku Gridfinity. Rastr a rozměry modulů musí být v násobcích 42 mm.'):project.bottomMode==='magnet'?tr('Čtyři kapsy zespodu pro magnety 6 × 2 mm. Strop nad magnetem se automaticky zesílí.'):project.bottomMode==='adhesive'?tr('Rovné spodní plochy pro lepidlo či tenkou oboustrannou pásku. Tloušťku pásky přičtěte k výšce sestavy.'):tr('Rovné dno pro volné položení do šuplíku.')}</p><div data-export-stats>${printSummary(stats)}</div><section class="export-printer"><h3>${tr('Tisková podložka')}</h3><div class="fields-row">${input(tr('Tisková plocha · šířka'),project.bedWidth,'bedWidth',{min:50,max:2000})}${input(tr('Tisková plocha · hloubka'),project.bedHeight,'bedHeight',{min:50,max:2000})}</div>${project.bottomMode==='magnet'?`<div class="fields-row">${input(tr('Průměr kapsy'),project.magnetDiameter,'magnetDiameter',{min:3,max:20})}${input(tr('Hloubka kapsy'),project.magnetDepth,'magnetDepth',{min:1,max:8})}</div>`:''}<p class="muted-note">${tr('Rozměry podložky se kontrolují pouze při exportu STL. Rozvržení šuplíku neovlivňují.')}</p></section><label class="check-row"><input id="export-size-labels" type="checkbox" ${project.sizeLabels?'checked':''}>${tr('Popisky velikostí v modelu')}</label><div data-export-labels>${labelStatus(entries,cached?.labels)}</div>${colorPrintPanel(exportProject)}${jointStatus(exportProject,entries,cached?.joints,cached?.jointError)}${gridfinitySummary()}<div id="bed-warnings"></div>`:''}<div data-export-issues>${exportFormat!=='json'?exportIssues(issues,printError):''}</div>${exportFormat==='svg'||exportFormat==='dxf'?`<p class="muted-note">${tr('Černá / MODULES = obrys modulu, červená / POCKETS = kapsa včetně vůle. Všechny rozměry jsou v mm.')}</p>`:''}${exportFormat!=='json'?mmNote:''}${exportFormat==='json'?`<p class="muted-note">${tr('Uloží kontury, rozměry, provedení a polohy modulů. Na jiném zařízení otevřete JSON přes Moje šuplíky.')}</p>`:`<details class="advanced fit-check"><summary>${tr('Nejdřív ověřit velikost')}</summary><p>${tr('Přiložte nástroj na papír nebo zkuste tenký rámeček. Nemusíte hned tisknout celý inzert.')}</p><div class="test-actions"><button class="btn btn-light" data-fit-pdf ${issues.length||!entries.length?'disabled':''}>${icon('print')}${tr('PDF v měřítku 1:1')}</button><button class="btn btn-light" data-fit-stl ${issues.length||!entries.length?'disabled':''}>${icon('cube')}${tr('Tenká zkouška STL')}</button></div><p class="muted-note">${tr('PDF tiskněte na 100 % a přeměřte kontrolní úsečku 100 mm. Fotografie nemusí zachytit nejširší část vysokého nástroje.')}</p></details>`}`,footer:`<span class="footnote">${exportFormat==='stl'?tr('STL v mm · samostatné uzavřené díly'):tr('Soubory vznikají ve vašem zařízení')}</span><button class="btn btn-primary" data-do-export ${exportFormat!=='json'&&(heightError||issues.length||!entries.length||(exportFormat!=='stl'&&(printError||bedError)))?'disabled':''}>${icon('download')}${exportFormat==='stl'?tr('Připravit a stáhnout ZIP'):tr('Stáhnout {format}',{format:exportFormat.toUpperCase()})}</button>`,onClose:()=>{session.closed=true;clearTimeout(session.timer);session.controller.abort();if(exportSession===session){exportSession=null;resumeEditor();}}});
   const redraw=()=>{const scroll=modal.body.scrollTop,focused=document.activeElement?.id;openExport();const body=document.querySelector('.modal-body');if(body)body.scrollTop=scroll;if(focused)document.getElementById(focused)?.focus();};
   modal.el.querySelector('[data-action="export-baseplate"]')?.addEventListener('click',exportGridfinityBaseplate);
   const setting=(key,value)=>{remember();project[key]=value;persist();editorNeedsRefresh=true;redraw();};
@@ -1249,12 +1303,12 @@ function openExport(){
   const analysisStatus=modal.el.querySelector('[data-export-analysis]'),exportButton=modal.el.querySelector('[data-do-export]');
   function applyAnalysis(result){
     if(session.closed||session.connectorsBusy||!modal.el.isConnected)return;
-    session.done=true;analysisStatus.setAttribute('aria-busy','false');analysisStatus.textContent='';
+    session.done=true;analysisStatus.dataset.analysisBusy='false';analysisStatus.textContent='';
     const statsSlot=modal.el.querySelector('[data-export-stats]');if(statsSlot){
       statsSlot.innerHTML=printSummary(result.stats);
       if(!result.stats&&!result.issues?.length&&!result.printError&&entries.length&&entries.every(fitsExportBed)){
         const button=document.createElement('button');button.type='button';button.className='btn btn-light';button.dataset.computeVolume='';button.textContent=tr('Vypočítat objem modelu');
-        button.onclick=()=>{button.disabled=true;analysisStatus.setAttribute('aria-busy','true');analysisStatus.textContent=tr('Počítám objem modelu…');analyze(true);};statsSlot.append(button);
+        button.onclick=()=>{button.disabled=true;showAnalysisLoading(analysisStatus,tr('Počítám objem modelu…'));analyze(true);};statsSlot.append(button);
       }
     }
     const labels=modal.el.querySelector('[data-export-labels]');if(labels)labels.innerHTML=labelStatus(entries,result.labels);
@@ -1267,14 +1321,17 @@ function openExport(){
     if(session.closed||!modal.el.isConnected||exportFormat==='json')return;
     const snapshot=clone(exportProject),key=same(project);
     try{
-      const result=await analysisClient.run('analyze',snapshot,{...backgroundOptions(),signal:session.controller.signal,stats:exportFormat==='stl'&&(forceStats||snapshot.tools.length<=24&&snapshot.tools.reduce((sum,tool)=>sum+tool.points.length,0)<=4000)});
+      const result=await analysisClient.run('analyze',snapshot,{...backgroundOptions(),signal:session.controller.signal,stats:exportFormat==='stl'&&(forceStats||snapshot.tools.length<=24&&snapshot.tools.reduce((sum,tool)=>sum+tool.points.length,0)<=4000),onProgress:event=>{
+        if(session.closed||same(project)!==key||!modal.el.isConnected)return;
+        updateLoading(analysisStatus,{message:event.stage==='complete'?tr('Dokončuji kontrolu…'):tr('Ověřuji výrobní nastavení…'),progress:null});
+      }});
       if(session.closed||same(project)!==key)return;
       exportAnalysisCache.set(cacheKey,result);while(exportAnalysisCache.size>5)exportAnalysisCache.delete(exportAnalysisCache.keys().next().value);
       applyAnalysis(result);
     }catch(error){
       if(error.name==='AbortError'||session.closed)return;
-      analysisStatus.setAttribute('aria-busy','false');analysisStatus.textContent=errorText(error)+' ';
-      const retry=document.createElement('button');retry.type='button';retry.className='section-link';retry.textContent=tr('Zkusit znovu');retry.onclick=()=>{analysisStatus.setAttribute('aria-busy','true');analysisStatus.textContent=tr('Kontroluji tiskové díly na pozadí…');analyze();};analysisStatus.append(retry);
+      analysisStatus.dataset.analysisBusy='false';analysisStatus.innerHTML=`<span role="alert">${esc(errorText(error))}</span> `;
+      const retry=document.createElement('button');retry.type='button';retry.className='section-link';retry.textContent=tr('Zkusit znovu');retry.onclick=()=>{showAnalysisLoading(analysisStatus);analyze();};analysisStatus.append(retry);
     }
   }
   if(exportFormat!=='json'){
@@ -1551,7 +1608,7 @@ $('#app').addEventListener('pointerup',finishBoardSelection,true);
 $('#app').addEventListener('pointerup',endDrag);$('#app').addEventListener('pointercancel',cancelEditGesture);$('#app').addEventListener('lostpointercapture',cancelEditGesture);window.addEventListener('blur',cancelEditGesture);
 $('#app').addEventListener('keydown',e=>{const group=e.target.closest('[data-module]');if(group&&(e.key==='Enter'||e.key===' ')){e.preventDefault();const m=project.modules.find(m=>m.id===group.dataset.module),t=boardToolFromTarget(e.target,m);if(!m)return;if((e.shiftKey||e.ctrlKey||e.metaKey)&&t)toggleToolSelection(t.id);else{selectBoardTarget(m,t);render();}}});
 document.addEventListener('keydown',e=>{if(e.target.matches('input,textarea,select')||$('#modal-root').children.length)return;if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='z'){e.preventDefault();e.shiftKey?redo():undo();}else if(e.altKey&&e.shiftKey&&!e.ctrlKey&&!e.metaKey&&{ArrowRight:1,ArrowLeft:1,ArrowDown:1,ArrowUp:1}[e.key]){if(moduleFor()){e.preventDefault();stepModule({ArrowRight:'w+',ArrowLeft:'w-',ArrowDown:'h+',ArrowUp:'h-'}[e.key]);}}else if(!e.ctrlKey&&!e.metaKey&&!e.altKey&&e.key.toLowerCase()==='r'){e.preventDefault();try{actions.rotate();}catch(error){toast(errorText(error));}}else if(e.key==='Delete'||e.key==='Backspace'){e.preventDefault();actions.delete();}else if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='s'){e.preventDefault();actions['save-project']();}});
-$('#project-file').addEventListener('change',async e=>{const file=e.target.files[0];e.target.value='';if(!file)return;if(file.size>12*1024*1024)return toast(tr('Projekt je příliš velký. Maximum je 12 MB.'));try{const data=JSON.parse(await file.text());if(data.schemaVersion&&data.schemaVersion!==1)throw i18nError('Tato verze projektu zatím není podporovaná.');const imported=validateProject(data);imported.id=uid();switchProject(imported);toast(tr('Projekt otevřen. Původní projekty zůstaly uložené.'));}catch(error){toast(tr('Projekt nelze otevřít: {error}',{error:errorText(error)}));}});
+$('#project-file').addEventListener('change',e=>{const file=e.target.files[0];e.target.value='';if(file)void importProjectFile(file);});
 document.addEventListener('keydown',e=>{
   if(e.target.matches('input,textarea,select')||$('#modal-root').children.length)return;
   if(drag||resizeDrag){e.preventDefault();e.stopImmediatePropagation();if(e.key==='Escape')cancelEditGesture();return;}

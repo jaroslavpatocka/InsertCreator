@@ -143,7 +143,8 @@ test('a catalogue set saved to "Moje nástroje" is listed as a collapsible set; 
   const sets=[{id:'small',category:'wrenches',name:{cs:'Malá sada',en:'Small set'},items:['w-8','w-10'],unit:'mm',source:{name:'x'}},{id:'big',category:'wrenches',name:{cs:'Velká sada',en:'Big set'},items:['w-8','w-10','w-13'],unit:'mm',source:{name:'x'}}];
   setCatalogSource(async()=>({categories:[{id:'wrenches',cs:'Klíče',en:'Wrenches'}],items,sets}));
   try{
-    await open('catalog');click('[data-set-save="small"]');click('[data-set-save="big"]');
+    await open('catalog');
+    for(const id of ['small','big']){click(`[data-set-save="${id}"]`);await waitFor(()=>!$('[data-catalog-operation]'));}
     const stored=libraryStore().find(t=>t.name==='Očkoplochý klíč 8 mm');
     assert.deepEqual(stored.setNames,['Malá sada','Velká sada']);assert.equal(stored.category,'wrenches');
     click(tab('mine'));

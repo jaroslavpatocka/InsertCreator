@@ -113,6 +113,7 @@ test('a whole catalogue group selected immediately after insertion exposes the s
   const waitFor=async fn=>{const start=Date.now();while(!fn()){if(Date.now()-start>5000)throw Error('Catalogue did not load');await new Promise(resolve=>setTimeout(resolve,10));}};
   await waitFor(()=>$('[data-catalog-kind="sets"]'));click('[data-catalog-kind="sets"]');
   change(`[data-set-layout="${catalogSet.id}"]`,'group');change(`[data-set-arrangement="${catalogSet.id}"]`,'ordered');change(`[data-set-order="${catalogSet.id}"]`,'asc');click(`[data-set-add="${catalogSet.id}"]`);
+  await waitFor(()=>!$('[data-catalog-operation]')&&saved().tools.length===catalogSet.tools.length);
   assert.equal(win.document.querySelectorAll('.tool-row.selected').length,0,'The whole module is selected, rather than one tool');
   const before=saved();assert.equal(before.tools.length,catalogSet.tools.length);assert.equal(before.modules.length,1);
   apply('compact');const after=assertChanged(before,'compact');assertUndoRedo(before,after);

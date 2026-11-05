@@ -45,16 +45,17 @@ test('each-tool catalogue storage requests individual automatic modules in both 
   try{
     win.document.body.innerHTML='<main></main><footer></footer>';
     const body=win.document.querySelector('main'),footer=win.document.querySelector('footer');
+    const settled=async()=>{const start=Date.now();while(body.querySelector('[data-catalog-operation]')){assert.ok(Date.now()-start<5000,'catalogue operation completes');await new Promise(resolve=>setTimeout(resolve,5));}};
     mountLibraryFolders({body,footer},{mine:()=>({tools:[],card:()=>'',empty:'',footer:''}),onAdd:(tools,opts)=>added.push({tools,opts}),onSave:()=>0});
     body.querySelector('[data-library-folder="catalog"]').click();
     for(let attempt=0;attempt<30&&!body.querySelector('[data-set-layout]');attempt++)await new Promise(resolve=>setTimeout(resolve,5));
     const layout=body.querySelector('[data-set-layout]');assert.ok(layout);layout.value='each';layout.dispatchEvent(new win.Event('change',{bubbles:true}));
-    body.querySelector('[data-set-add]').click();
+    body.querySelector('[data-set-add]').click();await settled();
     assert.equal(added.at(-1).opts.set.layout,'auto');assert.equal(added.at(-1).opts.group,undefined);assert.equal(added.at(-1).tools.length,items.length);
     const selected=body.querySelector('[data-catalog-select-set]');selected.checked=true;selected.dispatchEvent(new win.Event('change',{bubbles:true}));
-    footer.querySelector('[data-catalog-add-selected]').click();
+    footer.querySelector('[data-catalog-add-selected]').click();await settled();
     assert.equal(added.at(-1).opts.collections[0].layout,'auto');assert.equal(added.at(-1).opts.collections[0].count,items.length);
-    layout.value='group';layout.dispatchEvent(new win.Event('change',{bubbles:true}));body.querySelector('[data-set-add]').click();
+    layout.value='group';layout.dispatchEvent(new win.Event('change',{bubbles:true}));body.querySelector('[data-set-add]').click();await settled();
     assert.equal(added.at(-1).opts.set.layout,'shared');assert.ok(added.at(-1).opts.group,'a grouped set remains an explicit shared choice');
   }finally{setCatalogSource(null);setLang(oldLang,{save:false});globalThis.document=oldDocument;globalThis.window=oldWindow;win.happyDOM.cancelAsync();}
 });

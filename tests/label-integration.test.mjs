@@ -29,7 +29,7 @@ const click=selector=>{const element=$(selector);assert.ok(element,'Missing '+se
 const action=name=>click(`#app [data-action="${name}"]`);
 const change=(selector,value)=>{const element=$(selector);assert.ok(element,'Missing '+selector);element.value=value;element.dispatchEvent(new win.Event('change',{bubbles:true}));};
 const saved=()=>JSON.parse(localStorage.getItem('suplik-studio-projects-v1')).find(project=>project.id==='label-scope');
-async function analysisReady(){const start=performance.now();while($('[data-export-analysis]')?.getAttribute('aria-busy')==='true'){if(performance.now()-start>5000)assert.fail('Export analysis did not finish');await new Promise(resolve=>nativeTimeout(resolve,5));}}
+async function analysisReady(){const start=performance.now();while($('[data-export-analysis]')?.getAttribute('data-analysis-busy')==='true'){if(performance.now()-start>5000)assert.fail('Export analysis did not finish');await new Promise(resolve=>nativeTimeout(resolve,5));}}
 
 
 test('the 2D board and raw engraving share one Y-down layout before the whole STL conversion',()=>{

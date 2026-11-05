@@ -50,7 +50,7 @@ async function paint3D(){
   await new Promise(resolve=>nativeTimeout(resolve,0));
   const started=performance.now();
   while(performance.now()-started<10000){
-    if(!$('[data-preview-state][aria-busy="true"]')&&$('#board-svg [data-module="b"]'))return;
+    if(!$('[data-preview-state][data-preview-busy="true"]')&&$('#board-svg [data-module="b"]'))return;
     await new Promise(resolve=>nativeTimeout(resolve,2));
   }
   assert.fail('3D module facets did not finish rendering: '+$('[data-preview-state]')?.textContent);

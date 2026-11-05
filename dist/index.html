@@ -4,10 +4,10 @@
   <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="theme-color" content="#edaa42"><meta name="description" content="Z fotky nástroje k přesnému inzertu. Český editor modulárních organizérů do šuplíku s lokálním zpracováním a exportem STL, SVG a DXF.">
   <link rel="icon" href="./icon.svg" type="image/svg+xml"><link rel="manifest" href="./manifest.webmanifest">
-  <link rel="stylesheet" href="./style.css"><title>InsertCreator — místo pro každý nástroj</title>
+  <link rel="stylesheet" href="./style.css"><link rel="stylesheet" href="./loading-ui.css"><title>InsertCreator — místo pro každý nástroj</title>
 </head>
 <body>
-<div id="app"></div>
+<div id="app"><div class="app-startup"><div class="loading-ui loading-ui--panel" data-loading-ui data-loading-determinate="false" role="status" aria-live="polite" aria-atomic="false" aria-busy="true"><span class="loading-ui__indicator" aria-hidden="true"><span class="loading-ui__orbit"></span><span class="loading-ui__core"><svg viewBox="0 0 24 24" focusable="false"><path d="m12 3 8 4.5v9L12 21l-8-4.5v-9L12 3Zm0 9 8-4.5M12 12v9M4 7.5l8 4.5m-4-6.8 8 4.6"/></svg></span></span><span class="loading-ui__content"><strong class="loading-ui__title" data-loading-title="">InsertCreator</strong><span class="loading-ui__message" data-loading-message="">Načítám aplikaci…</span><span class="loading-ui__meter"><span class="loading-ui__track"><progress data-loading-progress="" aria-label="InsertCreator" max="1"></progress><span class="loading-ui__sweep" aria-hidden="true"></span></span><span class="loading-ui__percent" data-loading-percent="" aria-hidden="true" hidden></span></span><span class="loading-ui__detail" data-loading-detail="" hidden></span></span></div></div></div>
 <div id="modal-root"></div>
 <div id="toast" role="status" aria-live="polite"></div>
 <input type="file" id="project-file" accept=".json,application/json" hidden>

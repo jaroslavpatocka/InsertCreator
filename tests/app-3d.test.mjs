@@ -20,7 +20,7 @@ async function paint(){
     const callbacks=[...pendingFrames.values()];pendingFrames.clear();
     for(const callback of callbacks)callback(performance.now());
     await Promise.resolve();
-    if(!pendingFrames.size&&!win.document.querySelector('[data-preview-state][aria-busy="true"]'))return;
+    if(!pendingFrames.size&&!win.document.querySelector('[data-preview-state][data-preview-busy="true"]'))return;
     await new Promise(resolve=>nativeSetTimeout(resolve,2));
   }
   assert.fail('camera painting and the asynchronous preview must settle: '+win.document.querySelector('[data-preview-state]')?.textContent);

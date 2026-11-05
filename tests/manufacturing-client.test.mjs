@@ -95,11 +95,12 @@ test('changing only bed dimensions reuses the exact cached label and volume comp
 });
 
 test('actual worker transfers closed print files and a bundled colour ZIP without touching source',async()=>{
-  const client=createManufacturingClient({workerFactory:realWorker}),input={...fixture(),sizeLabels:true,multiMaterial:{enabled:true,floor:true,text:true}},before=structuredClone(input);
+  const client=createManufacturingClient({workerFactory:realWorker}),input={...fixture(),sizeLabels:true,multiMaterial:{enabled:true,floor:true,text:true}},before=structuredClone(input),events=[];
   try{
-    const result=await client.run('export',input,{bundle:true,readme:'InsertCreator\nProduction parts',jointNote:'XY clearance 0.20 mm',lang:'en'});
+    const result=await client.run('export',input,{bundle:true,readme:'InsertCreator\nProduction parts',jointNote:'XY clearance 0.20 mm',lang:'en',onProgress:event=>events.push(event)});
     assert.ok(result.zip instanceof Uint8Array);assert.equal(result.files,undefined);assert.ok(result.manifest.colors);assert.ok(result.parts.length);
     const files=unzip(result.zip);assert.equal(result.fileCount,files.size);assert.deepEqual(JSON.parse(new TextDecoder().decode(files.get('projekt.json'))).project,input);
+    assert.deepEqual(events.slice(-2),[{stage:'packaging',files:files.size},{stage:'packaged',progress:1,files:files.size}], 'ZIP progress reports the actual generated file count before completion');
     const readme=new TextDecoder().decode(files.get('README.txt'));assert.match(readme,/filament/i);assert.match(readme,/XY clearance/);
     for(const [name,bytes] of files)if(name.endsWith('.stl'))validatePrintMesh(decode(bytes));
     assert.ok([...files.keys()].some(name=>name.endsWith('.3mf')));assert.deepEqual(input,before);

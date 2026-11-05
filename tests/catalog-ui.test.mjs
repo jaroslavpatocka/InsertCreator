@@ -36,6 +36,7 @@ const $=s=>win.document.querySelector(s);
 const $$=s=>[...win.document.querySelectorAll(s)];
 const click=s=>{const el=typeof s==='string'?$(s):s;assert.ok(el,'Missing '+s);el.click();};
 const waitFor=async fn=>{const start=Date.now();while(!fn()){if(Date.now()-start>5000)throw Error('Timed out waiting for UI');await new Promise(r=>setTimeout(r,10));}};
+const clickOperation=async target=>{click(target);await waitFor(()=>!$('[data-catalog-operation]'));};
 const saved=()=>JSON.parse(localStorage.getItem('suplik-studio-projects-v1')).find(p=>p.id===JSON.parse(localStorage.getItem('suplik-studio-current')));
 const libraryStore=()=>JSON.parse(localStorage.getItem('suplik-studio-library-v1')||'[]');
 const openLibrary=()=>click('#app [data-action="library"]');
@@ -97,7 +98,7 @@ test('category chips, system filter and search in Czech and English',async()=>{
 test('adding one item creates a drawer tool with the item unit and depth, plus a fresh id',async()=>{
   const before=saved().tools.length;
   await openCatalog();
-  click('[data-catalog-add="wrench-half-inch"]');
+  await clickOperation('[data-catalog-add="wrench-half-inch"]');
   assert.ok($('.modal')===null,'modal closes after adding');
   const tools=saved().tools;assert.equal(tools.length,before+1);
   const tool=tools.at(-1);
@@ -119,7 +120,7 @@ test('multi-select adds a whole set at once',async()=>{
   // Selection survives filtering.
   click('[data-catalog-category="pliers"]');click('[data-catalog-category="all"]');
   assert.equal($('[data-catalog-select="wrench-17"]').checked,true);
-  click(addSelected());
+  await clickOperation(addSelected());
   const tools=saved().tools;assert.equal(tools.length,before+2);
   assert.deepEqual(tools.slice(-2).map(t=>[t.name,t.depth,t.unit]),[['Očkoplochý klíč 13 mm',9,'mm'],['Očkoplochý klíč 17 mm',10,'mm']]);
   assert.notEqual(tools.at(-1).id,tools.at(-2).id);
@@ -128,10 +129,10 @@ test('multi-select adds a whole set at once',async()=>{
 test('save to my tools copies the outline into the user library once',async()=>{
   await openCatalog();
   const count=libraryStore().length;
-  click('[data-catalog-save="pliers-combi"]');
+  await clickOperation('[data-catalog-save="pliers-combi"]');
   const lib=libraryStore();assert.equal(lib.length,count+1);
   assert.equal(lib.at(-1).name,'Kombinované kleště');assert.equal(lib.at(-1).unit,'mm');assert.equal(lib.at(-1).depth,14);
-  click('[data-catalog-save="pliers-combi"]');assert.equal(libraryStore().length,count+1,'no duplicates');
+  await clickOperation('[data-catalog-save="pliers-combi"]');assert.equal(libraryStore().length,count+1,'no duplicates');
   assert.equal($('#toast').textContent,'Tento obrys už v mých nástrojích je.');
   click(tab('mine'));
   assert.ok($$('.library-item strong').some(s=>s.textContent.startsWith('Kombinované kleště')));
@@ -153,7 +154,7 @@ test('English UI labels, localized names and empty catalogue state',async()=>{
     await search('');
     assert.equal(filterCatalog(items,{query:'pliers'}).length,1);
     assert.equal(catalogTool(items[0]).name,'Combination wrench 13 mm');
-    click('[data-catalog-add="wrench-13"]');
+    await clickOperation('[data-catalog-add="wrench-13"]');
     assert.equal(saved().tools.at(-1).name,'Combination wrench 13 mm','tool is named in the current language');
     setCatalogSource(()=>({categories:CATEGORIES,items:[]}));
     await openCatalog();
