@@ -68,9 +68,24 @@ test('a small module can fill the real notch of a locked stepped module without 
   const bad={...project,tools:project.tools.map(tool=>tool.id==='long'?{...tool,points:rectangle(60,60)}:tool)};assert.ok(validateLayout(bad).some(issue=>issue.type==='outside'&&issue.ids.includes('long')));
 });
 
-test('stepped Smart candidates remove only whole empty cells and retain manufacturing walls',async()=>{
-  const points=[{x:0,y:0},{x:100,y:0},{x:100,y:20},{x:20,y:20},{x:20,y:100},{x:0,y:100}],tool={...makeTool('ell',100,100,10,10,'ell-module'),points};
-  const project={...blankProject(),width:252,height:252,modules:[{id:'ell-module',name:'Angle',x:0,y:0,width:126,height:126,sizeMode:'auto',locked:false}],tools:[tool]},rectangular=await smartArrange(project,{moduleShape:'rectangular'}),stepped=await smartArrange(project,{moduleShape:'stepped'});
-  assert.deepEqual(stepped.unplaced,[]);assert.deepEqual(validateLayout({...project,...stepped}),[]);assertToolsUnchanged(project,stepped);assert.ok(stepped.modules.some(module=>module.cells?.length<module.width*module.height/project.grid**2));assert.ok(stepped.stats.afterArea<rectangular.stats.afterArea);
+const ellTool=()=>({...makeTool('ell',100,100,10,10,'ell-module'),points:[{x:0,y:0},{x:100,y:0},{x:100,y:20},{x:20,y:20},{x:20,y:100},{x:0,y:100}]});
+const ellModule=()=>({id:'ell-module',name:'Angle',x:0,y:0,width:126,height:126,sizeMode:'auto',locked:false});
+
+test('stepped Smart candidates remove only whole empty cells, retain walls and keep a step another module uses',async()=>{
+  const project={...blankProject(),width:126,height:126,modules:[ellModule(),{id:'small',name:'Small',x:168,y:0,width:42,height:42,sizeMode:'auto',locked:false}],tools:[ellTool(),makeTool('nut',20,20,179,11,'small')]},rectangular=await smartArrange(project,{moduleShape:'rectangular'}),stepped=await smartArrange(project,{moduleShape:'stepped'});
+  assert.deepEqual(stepped.unplaced,[]);assert.deepEqual(validateLayout({...project,...stepped}),[]);assert.ok(stepped.modules.some(module=>module.cells?.length<module.width*module.height/project.grid**2));assert.equal(rectangular.unplaced.length,1);
   for(const module of stepped.modules)for(const key of ['x','y','width','height'])assert.equal(module[key]%project.grid,0);
+});
+
+test('a step no other module uses goes back to a plain rectangle',async()=>{
+  const project={...blankProject(),width:252,height:252,modules:[ellModule()],tools:[ellTool()]},result=await smartArrange(project,{moduleShape:'stepped'});
+  assert.deepEqual(result.unplaced,[]);assert.deepEqual(validateLayout({...project,...result}),[]);assertToolsUnchanged(project,result);
+  for(const module of result.modules){assert.equal(Object.hasOwn(module,'cells'),false);assert.equal(Object.hasOwn(module,'shape'),false);}
+});
+
+test('rearranging drops a step left empty by an earlier layout, but never on a locked or manual module',()=>{
+  const cells=[{x:0,y:0},{x:1,y:0},{x:2,y:0},{x:0,y:1},{x:0,y:2}],base={...ellModule(),shape:'stepped',cells},project=extra=>({...blankProject(),width:252,height:252,modules:[{...base,...extra}],tools:[ellTool()]});
+  const free=autoArrange(project({})).modules[0];assert.equal(Object.hasOwn(free,'cells'),false);assert.equal(Object.hasOwn(free,'shape'),false);
+  assert.equal(autoArrange(project({locked:true})).modules[0].cells.length,cells.length);
+  assert.equal(autoArrange(project({sizeMode:'manual'})).modules[0].cells.length,cells.length);
 });

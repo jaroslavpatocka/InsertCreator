@@ -116,6 +116,22 @@ export function containsPocketWalls(module,pocket,wall=0,grid=42,{inset=.25}={})
   return grown.length>0&&!boolean(grown,[moduleOutline(module,grid)],Clipper.ClipType.ctDifference).some(poly=>Math.abs(area(poly))>EPS);
 }
 
+/** Fills the cells of a stepped module that no other module uses. A notch nobody needs turns back into plain module, and a full raster is a rectangle again. */
+export function fillFreeCells(module,others,grid=42){
+  if(!module.cells)return module;
+  const cols=Math.round(module.width/grid),rows=Math.round(module.height/grid),known=new Set(module.cells.map(cell=>key(cell.x,cell.y))),free=[];
+  for(let y=0;y<rows;y++)for(let x=0;x<cols;x++){
+    if(known.has(key(x,y)))continue;
+    const cell={x:module.x+x*grid,y:module.y+y*grid,width:grid,height:grid};
+    if(!others.some(other=>moduleIntersects(cell,other,grid)))free.push({x,y});
+  }
+  if(!free.length)return module;
+  const filled={...module,cells:[...module.cells,...free]};
+  if(filled.cells.length===cols*rows){delete filled.cells;delete filled.shape;return filled;}
+  // Filling around a neighbour could enclose it, and a module with a hole is not a valid footprint.
+  try{filled.cells=validateModuleFootprint(filled,grid).cells;return filled;}catch{return module;}
+}
+
 /** Conservative raster hull of real pockets. Only empty right/bottom strips may be removed. */
 export function steppedModuleFootprint(project,module){
   const next=JSON.parse(JSON.stringify(module));delete next.cells;delete next.shape;

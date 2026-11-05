@@ -8,7 +8,7 @@ export {pocketOutline} from './finger-grip.js';
 import {t as tr,i18nError} from './i18n.js';
 import {fmtLen} from './units.js';
 import {orderTools} from './tool-size.js';
-import {moduleIntersects,containsPocketWalls,validateModuleFootprint} from './module-footprint.js';
+import {moduleIntersects,containsPocketWalls,validateModuleFootprint,fillFreeCells} from './module-footprint.js';
 
 const EPS = 1e-7;
 const copy = value => JSON.parse(JSON.stringify(value));
@@ -269,6 +269,9 @@ export function autoArrange(project,{preserveLocked=true}={}) {
     tool.moduleId=id;tool.rotation=((chosen.rotation%360)+360)%360;
     tool.x=module.x+(module.width-chosen.b.width)/2-chosen.b.x;tool.y=module.y+(module.height-chosen.b.height)/2-chosen.b.y;
   }
+  // A step left by an earlier layout or a neighbour that moved away has no reason to stay. Module-by-module, so two steps cannot both claim one cell.
+  const keepsShape=m=>m.locked||lockedIds.has(m.id)||m.sizeMode==='manual'||(project.toolSets||[]).some(set=>set.layout==='uniform'&&(set.id===m.setId||tools.some(t=>t.moduleId===m.id&&set.toolIds.includes(t.id))));
+  modules.forEach((module,i)=>{if(module.cells&&!keepsShape(module))modules[i]=fillFreeCells(module,modules.filter(other=>other!==module),grid);});
   return {tools,modules,unplaced};
 }
 

@@ -2,8 +2,9 @@
 // 1. Stepped modules are cut in place, so a good rectangular layout never loses its steps.
 // 2. Tools left outside get a second chance: turned modules, then other arrangements of a set.
 // 3. With merge on, tools of unrelated modules move into the free room of larger ones.
+// 4. A step only pays off when another module sits in it, so unused notches are filled again.
 import {bounds,pocketOutline,validateLayout} from './geometry.js';
-import {moduleIntersects,moduleOutline,modulePadding,offsetOutline,steppedModuleFootprint} from './module-footprint.js';
+import {fillFreeCells,moduleIntersects,moduleOutline,modulePadding,offsetOutline,steppedModuleFootprint} from './module-footprint.js';
 import {addToolGroup} from './set-module.js';
 import {orderTools} from './tool-size.js';
 import {findToolSets,setCoherence} from './tool-sets.js';
@@ -72,6 +73,16 @@ function cutInPlace(project,state){
     // A rectangle returned for an awkward shape must not grow back over a neighbour.
     if(next.modules.some((other,j)=>j!==i&&moduleIntersects(cut,other,grid)))continue;
     next.modules[i]=cut;
+  }
+  return next;
+}
+
+/** Runs last: a notch must stay open while packing, but no neighbour in it means no reason to keep the step. */
+function fillUnusedSteps(project,state){
+  const next={tools:state.tools,modules:state.modules.map(copy)},{fixed,rigid}=rules(project,next),grid=number(project.grid,42);
+  for(let i=0;i<next.modules.length;i++){
+    const module=next.modules[i];if(!module.cells||fixed(module)||rigid(module))continue;
+    next.modules[i]=fillFreeCells(module,next.modules.filter((other,j)=>j!==i),grid);
   }
   return next;
 }
@@ -230,6 +241,7 @@ export async function tightenLayout(project,result,{moduleShape='rectangular',mo
     await repack({turn:()=>true,redo:module=>!inDrawer(module,project)});
     if(outside())consider(singles(project,best,pack,moduleShape));
   }
+  const filled=fillUnusedSteps(project,best);if(valid(filled))best=filled;
   // Automatic grips belong to shared modules; a tool left alone goes back to what the customer had.
   const original=new Map(project.tools.map(tool=>[tool.id,tool])),count=id=>best.tools.filter(tool=>tool.moduleId===id).length,grouped=new Set(best.modules.filter(module=>module.grouped).map(module=>module.id));
   const tools=best.tools.map(tool=>{if(!Object.hasOwn(tool,'fingerGrips')||Object.hasOwn(original.get(tool.id)||{},'fingerGrips')||grouped.has(tool.moduleId)&&count(tool.moduleId)>1)return tool;const {fingerGrips,...plain}=tool;return plain;});

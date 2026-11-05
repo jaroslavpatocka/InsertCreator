@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {validateModuleFootprint,moduleOutline,localModuleOutline,moduleArea,moduleIntersects,containsPocketWalls,steppedModuleFootprint} from '../dist/module-footprint.js';
+import {fillFreeCells,validateModuleFootprint,moduleOutline,localModuleOutline,moduleArea,moduleIntersects,containsPocketWalls,steppedModuleFootprint} from '../dist/module-footprint.js';
 import {buildPrintTriangles,validatePrintMesh} from '../dist/print-geometry.js';
 import {planSizeLabels} from '../dist/size-labels.js';
 import {blankProject} from '../dist/model.js';
@@ -15,6 +15,15 @@ const close=(actual,expected,tolerance=1e-5)=>assert.ok(Math.abs(actual-expected
 const volume=triangles=>triangles.reduce((sum,[a,b,c])=>sum+(a[0]*(b[1]*c[2]-b[2]*c[1])+a[1]*(b[2]*c[0]-b[0]*c[2])+a[2]*(b[0]*c[1]-b[1]*c[0]))/6,0);
 const project=(module=stepped(),extra={})=>({...blankProject(),grid:42,wall:2.4,clearance:0,base:2.4,insertHeight:20,limitToBed:false,bottomMode:'plain',printMode:'solid',width:168,height:168,modules:[module],tools:[],...extra});
 const insideL=(x,y)=>x>=-.001&&y>=-.001&&x<=84.001&&y<=84.001&&(x<=42.001||y<=42.001);
+
+test('free notch cells are filled only where no neighbour stands and never enclose one',()=>{
+  const grid=42,ell={id:'L',x:0,y:0,width:126,height:126,shape:'stepped',cells:[{x:0,y:0},{x:1,y:0},{x:2,y:0},{x:0,y:1},{x:0,y:2}]};
+  const full=fillFreeCells(ell,[],grid);assert.equal(Object.hasOwn(full,'cells'),false);assert.equal(Object.hasOwn(full,'shape'),false);assert.equal(ell.cells.length,5);
+  const partial=fillFreeCells(ell,[{id:'n',x:84,y:84,width:42,height:42}],grid);assert.equal(partial.cells.length,8);assert.equal(partial.cells.some(cell=>cell.x===2&&cell.y===2),false);
+  const ring={id:'R',x:0,y:0,width:126,height:126,shape:'stepped',cells:[{x:0,y:0},{x:1,y:0},{x:2,y:0},{x:0,y:1},{x:0,y:2}]},island={id:'i',x:42,y:42,width:42,height:42};
+  assert.equal(fillFreeCells(ring,[island],grid),ring);
+  assert.equal(fillFreeCells({id:'plain',x:0,y:0,width:84,height:84},[],grid).cells,undefined);
+});
 
 test('stepped footprints validate connected raster cells, reject ambiguous boundaries and leave inputs untouched',()=>{
   const source=stepped({cells:[cells[2],cells[0],cells[1]]}),before=structuredClone(source),valid=validateModuleFootprint(source,42);
