@@ -43,11 +43,11 @@ function sampler(image) {
   };
 }
 
-function section(sample, frame, s, center, radius, minWidth, requireDark, maxWidth = radius * 1.7) {
+function section(sample, frame, s, center, radius, minWidth, requireDark, maxWidth = radius * 1.7, longitudinalRadius = 1.5) {
   const profile = new Float32Array(2 * radius + 1);
   for (let t = -radius; t <= radius; t++) {
     let sum = 0;
-    for (const ds of [-1.5, 0, 1.5]) sum += sample(frame.x + (s + ds) * frame.ax - (center + t) * frame.ay, frame.y + (s + ds) * frame.ay + (center + t) * frame.ax);
+    for (const ds of [-longitudinalRadius, 0, longitudinalRadius]) sum += sample(frame.x + (s + ds) * frame.ax - (center + t) * frame.ay, frame.y + (s + ds) * frame.ay + (center + t) * frame.ax);
     profile[t + radius] = sum / 3;
   }
   const value = t => profile[t + radius], mean = (a, b) => { let v = 0; for (let t = a; t <= b; t++) v += value(t); return v / (b - a + 1); };
@@ -80,14 +80,16 @@ function section(sample, frame, s, center, radius, minWidth, requireDark, maxWid
   return pairs.sort((a, b) => b.score - a.score).slice(0, 12);
 }
 
-function track(sample, frame, from, to, center, radius, minWidth, maxWidth) {
-  const rows = [], step = (to - from) / Math.max(1, Math.ceil((to - from) / 2));
+function track(sample, frame, from, to, center, radius, minWidth, maxWidth, connector = false) {
+  const rows = [], step = (to - from) / Math.max(1, Math.ceil((to - from) / (connector ? 1 : 2)));
   let missing = 0, consecutive = 0, total = 0;
   for (let s = from; s <= to + .01; s += step) {
     total++;
-    const options = section(sample, frame, s, center, radius, minWidth, true, maxWidth);
+    // A short neck must have both source edges on every measured section.
+    // Averaging neighbouring metal anchors across it could invent a bridge.
+    const options = section(sample, frame, s, center, radius, minWidth, true, maxWidth, connector ? 0 : 1.5);
     if (!options.length) {
-      if (!rows.length || ++consecutive > 2) return null;
+      if (connector || !rows.length || ++consecutive > 2) return null;
       missing++; continue;
     }
     consecutive = 0;
@@ -163,31 +165,36 @@ function recover(original, enhanced) {
   for (const body of pieces) {
     if (used.has(body.id)) continue;
     const own = bounds(body, body, width);
-    if (own.length < 30 || own.length < own.width * 2.5) continue;
+    if (own.length < 20 || own.length < own.width * 1.5) continue;
+    const grip = own.length >= 30 && own.length >= own.width * 2.5;
     for (const tip of pieces) {
       if (tip.id === body.id || used.has(tip.id) || tip.area > body.area * .45) continue;
       const sign = (tip.x - body.x) * body.ax + (tip.y - body.y) * body.ay >= 0 ? 1 : -1;
       const frame = { id: body.id, x: body.x, y: body.y, ax: body.ax * sign, ay: body.ay * sign };
       const a = sign > 0 ? own : { ...own, lo: -own.hi, hi: -own.lo, left: -own.right, right: -own.left }, b = bounds(tip, frame, width), gap = b.lo - a.hi;
-      if (gap < 3 || gap > Math.min(a.length * .5, a.width * 3.5) || b.length > a.length * .45 || b.width < 4) continue;
+      const connector = gap <= Math.min(6, a.width * .35) && b.length <= a.length * .65;
+      if (gap < 3 || b.width < 4 || !(connector || grip && gap <= Math.min(a.length * .5, a.width * 3.5) && b.length <= a.length * .45)) continue;
       const center = (b.left + b.right) / 2;
       if (Math.abs(center - (a.left + a.right) / 2) > a.width * .45) continue;
       if (++attempts > 128) return output;
-      const radius = Math.ceil(Math.min(a.width * 1.1, b.width * 1.8) + 5), minWidth = Math.max(5, b.width * .55);
+      const radius = Math.ceil(Math.min(a.width * 1.1, b.width * 1.8) + 5);
+      // Broad edge support can sit inside a narrow neck by about 1.5 pixels
+      // on each side; retain the five-pixel minimum measured corridor.
+      const minWidth = Math.max(5, b.width * .55 - (connector ? 3 : 0));
       // Bright anchors omit a thin dark rim; allow 1.5 pixels per measured side.
       const maxWidth = Math.max(a.width, b.width) * 1.03 + 3;
       const margin = Math.min(4, gap * .2);
-      const rows = track(sample, frame, a.hi + margin, b.lo - margin, center, radius, minWidth, maxWidth);
+      const rows = track(sample, frame, a.hi + margin, b.lo - margin, center, radius, minWidth, maxWidth, connector);
       if (!rows || rows.length < 2) continue;
       // Extend only while the same measured dark rim continues around a bright
       // inset. This restores the whole black grip, rather than just its gap.
       for (const direction of [-1, 1]) {
         let previous = direction < 0 ? rows[0] : rows.at(-1);
         const first = previous;
-        const limit = direction < 0 ? a.hi - Math.min(a.length * .4, a.width * 2.5) : b.hi;
+        const limit = connector ? (direction < 0 ? a.hi - 4 : b.lo + 4) : direction < 0 ? a.hi - Math.min(a.length * .4, a.width * 2.5) : b.hi;
         for (let s = previous.s + direction * 2; direction < 0 ? s >= limit : s <= limit; s += direction * 2) {
           const drift = Math.max(4, b.width * .3);
-          const options = section(sample, frame, s, center, radius, minWidth, false, maxWidth).filter(p => Math.abs(p.top - previous.top) + Math.abs(p.bottom - previous.bottom) <= 4 && Math.abs(p.top - first.top) <= drift && Math.abs(p.bottom - first.bottom) <= drift);
+          const options = section(sample, frame, s, center, radius, minWidth, false, maxWidth, connector ? 0 : 1.5).filter(p => Math.abs(p.top - previous.top) + Math.abs(p.bottom - previous.bottom) <= 4 && Math.abs(p.top - first.top) <= drift && Math.abs(p.bottom - first.bottom) <= drift);
           options.sort((p, q) => (q.score - 6 * (Math.abs(q.top - previous.top) + Math.abs(q.bottom - previous.bottom))) - (p.score - 6 * (Math.abs(p.top - previous.top) + Math.abs(p.bottom - previous.bottom))));
           if (!options.length) break;
           previous = { ...options[0], s };
@@ -197,8 +204,9 @@ function recover(original, enhanced) {
       // The profile filter straddles a bright/dark transition at either anchor.
       // Carry its last measured boundary across those few pixels, and require
       // actual contact with both masks before accepting the tentative bridge.
-      if (rows[0].s > a.hi - 1) rows.unshift({ ...rows[0], s: a.hi - 1 });
-      if (rows.at(-1).s < b.lo + 1) rows.push({ ...rows.at(-1), s: b.lo + 1 });
+      const contact = connector ? 3 : 1;
+      if (rows[0].s > a.hi - contact) rows.unshift({ ...rows[0], s: a.hi - contact });
+      if (rows.at(-1).s < b.lo + contact) rows.push({ ...rows.at(-1), s: b.lo + contact });
       if (paint(output, labels, frame, rows, new Set([body.id, tip.id]))) { used.add(tip.id); used.add(body.id); break; }
     }
   }
@@ -208,20 +216,22 @@ function recover(original, enhanced) {
 export function recoverDarkTools(original, enhanced) {
   if (original.width !== enhanced.width || original.height !== enhanced.height) return enhanced;
   // Keep component queues and edge searches bounded on full camera images.
-  const scale = Math.min(1, Math.sqrt(1000000 / (original.width * original.height)));
-  if (scale === 1) return recover(original, enhanced);
-  const width = Math.max(1, Math.round(original.width * scale)), height = Math.max(1, Math.round(original.height * scale));
+  // Use the same integer grid as tray enhancement. Resampling its binary
+  // anchor rims onto a second, fractional grid can erase a narrow contact.
+  const step = Math.max(1, Math.ceil(Math.sqrt(original.width * original.height / 1000000)));
+  if (step === 1) return recover(original, enhanced);
+  const width = Math.ceil(original.width / step), height = Math.ceil(original.height / step);
   const downsample = image => {
     const data = new Uint8ClampedArray(width * height * 4);
     for (let y = 0; y < height; y++) for (let x = 0; x < width; x++) {
-      const sx = Math.min(image.width - 1, Math.floor((x + .5) * image.width / width)), sy = Math.min(image.height - 1, Math.floor((y + .5) * image.height / height)), p = (sy * image.width + sx) * 4;
+      const p = (y * step * image.width + x * step) * 4;
       data.set(image.data.subarray(p, p + 4), (y * width + x) * 4);
     }
     return { width, height, data };
   };
   const baseline = downsample(enhanced), recovered = recover(downsample(original), baseline), data = new Uint8ClampedArray(enhanced.data);
   for (let y = 0; y < original.height; y++) for (let x = 0; x < original.width; x++) {
-    const sx = Math.min(width - 1, Math.floor(x * width / original.width)), sy = Math.min(height - 1, Math.floor(y * height / original.height)), source = (sy * width + sx) * 4;
+    const sx = Math.floor(x / step), sy = Math.floor(y / step), source = (sy * width + sx) * 4;
     if (recovered.data[source] === baseline.data[source]) continue;
     const p = (y * original.width + x) * 4;
     data[p] = data[p + 1] = data[p + 2] = recovered.data[source];
