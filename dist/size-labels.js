@@ -129,7 +129,7 @@ function planModuleLabels(project,module,own){
   const effectiveBase=project.bottomMode==='magnet'?Math.max(base,number(project.magnetDepth,2.2)+1.2):base;
   const foot=project.bottomMode==='grid'?4.75:0,lift=moduleMagnetLift(project,own),baseTop=foot+effectiveBase+lift,top=light?baseTop+Math.min(1,height-base-lift):foot+height+effectiveBase-base;
   const available=height-base-lift,obstacles=[];let invalid=false;
-  for(const tool of own){try{const poly=tool.poly||pocketOutline(tool,number(project.clearance,.8));if(poly.length<3)throw Error();obstacles.push(...offset(poly,wall+CLEAR));}catch{invalid=true;}}
+  for(const tool of own){try{const poly=tool.poly||pocketOutline(tool,project);if(poly.length<3)throw Error();obstacles.push(...offset(poly,wall+CLEAR));}catch{invalid=true;}}
   const blocked=obstacles.map(poly=>({poly,bounds:box(poly)})),margin=Math.max(wall+.25,project.bottomMode==='grid'?4.1:1.25),inner={x:module.x+margin,y:module.y+margin,maxX:module.x+module.width-margin,maxY:module.y+module.height-margin};
   for(const tool of own){
     const raw=sizeText(tool),text=normalize(raw),failure=reason=>skipped.push({toolId:tool.id,moduleId:module.id,text,reason});
@@ -137,7 +137,7 @@ function planModuleLabels(project,module,own){
     const glyphs=sizeLabelGlyphs(text);if(!glyphs){failure('unsupported-character');continue;}
     if(available<.8){failure('insufficient-height');continue;}
     if(invalid){failure('invalid-pocket');continue;}
-    const pocket=box(tool.poly||pocketOutline(tool,number(project.clearance,.8))),candidates=[];
+    const pocket=box(tool.poly||pocketOutline(tool,project)),candidates=[];
     for(const rotation of [0,90]){
       const width=(rotation?glyphs.height:glyphs.width)+2*PAD,depth=(rotation?glyphs.width:glyphs.height)+2*PAD,maxX=inner.maxX-width,maxY=inner.maxY-depth;
       if(maxX<inner.x||maxY<inner.y)continue;

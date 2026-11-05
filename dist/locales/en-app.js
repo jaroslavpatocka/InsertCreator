@@ -951,4 +951,10 @@ export default {
   'Zeleně: nová kapsa. Šedě: původní obrys. Čárkovaně: osa nástroje. Změnu lze vrátit tlačítkem Zpět.':'Green: new pocket. Grey: original outline. Dashed: tool axis. Use Undo to restore the original.',
   'Použít pravidelnou kapsu':'Apply geometric pocket',
   'Pravidelná kapsa vytvořena. Změnu můžete vrátit tlačítkem Zpět.':'Geometric pocket created. Use Undo to restore the original.',
+  'Vlastní margin kapsy':'Custom pocket margin',
+  'Margin kapes v modulu':'Module pocket margin',
+  'Prázdné pole převezme margin modulu: {margin}. Nula znamená kapsu bez přídavku.':'Leave blank to use the module margin: {margin}. Zero creates a pocket without additional clearance.',
+  'Přídavek na každé straně kapsy, pouze v tomto modulu. 1 mm přidá 2 mm k celkové šířce.':'Additional clearance on each side of the pocket, in this module only. 1 mm adds 2 mm to the total width.',
+  'Margin kapsy upraven.':'Pocket margin updated.',
+  'Přídavek kapsy musí být číslo od {min} do {max} mm.':'Pocket margin must be a number from {min} to {max} mm.',
 };

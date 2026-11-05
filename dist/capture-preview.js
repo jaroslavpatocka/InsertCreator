@@ -9,6 +9,11 @@ function outline(ctx, points) {
   ctx.closePath();
 }
 
+function drawMargin(ctx,item,scale,photoScale,pocketMargin){
+  const expanded=capturePhotoGeometry(item,photoScale,{includeMargin:true,pocketMargin});
+  ctx.save();outline(ctx,expanded.points);ctx.strokeStyle='#3b7c9c';ctx.lineWidth=1.5*scale;ctx.stroke();ctx.restore();
+}
+
 function drawItem(ctx, item, index, scale, active = false, photoScale = 1) {
   const regular=item.pocketShape==='functional'||item.pocketShape==='hybrid';
   const geometry=regular||item.editedPoints?capturePhotoGeometry(item,photoScale):{points:item.contour.points,axis:null};
@@ -48,26 +53,30 @@ function drawItem(ctx, item, index, scale, active = false, photoScale = 1) {
   ctx.fillText(String(index + 1), center.x, center.y);
 }
 
-export function drawCaptureContours(ctx, items, {activeIndex = null, scale = 1, photoScale = 1} = {}) {
+export function drawCaptureContours(ctx, items, {activeIndex = null, scale = 1, photoScale = 1, pocketMargin = null} = {}) {
   ctx.save();
   ctx.lineJoin = 'round';
   for (const [index, item] of items.entries()) {
     if (index !== activeIndex) drawItem(ctx, item, index, scale, false, photoScale);
   }
+  // The blue line is the physical pocket with its per-side margin. Keep the
+  // measured/regular outline separate so preview never changes the source tool.
+  if(pocketMargin!==null)for(const [index,item] of items.entries())if(item.checked||index===activeIndex)drawMargin(ctx,item,scale,photoScale,pocketMargin);
   // Draw the active tool last so neighbouring contours cannot obscure its edge.
   if (Number.isInteger(activeIndex) && items[activeIndex]) drawItem(ctx, items[activeIndex], activeIndex, scale, true, photoScale);
   ctx.restore();
 }
 
 /** An enlarged photo of the current tool; manufacturing corrections never warp the photo. */
-export function drawCaptureToolPreview(canvas, photo, item, index, view = { zoom: 1, x: 0, y: 0 }, photoScale = 1) {
+export function drawCaptureToolPreview(canvas, photo, item, index, view = { zoom: 1, x: 0, y: 0 }, photoScale = 1, pocketMargin = null) {
   if (!canvas || !photo || !item) return;
   canvas.width = 640;
   canvas.height = 360;
   const ctx = canvas.getContext('2d');
   let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
   const displayed=item.pocketShape==='functional'||item.pocketShape==='hybrid'||item.editedPoints?capturePhotoGeometry(item,photoScale).points:item.contour.points;
-  for (const point of [...item.contour.points,...displayed]) {
+  const expanded=pocketMargin===null?[]:capturePhotoGeometry(item,photoScale,{includeMargin:true,pocketMargin}).points;
+  for (const point of [...item.contour.points,...displayed,...expanded]) {
     minX = Math.min(minX, point.x); minY = Math.min(minY, point.y);
     maxX = Math.max(maxX, point.x); maxY = Math.max(maxY, point.y);
   }
@@ -83,6 +92,7 @@ export function drawCaptureToolPreview(canvas, photo, item, index, view = { zoom
   ctx.translate(-(minX + maxX) / 2, -(minY + maxY) / 2);
   ctx.drawImage(photo, 0, 0);
   ctx.lineJoin = 'round';
+  if(pocketMargin!==null)drawMargin(ctx,item,displayScale/(zoom*view.zoom),photoScale,pocketMargin);
   drawItem(ctx, item, index, displayScale / (zoom * view.zoom), true, photoScale);
   ctx.restore();
 }

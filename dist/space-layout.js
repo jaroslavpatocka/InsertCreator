@@ -24,7 +24,7 @@ function shuffled(list,seed){const out=[...list],next=random(seed);for(let i=out
 function rules(project,state){
   const uniform=m=>(project.toolSets||[]).some(set=>set.layout==='uniform'&&(set.id===m.setId||members(state,m.id).some(tool=>set.toolIds.includes(tool.id))));
   const fixed=m=>{const own=members(state,m.id);return m.locked||!own.length||own.some(tool=>tool.locked);};
-  const rigid=m=>m.sizeMode==='manual'||uniform(m);
+  const rigid=m=>m.sizeMode==='manual'||m.pocketMargin!=null||uniform(m);
   // A plain module holding several tools was arranged by hand; only its grouped or single-tool neighbours are rebuilt.
   const open=m=>!fixed(m)&&!rigid(m)&&(m.grouped===true||m.setLayout==='auto'||members(state,m.id).length===1);
   return{fixed,rigid,open};
@@ -108,7 +108,7 @@ function index(raster){
   raster.free=free;
 }
 function shape(tool,project,rotation){
-  const pocket=pocketOutline({...tool,x:0,y:0,rotation},project.clearance),b=box(pocket),local=pocket.map(p=>({x:p.x-b.x,y:p.y-b.y})),rows=Math.ceil(b.height/CELL)+1,cols=Math.ceil(b.width/CELL)+1,spans=[],seen=Array.from({length:rows},()=>[]);
+  const pocket=pocketOutline({...tool,x:0,y:0,rotation},project),b=box(pocket),local=pocket.map(p=>({x:p.x-b.x,y:p.y-b.y})),rows=Math.ceil(b.height/CELL)+1,cols=Math.ceil(b.width/CELL)+1,spans=[],seen=Array.from({length:rows},()=>[]);
   polygonRows(local,0,0,rows,cols,(row,from,to)=>seen[row].push([from,to]));
   let cells=0;
   for(let row=0;row<rows;row++){
@@ -139,7 +139,7 @@ function targetRaster(project,state,target){
     if(other.id===target.id||!inDrawer(other,project)||other.x>=target.x+target.width||other.y>=target.y+target.height||other.x+other.width<=target.x||other.y+other.height<=target.y)continue;
     for(const poly of offsetOutline(moduleOutline(other,grid),padding))mark(raster,poly);
   }
-  for(const tool of members(state,target.id))for(const poly of offsetOutline(pocketOutline(tool,project.clearance),separation))mark(raster,poly);
+  for(const tool of members(state,target.id))for(const poly of offsetOutline(pocketOutline(tool,project),separation))mark(raster,poly);
   index(raster);return raster;
 }
 function placeTool(project,tool,rasters,shapes){
@@ -159,12 +159,12 @@ function absorb(project,state,donor,{moduleShape,better,metric,valid}){
   const targets=state.modules.filter(module=>module.id!==donor.id&&open(module)&&inDrawer(module,project)).sort((a,b)=>b.width*b.height-a.width*a.height);
   if(!targets.length)return null;
   const rasters=targets.map(target=>Object.assign(targetRaster(project,state,target),{moduleId:target.id}));
-  const moved=new Map(),tools=members(state,donor.id).sort((a,b)=>{const pa=box(pocketOutline(a,project.clearance)),pb=box(pocketOutline(b,project.clearance));return pb.width*pb.height-pa.width*pa.height;});
+  const moved=new Map(),tools=members(state,donor.id).sort((a,b)=>{const pa=box(pocketOutline(a,project)),pb=box(pocketOutline(b,project));return pb.width*pb.height-pa.width*pa.height;});
   const separation=Math.max(project.wall,project.gap)+.05;
   for(const tool of tools){
     const spot=placeTool(project,tool,rasters,toolShapes(project,tool));if(!spot)continue;
     moved.set(tool.id,spot.moved);
-    for(const poly of offsetOutline(pocketOutline(spot.moved,project.clearance),separation))mark(spot.raster,poly);
+    for(const poly of offsetOutline(pocketOutline(spot.moved,project),separation))mark(spot.raster,poly);
     index(spot.raster);
   }
   if(!moved.size)return null;
@@ -188,7 +188,7 @@ function singles(project,state,pack,moduleShape){
   const parked=state.modules.filter(module=>!inDrawer(module,project)&&rules(project,state).open(module));if(!parked.length)return null;
   const grid=number(project.grid,42),padding=modulePadding(project),ids=new Set(parked.map(module=>module.id)),taken=new Set(state.modules.map(module=>module.id)),atoms=[];
   for(const tool of state.tools.filter(tool=>ids.has(tool.moduleId))){
-    const options=[number(tool.rotation),number(tool.rotation)+90].map(rotation=>{const b=box(pocketOutline({...tool,x:0,y:0,rotation},project.clearance)),width=Math.ceil((b.width+2*padding-EPS)/grid)*grid,height=Math.ceil((b.height+2*padding-EPS)/grid)*grid;return{width,height,items:[{tool,x:(width-b.width)/2-b.x,y:(height-b.height)/2-b.y,rotation}]};});
+    const options=[number(tool.rotation),number(tool.rotation)+90].map(rotation=>{const b=box(pocketOutline({...tool,x:0,y:0,rotation},project)),width=Math.ceil((b.width+2*padding-EPS)/grid)*grid,height=Math.ceil((b.height+2*padding-EPS)/grid)*grid;return{width,height,items:[{tool,x:(width-b.width)/2-b.x,y:(height-b.height)/2-b.y,rotation}]};});
     const id=freeId(`solo-${hash(tool.id)}`,taken);atoms.push({id,module:{id,name:tool.name,sizeMode:'auto',locked:false},options});
   }
   const stay=state.modules.filter(module=>!ids.has(module.id));

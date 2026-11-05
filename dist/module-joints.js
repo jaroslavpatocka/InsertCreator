@@ -3,6 +3,7 @@
 // which is open at the bottom: modules go in from left to right and from top to bottom, each lowered onto the tabs of the previous ones.
 import Clipper from './vendor/clipper.js';
 import {pocketOutline} from './finger-grip.js';
+import {effectivePocketMargin} from './pocket-margin.js';
 import {moduleOutline} from './module-footprint.js';
 import {planSizeLabels} from './size-labels.js';
 import {magnetPocketCenters} from './magnet-pockets.js';
@@ -62,10 +63,10 @@ function magnetGuard({x,y,radius},wall){
   return Array.from({length:48},(_,index)=>({x:x+Math.cos(index*Math.PI/24)*reach,y:y+Math.sin(index*Math.PI/24)*reach}));
 }
 const keepoutsFor=(project,module,tools)=>{
-  const own=tools.filter(tool=>tool.moduleId===module.id),clearance=Number(project.clearance)||0,wall=Number(project.wall)||2.4;
-  const labels=project.sizeLabels?planSizeLabels(project,[module],own.map(tool=>({...tool,poly:pocketOutline(tool,clearance)}))).labels.map(label=>label.plate):[];
+  const own=tools.filter(tool=>tool.moduleId===module.id),wall=Number(project.wall)||2.4;
+  const labels=project.sizeLabels?planSizeLabels(project,[module],own.map(tool=>({...tool,poly:pocketOutline(tool,project)}))).labels.map(label=>label.plate):[];
   const magnets=project.bottomMode==='magnet'?magnetPocketCenters(project,module).map(center=>magnetGuard(center,wall)):[];
-  return [...own.map(tool=>pocketOutline(tool,clearance+wall)),...labels,...magnets];
+  return [...own.map(tool=>pocketOutline(tool,effectivePocketMargin(tool,project)+wall)),...labels,...magnets];
 };
 const rootGuard=(at,normal,inset,clearance)=>rectangle({x:at.x-(normal.x?inset+ROOT+MARGIN:NECK/2+clearance+MARGIN),y:at.y-(normal.x?NECK/2+clearance+MARGIN:inset+ROOT+MARGIN),width:normal.x?ROOT+MARGIN:NECK+2*(clearance+MARGIN),height:normal.x?NECK+2*(clearance+MARGIN):ROOT+MARGIN});
 

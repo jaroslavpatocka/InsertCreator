@@ -12,6 +12,8 @@ import {CATEGORIES,toolCategory} from './tool-categories.js';
 import {addToolGroup,scaleTool} from './set-module.js';
 import {photoLayout} from './photo-layout.js';
 import {addPhotoModule} from './photo-module.js';
+import {effectivePocketMargin,validatePocketMargin} from './pocket-margin.js';
+import {prepareModuleMargins,applyCreatedModuleMargins} from './module-margin.js';
 import {getToolDimensions,resizeToolDimensions} from './tool-dimensions.js';
 import {smoothToolContour} from './tool-contour.js';
 import {functionalToolPocket,toolPocketPreview} from './tool-functional-pocket.js';
@@ -320,7 +322,7 @@ function input(label,value,key,{unit:u,min=0,max=3000,scope='project',type='leng
 }
 function drawerPanel(){return `<div class="panel-header"><h2 class="panel-title">${icon('ruler')} ${tr('Rozměry šuplíku')}</h2><span>${unit()}</span></div><div class="panel-body"><div class="fields-row">${input(tr('Šířka · zleva doprava'),project.width,'width',{min:42})}${input(tr('Hloubka · zepředu dozadu'),project.height,'height',{min:42})}</div>${input(tr('Výška inzertu'),project.insertHeight,'insertHeight',{min:3,max:100})}<div class="toggle-row"><span>${tr('Popisky velikostí v modelu')}</span><button class="switch ${project.sizeLabels?'on':''}" data-action="toggle-size-labels" role="switch" aria-checked="${!!project.sizeLabels}" aria-label="${tr('Popisky velikostí v modelu')}"></button></div>${labelStatus()}<label class='field'><span>${tr('Systém modulů')}</span><select data-field='bottomMode' data-scope='project'><option value='plain' ${project.bottomMode==='plain'?'selected':''}>${tr('Volně v šuplíku')}</option><option value='grid' ${project.bottomMode==='grid'?'selected':''}>Gridfinity · 42 mm</option><option value='magnet' ${project.bottomMode==='magnet'?'selected':''}>${tr('Magnety')}</option><option value='adhesive' ${project.bottomMode==='adhesive'?'selected':''}>${tr('Lepicí páska')}</option></select></label>${gridfinitySummary()}<label class="field"><span>${tr('Jednotky šuplíku')}</span><select data-field="unit" data-scope="project" aria-label="${tr('Jednotky šuplíku')}"><option value="" ${project.unit?'':'selected'}>${tr('Podle aplikace ({unit})',{unit:getAppUnit()})}</option>${UNITS.map(u=>`<option value="${u}" ${project.unit===u?'selected':''}>${u}</option>`).join('')}</select></label><p class="muted-note unit-hint">${tr('Lze zadat i jiné jednotky: 12 in, 3 1/2" nebo 30 cm.')}</p><details class="advanced"><summary>${tr('Další nastavení')}</summary><div class="fields-row">${input(tr('Rastr modulů'),project.grid,'grid',{min:10,max:100})}${input(tr('Vůle kolem nástroje'),project.clearance,'clearance',{min:0,max:5})}</div><div class="fields-row">${input(tr('Tloušťka dna'),project.base,'base',{min:1,max:20})}${input(tr('Minimální stěna'),project.wall,'wall',{min:1,max:15})}</div><div class="toggle-row"><span>${tr('Přichytit k rastru')}</span><button class="switch ${snap?'on':''}" data-action="snap" role="switch" aria-checked="${snap}" aria-label="${tr('Přichytit k rastru')}"></button></div></details><button class="btn btn-soft block-button" data-action="expand">${icon('expand')} ${tr('Rozšířit sestavu')}</button><p class="muted-note">${tr('Hotové moduly zamkněte. Další nástroje přidáte i z jiné fotografie.')}</p></div>`;}
 
-function safePocket(tool,clearance=project.clearance){try{return pocketOutline(tool,clearance);}catch{return transformedPoints(tool,clearance);}}
+function safePocket(tool,context=project){try{return pocketOutline(tool,context);}catch{return transformedPoints(tool,typeof context==='object'?effectivePocketMargin(tool,context):context);}}
 function gridfinitySummary(){
   if(project.bottomMode!=='grid')return '';
   try{const layout=gridfinityLayout(project);return `<p class='muted-note'>${tr('Základna Gridfinity: {cols} × {rows} polí, rozteč 42 mm.',{cols:layout.columns,rows:layout.rows})} ${tr('Volný okraj vpravo {right}, dole {bottom}.',{right:fmtLen(layout.remainder.right),bottom:fmtLen(layout.remainder.bottom)})}</p><button class='btn btn-light' data-action='export-baseplate'>${icon('download')}${tr('Exportovat základnu Gridfinity')}</button>`;}catch(error){return `<p class='form-error'>${esc(errorText(error))}</p>`;}
@@ -337,7 +339,7 @@ function fingerGripPanel(t){
 }
 function fingerGripCandidate(id,grips){
   const next=clone(project),t=next.tools.find(t=>t.id===id);if(!t)throw i18nError('Nástroj už není v sestavě.');
-  t.fingerGrips=validateFingerGrips(grips);pocketOutline(t,next.clearance);
+  t.fingerGrips=validateFingerGrips(grips);pocketOutline(t,next);
   const previous=project.tools.find(t=>t.id===id),m=project.modules.find(m=>m.id===previous.moduleId);
   if(!m||(!m.locked&&!previous.locked&&m.sizeMode!=='manual')){
     const placedIds=new Set(project.modules.filter(m=>m.x>=0&&m.y>=0&&m.x+m.width<=project.width+1e-6&&m.y+m.height<=project.height+1e-6).map(m=>m.id));
@@ -361,7 +363,7 @@ function editFingerGrips(){
   const numeric=el=>{const v=readLength(el);if(!Number.isFinite(v))throw i18nError('Zadejte platnou číselnou polohu a průměr výřezu.');return v;};
   const readDraft=omitId=>[...modal.body.querySelectorAll('[data-grip-row]')].filter(row=>row.dataset.gripRow!==omitId).map(row=>({id:row.dataset.gripRow,x:numeric(row.querySelector('[data-field=fingerX]')),y:numeric(row.querySelector('[data-field=fingerY]')),radius:numeric(row.querySelector('[data-field=fingerDiameter]'))/2}));
   const preview=()=>{
-    try{const candidate={...t,fingerGrips:validateFingerGrips(draft)};pocketOutline(candidate,project.clearance);modal.body.querySelector('[data-grip-preview]').innerHTML=fingerGripPreview(t,draft,true);modal.body.querySelector('[data-grip-error]').textContent='';}
+    try{const candidate={...t,fingerGrips:validateFingerGrips(draft)};pocketOutline(candidate,project);modal.body.querySelector('[data-grip-preview]').innerHTML=fingerGripPreview(t,draft,true);modal.body.querySelector('[data-grip-error]').textContent='';}
     catch(error){modal.body.querySelector('[data-grip-error]').textContent=errorText(error);}
   };
   const redraw=()=>{
@@ -382,7 +384,7 @@ function editFingerGrips(){
   redraw();
 }
 function showDrawerDimensions(){inspectorTab='drawer';render();if(window.innerWidth<=760)$('#drawer-settings')?.scrollIntoView({block:'start',behavior:'smooth'});}
-function moduleSizing(m){const u=moduleUnit(m),count=project.tools.filter(t=>t.moduleId===m.id).length;return `<div class="module-sizing"><strong>${m.sizeMode==='manual'?tr('Rozměry modulu · ruční'):tr('Rozměry modulu · automatické')}${unitBadge(m.unit)}</strong><small>${tr('Jmenovité {size}',{size:fmtSize(m.width,m.height,{unit:u})})}<br>${tr('Vnější {size}',{size:fmtSize(m.width-.5,m.height-.5,{unit:u})})}${count>1?`<br>${tr('Nástrojů ve společném modulu: {n}',{n:count})}`:''}</small><div class="fields-row module-position">${input(tr('X · poloha v šuplíku'),m.x,'moduleX',{unit:u,min:0,max:3000,scope:'module'})}${input(tr('Y · poloha v šuplíku'),m.y,'moduleY',{unit:u,min:0,max:3000,scope:'module'})}</div>${unitSelect(tr('Jednotky modulu'),m.unit,'module')}${moduleStepControls(m)}<div class="selected-actions"><button class="btn btn-soft module-resize-button" data-action="resize-module">${icon('ruler')}${tr('Změnit velikost')}</button>${project.tools.some(t=>t.moduleId===m.id)?`<button class="btn btn-light" data-action="size-module-auto">${tr('Podle nástroje')}</button>`:''}${count>1?`<button class="btn btn-light" data-action="split-module">${tr('Rozdělit modul')}</button>`:''}<button class="btn btn-light" data-action="rotate-module">${icon('rotate')}${tr('Otočit modul o 90°')}</button><button class="btn btn-light" data-action="duplicate-module">${icon('copy')}${tr('Kopie modulu')}</button></div></div>`;}
+function moduleSizing(m){const u=moduleUnit(m),count=project.tools.filter(t=>t.moduleId===m.id).length;return `<div class="module-sizing"><strong>${m.sizeMode==='manual'?tr('Rozměry modulu · ruční'):tr('Rozměry modulu · automatické')}${unitBadge(m.unit)}</strong><small>${tr('Jmenovité {size}',{size:fmtSize(m.width,m.height,{unit:u})})}<br>${tr('Vnější {size}',{size:fmtSize(m.width-.5,m.height-.5,{unit:u})})}${count>1?`<br>${tr('Nástrojů ve společném modulu: {n}',{n:count})}`:''}</small><div class="fields-row module-position">${input(tr('X · poloha v šuplíku'),m.x,'moduleX',{unit:u,min:0,max:3000,scope:'module'})}${input(tr('Y · poloha v šuplíku'),m.y,'moduleY',{unit:u,min:0,max:3000,scope:'module'})}</div>${unitSelect(tr('Jednotky modulu'),m.unit,'module')}${pocketMarginField('module',m)}${moduleStepControls(m)}<div class="selected-actions"><button class="btn btn-soft module-resize-button" data-action="resize-module">${icon('ruler')}${tr('Změnit velikost')}</button>${project.tools.some(t=>t.moduleId===m.id)?`<button class="btn btn-light" data-action="size-module-auto">${tr('Podle nástroje')}</button>`:''}${count>1?`<button class="btn btn-light" data-action="split-module">${tr('Rozdělit modul')}</button>`:''}<button class="btn btn-light" data-action="rotate-module">${icon('rotate')}${tr('Otočit modul o 90°')}</button><button class="btn btn-light" data-action="duplicate-module">${icon('copy')}${tr('Kopie modulu')}</button></div></div>`;}
 /** −/+ one grid step for the module width and depth, right in the inspector. */
 function moduleStepControls(m){
   const step=fmtLen(project.grid,{unit:moduleUnit(m)}),off=m.locked?` disabled title="${tr(LOCKED_RESIZE)}"`:'';
@@ -415,7 +417,7 @@ const SIXTEENTH_IN=25.4/16,LOCKED_RESIZE='Odemkněte modul pro změnu velikosti'
 let resizeDrag=null;
 /** Smallest nominal size that still holds every pocket of the module plus the wall on each side. */
 function moduleMinSize(p,m){
-  const pts=p.tools.filter(t=>t.moduleId===m.id).flatMap(t=>safePocket(t,p.clearance));if(!pts.length)return{width:5,height:5};
+  const pts=p.tools.filter(t=>t.moduleId===m.id).flatMap(t=>safePocket(t,p));if(!pts.length)return{width:5,height:5};
   const xs=pts.map(q=>q.x),ys=pts.map(q=>q.y),pad=2*modulePadding(p);
   return{width:Math.max(5,Math.max(...xs)-Math.min(...xs)+pad),height:Math.max(5,Math.max(...ys)-Math.min(...ys)+pad)};
 }
@@ -598,6 +600,20 @@ function rotateCurrentTool(degrees){
   const next=bulk.bulkRotate(project,[t.id],degrees);if(same(next)===same(project))return;
   commit(()=>project=next,tr('Nástroj otočen.'));
 }
+function pocketMarginField(scope,item){
+  const inherited=scope==='tool'?effectivePocketMargin({...item,pocketMargin:undefined},project):Number(project.clearance??.8),u=scope==='tool'?toolUnit(item):moduleUnit(item);
+  const own=item.pocketMargin!==undefined&&item.pocketMargin!==null,locked=item.locked||(scope==='tool'?moduleFor()?.locked:project.tools.some(tool=>tool.moduleId===item.id&&tool.locked));
+  return `<label class="field"><span>${tr(scope==='tool'?'Vlastní margin kapsy':'Margin kapes v modulu')}</span><div class="input-wrap"><input type="text" inputmode="decimal" autocomplete="off" spellcheck="false" value="${own?inputValue(item.pocketMargin,{unit:u}):''}" ${own?`data-mm="${item.pocketMargin}"`:''} placeholder="${inputValue(inherited,{unit:u})}" data-unit="${u}" data-field="pocketMargin" data-scope="${scope}" aria-label="${tr(scope==='tool'?'Vlastní margin kapsy':'Margin kapes v modulu')} (${u})" ${locked?'disabled':''}><em>${u}</em></div></label><p class="muted-note">${scope==='tool'?tr('Prázdné pole převezme margin modulu: {margin}. Nula znamená kapsu bez přídavku.',{margin:fmtLen(inherited,{unit:u})}):tr('Přídavek na každé straně kapsy, pouze v tomto modulu. 1 mm přidá 2 mm k celkové šířce.')}</p>`;
+}
+function editPocketMargin(scope,el){
+  const current=scope==='tool'?tool():moduleFor();if(!current)return;
+  const module=scope==='tool'?moduleFor():current;
+  if(current.locked||module?.locked||(scope==='module'&&project.tools.some(tool=>tool.moduleId===current.id&&tool.locked)))throw i18nError('Nejprve odemkněte polohu modulu.');
+  const value=el.value.trim()===''?undefined:validatePocketMargin(readLength(el)),next=clone(project),item=(scope==='tool'?next.tools:next.modules).find(item=>item.id===current.id);
+  if(value===undefined)delete item.pocketMargin;else item.pocketMargin=value;
+  validateProject(next);checkLayoutTransition(project,next);
+  if(same(next)!==same(project))commit(()=>project=next,tr('Margin kapsy upraven.'));else render();
+}
 function toolPositionPanel(t,m){
   if(!m)return '';
   return `<div class="tool-position"><strong>${tr('Poloha uvnitř modulu')}</strong><div class="fields-row">${input(tr('X · zleva'),t.x-m.x,'toolX',{unit:toolUnit(t),min:-3000,max:3000,scope:'tool'})}${input(tr('Y · shora'),t.y-m.y,'toolY',{unit:toolUnit(t),min:-3000,max:3000,scope:'tool'})}</div></div>`;
@@ -654,7 +670,7 @@ function selectedPanel(){
   const dimensions=getToolDimensions(t),dimensionFields=`<div class='fields-row'>${input(tr('Délka'),dimensions.length,'toolLength',{unit:toolUnit(t),scope:'tool',min:2,max:3000})}${input(tr('Šířka'),dimensions.width,'toolBreadth',{unit:toolUnit(t),scope:'tool',min:2,max:3000})}</div><p class='muted-note'>${tr('Délka a šířka mění jen vybranou konturu v jejích osách. Jmenovitá velikost a ostatní nástroje se nemění.')}</p>`;
   const shape=`${input(tr('Šířka při rovnoměrném měřítku'),bounds(t).width,'toolWidth',{unit:toolUnit(t),scope:'tool',min:2,max:2000})}<label class='field'><span>${tr('Měřítko')}</span><div class='input-wrap'><input type='text' inputmode='decimal' autocomplete='off' spellcheck='false' value='100' data-field='toolScale' data-scope='tool' aria-label='${tr('Měřítko')} (%)'><em>%</em></div></label><p class='muted-note tool-scale-hint'>${tr('Měřítko mění délku i šířku rovnoměrně kolem středu. Poloměr výřezů pro prsty zůstává stejný.')}</p>${unitSelect(tr('Jednotky nástroje'),t.unit,'tool')}<button class='btn btn-light' data-action='smooth-contour' ${t.locked||m?.locked?'disabled':''}>${icon('spark')}${tr('Vyhladit obrys')}</button><p class='muted-note'>${tr('Odstraní drobné zuby a vyhladí oblouky. Změnu lze vrátit.')}</p>`;
   const moduleOptions=m?`${moduleSizing(m)}<button class='btn btn-light' data-action='lock'>${icon(m.locked?'unlock':'lock')}${m.locked?tr('Odemknout'):tr('Zamknout')}</button><p class='muted-note'>${moduleKindNote(m)}</p>`:unplacedToolNote(t);
-  return `<div class='panel-header'><h2 class='panel-title'>${icon('wrench')}${tr('Vybraný nástroj')}${unitBadge(t.unit)}</h2>${drawerButton}</div><div class='panel-body'><div class='tool-basic-properties'>${input(tr('Název'),t.name,'name',{type:'text',scope:'tool'})}${dimensionFields}${toolPositionPanel(t,m)}<div class='fields-row'>${input(tr('Otočení'),((t.rotation%360)+360)%360,'rotation',{type:'angle',min:0,max:359.99,scope:'tool'})}${input(tr('Hloubka kapsy'),t.depth,'depth',{unit:toolUnit(t),scope:'tool',min:.5,max:maxPocketDepth(project,t)})}</div><div class='selected-actions'><button class='btn btn-light' data-action='rotate'>${icon('rotate')}${tr('Otočit 90°')}</button><button class='btn btn-light' data-action='duplicate'>${icon('copy')}${tr('Kopie')}</button><button class='btn btn-danger' data-action='delete' aria-label='${tr('Smazat nástroj')}'>${icon('trash')}</button></div></div>${moduleMembersPanel(m)}${inspectorSection('finger-grips',tr('Výřezy pro prsty'),fingerGripPanel(t))}${inspectorSection('pocket-magnets',tr('Magnety v kapse'),pocketMagnetPanel(t,{unit:toolUnit(t)}))}${inspectorSection('tool-shape',tr('Rozměry a měřítko'),shape+`<button class='btn btn-light' data-action='functional-pocket' ${t.locked||m?.locked?'disabled':''}>${icon('spark')}${tr('Upravit tvar kapsy')}</button><p class='muted-note'>${tr('Sestaví kapsu z kruhů a obdélníků podél osy nástroje.')}</p>`)}${inspectorSection('size-label',tr('Popisek velikosti'),sizeLabelPanel(t))}${inspectorSection('tool-set',tr('Sady nástrojů'),selectedToolSetPanel(t)+moduleSetControls(m))}${inspectorSection('module-options',tr('Nastavení modulu'),moduleOptions)}</div>`;
+  return `<div class='panel-header'><h2 class='panel-title'>${icon('wrench')}${tr('Vybraný nástroj')}${unitBadge(t.unit)}</h2>${drawerButton}</div><div class='panel-body'><div class='tool-basic-properties'>${input(tr('Název'),t.name,'name',{type:'text',scope:'tool'})}${dimensionFields}${pocketMarginField('tool',t)}${toolPositionPanel(t,m)}<div class='fields-row'>${input(tr('Otočení'),((t.rotation%360)+360)%360,'rotation',{type:'angle',min:0,max:359.99,scope:'tool'})}${input(tr('Hloubka kapsy'),t.depth,'depth',{unit:toolUnit(t),scope:'tool',min:.5,max:maxPocketDepth(project,t)})}</div><div class='selected-actions'><button class='btn btn-light' data-action='rotate'>${icon('rotate')}${tr('Otočit 90°')}</button><button class='btn btn-light' data-action='duplicate'>${icon('copy')}${tr('Kopie')}</button><button class='btn btn-danger' data-action='delete' aria-label='${tr('Smazat nástroj')}'>${icon('trash')}</button></div></div>${moduleMembersPanel(m)}${inspectorSection('finger-grips',tr('Výřezy pro prsty'),fingerGripPanel(t))}${inspectorSection('pocket-magnets',tr('Magnety v kapse'),pocketMagnetPanel(t,{unit:toolUnit(t)}))}${inspectorSection('tool-shape',tr('Rozměry a měřítko'),shape+`<button class='btn btn-light' data-action='functional-pocket' ${t.locked||m?.locked?'disabled':''}>${icon('spark')}${tr('Upravit tvar kapsy')}</button><p class='muted-note'>${tr('Sestaví kapsu z kruhů a obdélníků podél osy nástroje.')}</p>`)}${inspectorSection('size-label',tr('Popisek velikosti'),sizeLabelPanel(t))}${inspectorSection('tool-set',tr('Sady nástrojů'),selectedToolSetPanel(t)+moduleSetControls(m))}${inspectorSection('module-options',tr('Nastavení modulu'),moduleOptions)}</div>`;
 }
 const inspectorDisclosureState=new Map();
 const inspectorContext=()=>`${project.id}:${selectedIds().length?'bulk':inspectorTab+':'+(selectedModule||selected||'')}`;
@@ -725,7 +741,7 @@ function unplacedReason(p,t){
   const num=(v,d)=>Number.isFinite(Number(v))&&v!==null&&v!==''?Number(v):d;
   const grid=Math.max(1,num(p.grid,42)),pad=Math.max(num(p.wall,2.4),num(p.gap,3)/2)+.25;
   const sizes=[num(t.rotation,0),num(t.rotation,0)+90].flatMap(rotation=>{try{
-    const pts=pocketOutline({...t,x:0,y:0,rotation},num(p.clearance,.8));if(pts.length<3)return[];
+    const pts=pocketOutline({...t,x:0,y:0,rotation},p);if(pts.length<3)return[];
     const xs=pts.map(q=>q.x),ys=pts.map(q=>q.y);
     return[{w:Math.ceil((Math.max(...xs)-Math.min(...xs)+2*pad)/grid)*grid,h:Math.ceil((Math.max(...ys)-Math.min(...ys)+2*pad)/grid)*grid}];
   }catch{return[];}});
@@ -948,15 +964,18 @@ function addTools(tools,opts={}){
   if(project.tools.length+tools.length>3000)throw i18nError('V jednom projektu může být nejvýše 3000 nástrojů. Založte další projekt.');
   const depthLimit=maxPocketDepth(project);
   if(depthLimit<.5)throw i18nError('Pro kapsu musí zbýt alespoň {depth}. Zvyšte výšku vložky nebo zmenšete tloušťku dna.',{depth:fmtLen(.5)});
-  const prepared=tools.map(t=>{
+  let prepared=tools.map(t=>{
     const item=validateProject({...blankProject(),tools:[{...t,id:uid(),depth:Math.min(t.depth||12,depthLimit),locked:false,moduleId:null}]}).tools[0];
     if(!Object.prototype.hasOwnProperty.call(t,'fingerGrips'))item.fingerGrips=opts.layout==='photo'?[]:fittingFingerGrips(item,{radius:9});
-    pocketOutline(item,project.clearance);return item;
+    pocketOutline(item,project);return item;
   });
+  let marginPlan;
+  if(opts.pocketMargin!==undefined){const margin=prepareModuleMargins(project,prepared,opts.pocketMargin);prepared=margin.tools;marginPlan=margin.plan;}
   // A photo module is translated as a whole, before any planner can rearrange its tools.
   if(opts.layout==='photo'&&prepared.length){
     const name=opts.name||tr('Sada z fotky'),result=addPhotoModule(project,prepared,{name});
-    commit(()=>{project=result.project;cacheAddedTools(prepared);selected=null;selectedModule=result.moduleId;inspectorTab='tool';});
+    result.project=applyCreatedModuleMargins(result.project,marginPlan);
+    commit(()=>{project=result.project;cacheAddedTools(prepared.map(tool=>project.tools.find(item=>item.id===tool.id)));selected=null;selectedModule=result.moduleId;inspectorTab='tool';});
     if(result.placed)toast(tr('Modul přidán se zachovaným rozložením z fotky.'));
     else offerFit(new Set(prepared.map(item=>item.id)),{name,group:true});
     return;
@@ -964,13 +983,13 @@ function addTools(tools,opts={}){
   // opts.group={name,unit}: the whole set as ONE module (finger grips are already on the tools, so the packing includes them).
   if(opts.layout&&prepared.length>1){
     const info={name:opts.name||tr('Sada z fotky')},plan=photoLayout(project,prepared,opts.layout,info);
-    if(plan.layout==='shared')return addToolSet(prepared,{...info,arrangement:plan.arrangement});
+    if(plan.layout==='shared')return addToolSet(prepared,{...info,arrangement:plan.arrangement,marginPlan});
   }
   if(opts.group&&prepared.length)return addToolSet(prepared,opts.group);
   if(opts.set&&prepared.length>1)return addToolSet(prepared,opts.set,opts.set.layout||'auto');
   if(opts.collections?.length)return addToolCollections(prepared,opts);
   let unplaced=0;
-  commit(()=>{for(const item of prepared){project.tools.push(item);rememberTool(item);}writeLocal(libraryKey,library);selected=project.tools.at(-1)?.id;inspectorTab='tool';const added=new Set(prepared.map(x=>x.id));unplaced=arrange(false).unplaced.filter(id=>added.has(id)).length;if(opts.set&&prepared.length>1)registerToolSet(prepared.map(x=>x.id),opts.set.name,opts.set.layout||'auto');});
+  commit(()=>{project.tools.push(...prepared);selected=project.tools.at(-1)?.id;inspectorTab='tool';const added=new Set(prepared.map(x=>x.id));unplaced=arrange(false).unplaced.filter(id=>added.has(id)).length;project=applyCreatedModuleMargins(project,marginPlan);cacheAddedTools(project.tools.filter(item=>added.has(item.id)));if(opts.set&&prepared.length>1)registerToolSet(prepared.map(x=>x.id),opts.set.name,opts.set.layout||'auto');});
   // One toast for the whole addition (e.g. a catalogue tool set), including tools that did not fit.
   toast(plural(tools.length,['Přidán {n} nástroj. Kontura je také v knihovně.','Přidány {n} nástroje. Kontury jsou také v knihovně.','Přidáno {n} nástrojů. Kontury jsou také v knihovně.'])+(unplaced?' '+plural(unplaced,['{n} nástroj se nevešel. Zkontrolujte rozměry šuplíku nebo odemkněte moduly.','{n} nástroje se nevešly. Zkontrolujte rozměry šuplíku nebo odemkněte moduly.','{n} nástrojů se nevešlo. Zkontrolujte rozměry šuplíku nebo odemkněte moduly.']):''));
   if(unplaced&&opts.offerFit)offerFit(new Set(prepared.map(x=>x.id)),{name:opts.name});
@@ -981,11 +1000,12 @@ function registerToolSet(ids,name,layout){
   project.toolSets=[...sets,{id:'set-'+uid(),name:String(name||tr('Sada nástrojů')).slice(0,100),toolIds:[...ids],layout}];
 }
 // A catalogue set as ONE module (packed by set-module.js). One commit = one undo step.
-function addToolSet(prepared,{name,unit:u,arrangement,order}={},layout='shared'){
+function addToolSet(prepared,{name,unit:u,arrangement,order,marginPlan}={},layout='shared'){
   const groupOpts={...(arrangement?{arrangement}:{}),...(order?{order}:{}),name:name||tr('Sada nástrojů'),...(UNITS.includes(u)?{unit:u}:{}),...(prepared.length>1?{toolSet:{name:name||tr('Sada nástrojů'),layout}}:{})};
   const result=addToolGroup(project,prepared,groupOpts);
+  result.project=applyCreatedModuleMargins(result.project,marginPlan);
   orderAddedTools(result.project,prepared);
-  commit(()=>{project=result.project;cacheAddedTools(prepared);selected=null;selectedModule=result.moduleId;inspectorTab='tool';});
+  commit(()=>{project=result.project;cacheAddedTools(prepared.map(tool=>project.tools.find(item=>item.id===tool.id)));selected=null;selectedModule=result.moduleId;inspectorTab='tool';});
   if(result.placed)toast(layout==='shared'?tr('Sada přidána jako jeden modul.'):plural(prepared.length,['Přidán {n} nástroj. Kontura je také v knihovně.','Přidány {n} nástroje. Kontury jsou také v knihovně.','Přidáno {n} nástrojů. Kontury jsou také v knihovně.']));
   else offerFit(new Set(prepared.map(x=>x.id)),{name,group:layout==='shared'});
 }
@@ -1085,7 +1105,7 @@ function offerDrawerFit(ids,{name,group}={}){
     if(choice==='new'&&fresh2){try{const next=validateProject(clone(fresh2.project));project=undoStack.pop()||project;persist();switchProject(next);toast(tr('Nástroje přidány do nového šuplíku „{name}“.',{name:next.name}));}catch(error){toast(errorText(error));}}
   });
 }
-function capture(){openCapture({onAdd:(tools,{layout}={})=>addTools(tools,{layout,offerFit:true,name:tr('Sada z fotky')}),toast,maxDepth:()=>maxPocketDepth(project)});}
+function capture(){openCapture({onAdd:(tools,{layout,pocketMargin}={})=>addTools(tools,{layout,pocketMargin,offerFit:true,name:tr('Sada z fotky')}),toast,maxDepth:()=>maxPocketDepth(project)});}
 function undo(){if(!undoStack.length)return;redoStack.push(clone(project));project=undoStack.pop();persist();render();}
 function redo(){if(!redoStack.length)return;undoStack.push(clone(project));project=redoStack.pop();persist();render();}
 const invalidLength=()=>toast(tr('Zadejte platnou délku, například 12, 12,5 mm nebo 3 1/2 in.'));
@@ -1479,6 +1499,7 @@ $('#app').addEventListener('change',e=>{
   if(e.target.matches('[data-smart-shape]')){if(['rectangular','stepped'].includes(e.target.value)){smartShape=e.target.value;writeLocal('suplik-studio-module-shape',smartShape);}return;}
   const check=e.target.closest('[data-tool-check]');if(check){toggleToolSelection(check.dataset.toolCheck);return;}
   const el=e.target.closest('[data-field]');if(!el)return;const field=el.dataset.field,scope=el.dataset.scope;let value=el.value.trim();
+  if(field==='pocketMargin'&&['tool','module'].includes(scope)){try{editPocketMargin(scope,el);}catch(error){toast(errorText(error));render();}return;}
   if(scope==='project'&&field==='bottomMode'){
     if(!['plain','grid','magnet','adhesive'].includes(value))return;
     if(value==='grid'&&Math.abs(project.grid-42)>.001){toast(tr('Gridfinity patky vyžadují rastr přesně 42 mm.'));render();return;}
@@ -1525,7 +1546,7 @@ $('#app').addEventListener('change',e=>{
       const b=bounds(t);if(b.width*ratio>3000+1e-6||b.height*ratio>3000+1e-6){toast(tr('Kontura nesmí v žádném směru přesáhnout {max}.',{max:fmtLen(3000)}));render();return;}
       if(moduleFor()?.locked){toast(tr('Pro změnu rozměru nejdřív odemkněte modul.'));render();return;}
       if(ratio<.2||ratio>5){toast(tr('Měřítko nástroje musí být mezi {min}× a {max}×.',{min:.2,max:5}));render();return;}
-      try{scaled=scaleToolCentred(t,ratio);if(Object.prototype.hasOwnProperty.call(t,'fingerGrips'))scaled.fingerGrips=validateFingerGrips(scaled.fingerGrips);pocketOutline(scaled,project.clearance);}
+      try{scaled=scaleToolCentred(t,ratio);if(Object.prototype.hasOwnProperty.call(t,'fingerGrips'))scaled.fingerGrips=validateFingerGrips(scaled.fingerGrips);pocketOutline(scaled,project);}
       catch(error){toast(tr('Velikost kontury nelze změnit. U výřezů použijte „Automaticky umístit“ a zkuste to znovu. {error}',{error:errorText(error)}));render();return;}
     }
     let note='';commit(()=>{if(scaled){t.points=scaled.points;t.x=scaled.x;t.y=scaled.y;if(Object.prototype.hasOwnProperty.call(scaled,'fingerGrips'))t.fingerGrips=scaled.fingerGrips;if(Object.prototype.hasOwnProperty.call(scaled,'pocketMagnets'))t.pocketMagnets=scaled.pocketMagnets;

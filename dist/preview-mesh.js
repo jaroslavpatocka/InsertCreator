@@ -6,7 +6,6 @@ import {planSizeLabels} from './size-labels.js';
 import {pocketOutline} from './finger-grip.js';
 import {encodeSTL} from './print-geometry.js';
 
-const clearanceOf=project=>Number.isFinite(Number(project.clearance))&&project.clearance!==null&&project.clearance!==''?Number(project.clearance):.8;
 const drawerHeight=project=>{const value=Number(project.height);return Number.isFinite(value)&&value>0?Math.min(value,1000000):378;};
 
 export const usesPrintParts=project=>(project.connectors===true&&project.bottomMode!=='grid')||materialConfig(project).enabled;
@@ -15,7 +14,7 @@ export const usesPrintParts=project=>(project.connectors===true&&project.bottomM
 export function moduleParts(project,module,tools,batch){
   if(!batch)return[{bytes:exportSTL(project,{moduleId:module.id,checkBed:false}),matrix:[1,0,0,module.x,0,1,0,drawerHeight(project)-module.y-module.height,0,0,1,0,0,0,0,1],partKey:null,zone:'body'}];
   const own=tools.filter(tool=>tool.moduleId===module.id),issue=validateLayout({...project,modules:[module],tools:own})[0];if(issue)throw Error(issue.message);
-  const prepared=own.map(tool=>({...tool,poly:pocketOutline(tool,clearanceOf(project))})),labelPlan=planSizeLabels(project,[module],prepared);
+  const prepared=own.map(tool=>({...tool,poly:pocketOutline(tool,project)})),labelPlan=planSizeLabels(project,[module],prepared);
   const plan=batch.plans.find(plan=>plan.module.id===module.id),parts=[];
   for(const tile of plan?.tiles||[]){
     const part=buildPrintPart(project,module,prepared,tile,{labelPlan,jointPlan:batch.jointPlan});if(!part)continue;

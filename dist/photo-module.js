@@ -28,9 +28,9 @@ export function addPhotoModule(project,tools,{name,moduleId}={}){
   const own=validated.tools.slice((project.tools||[]).length).map(tool=>({...tool,locked:false}));
   const usedModules=new Set(next.modules.map(module=>module.id)),base=String(moduleId||`photo-${uid()}`).slice(0,90);
   let id=base;for(let suffix=2;usedModules.has(id);suffix++)id=`${base}-${suffix}`;
-  const grid=validated.grid,padding=modulePadding(validated),clearance=validated.clearance;
+  const grid=validated.grid,padding=modulePadding(validated);
   let minX=Infinity,minY=Infinity,maxX=-Infinity,maxY=-Infinity;
-  for(const tool of own)for(const point of pocketOutline(tool,clearance)){
+  for(const tool of own)for(const point of pocketOutline(tool,validated)){
     minX=Math.min(minX,point.x);minY=Math.min(minY,point.y);maxX=Math.max(maxX,point.x);maxY=Math.max(maxY,point.y);
   }
   const width=Math.ceil((maxX-minX+2*padding-EPS)/grid)*grid,height=Math.ceil((maxY-minY+2*padding-EPS)/grid)*grid;

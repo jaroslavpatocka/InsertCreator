@@ -1,6 +1,7 @@
 import Clipper from './vendor/clipper.js';
 import {t,i18nError} from './i18n.js';
 import {fmtLen} from './units.js';
+import {effectivePocketMargin} from './pocket-margin.js';
 
 const SCALE=10000,EPS=1e-7;
 const numeric=(value,min,max,label,length=true)=>{
@@ -87,7 +88,9 @@ function placement(tool){
 export const toolWorldPoint=tool=>placement(tool).world;
 
 /** One world-space pocket. Adding grips never changes the raw rotated-bounds anchor. */
-export function pocketOutline(tool,clearance=0){
+export function pocketOutline(tool,context=0){
+  // Explicit numeric offsets preserve raw attachment checks and additive wall guards.
+  const clearance=context&&typeof context==='object'?effectivePocketMargin(tool,context):context;
   const {points,world}=placement(tool);
   const base=offset(points.map(world),numeric(clearance,0,6000,'vůle kapsy'));
   const grips=Object.hasOwn(tool,'fingerGrips')?validateFingerGrips(tool.fingerGrips):[];

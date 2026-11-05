@@ -1,5 +1,6 @@
 import {exportSVG,pocketOutline} from './geometry.js';
 import {moduleOutline} from './module-footprint.js';
+import {effectivePocketMargin} from './pocket-margin.js';
 import {t as tr,i18nError} from './i18n.js';
 import {fmtLen,fmtSize,unit} from './units.js';
 
@@ -26,16 +27,16 @@ export function fitSheetPages(project,{moduleId=null}={}){
 export function exportFitPDF(project,options={}){
   const inches=unit()==='in',pages=fitSheetPages(project,options),objects=['','<< /Type /Catalog /Pages 2 0 R /ViewerPreferences << /PrintScaling /None >> >>','', '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>'],pageIds=[];
   for(const [index,p] of pages.entries()){
-    const m=p.module;
+    const m=p.module,margins=project.tools.filter(tool=>tool.moduleId===m.id).map(tool=>effectivePocketMargin(tool,project)),minimum=margins.length?Math.min(...margins):m.pocketMargin??project.clearance,maximum=margins.length?Math.max(...margins):minimum,marginLabel=minimum===maximum?fmtLen(minimum):`${fmtLen(minimum)}–${fmtLen(maximum)}`;
     let content='0.15 0.18 0.16 rg\n'+text(tr('InsertCreator / ZKOUŠKA VELIKOSTI 1:1'),10,13,13);
-    content+=text(tr('{name} | {size} | vůle {clearance}',{name:String(m.name).slice(0,42),size:fmtSize(m.width-.5,m.height-.5),clearance:fmtLen(project.clearance)}),10,21,9);
+    content+=text(tr('{name} | {size} | vůle {clearance}',{name:String(m.name).slice(0,42),size:fmtSize(m.width-.5,m.height-.5),clearance:marginLabel}),10,21,9);
     content+=text(tr('Tisk: A4, skutečná velikost 100 %. Vypnout přizpůsobení stránce.'),10,28,9);
     content+=`q ${num(PT)} 0 0 ${num(-PT)} ${num(10*PT)} ${num((pageHeight-35)*PT)} cm\n0 0 190 240 re W n\n`;
     const shift=q=>({x:q.x-m.x-p.x,y:q.y-m.y-p.y});
     const outline=points=>points.map((q,i)=>{const s=shift(q);return `${num(s.x)} ${num(s.y)} ${i?'l':'m'}`;}).join('\n')+'\nh S\n';
     content+='0.6 0.6 0.6 RG 0.18 w\n'+outline(moduleOutline(m,project.grid,{inset:.25}));
     content+='0 0 0 RG 0.25 w\n';
-    for(const t of project.tools.filter(t=>t.moduleId===m.id))content+=outline(pocketOutline(t,project.clearance));
+    for(const t of project.tools.filter(t=>t.moduleId===m.id))content+=outline(pocketOutline(t,project));
     content+='Q\n';
     // Exactly 100mm horizontal gauge on every page, outside the tiled drawing.
     content+=`0 0 0 RG 0.5 w ${num(10*PT)} ${num(14*PT)} m ${num(110*PT)} ${num(14*PT)} l S\n`;

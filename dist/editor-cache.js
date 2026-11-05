@@ -1,3 +1,5 @@
+import {effectivePocketMargin} from './pocket-margin.js';
+
 // Selection and camera changes reuse geometry. Cache keys include actual contents, not object identity alone.
 export function createEditorGeometryCache({validateLayout,pocketOutline,findToolSets}){
   let layoutKey=null,layoutValue,setsKey=null,setsValue;
@@ -9,7 +11,10 @@ export function createEditorGeometryCache({validateLayout,pocketOutline,findTool
       if(key!==layoutKey){layoutValue=validateLayout(project);layoutKey=key;stats.layouts++;}return layoutValue;
     },
     sets(project,context=''){const key=context+JSON.stringify(project);if(key!==setsKey){setsValue=findToolSets(project);setsKey=key;stats.sets++;}return setsValue;},
-    pocket(tool,clearance){
+    pocket(tool,context=0){
+      // Resolve just this pocket before keying the cache: a different module's
+      // margin must not invalidate it or serialize the entire project per tool.
+      const clearance=context&&typeof context==='object'?effectivePocketMargin(tool,context):context;
       if(!Array.isArray(tool?.points))return pocketOutline(tool,clearance);
       const signature=JSON.stringify(tool.points),key=JSON.stringify([clearance,tool.rotation??0,tool.fingerGrips]);
       let entry=outlines.get(tool.points);if(!entry||entry.signature!==signature){entry={signature,values:new Map()};outlines.set(tool.points,entry);}

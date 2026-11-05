@@ -24,8 +24,8 @@ export function previewGeometryKey(project){
   const material=materialConfig(project),parts=project.connectors===true&&project.bottomMode!=='grid'||material.enabled;
   return JSON.stringify({lang:getLang(),unit:unit(),...pick(project,['width','height','grid','clearance','wall','base','insertHeight','printMode','bottomMode','sizeLabels','connectors','jointClearance','magnetDiameter','magnetDepth']),
     ...(parts?pick(project,['bedWidth','bedHeight']):{}),material:pick(material,['enabled','floor','text','floorThickness']),
-    modules:(Array.isArray(project.modules)?project.modules:[]).map(module=>pick(module,['id','name','x','y','width','height','shape','cells'])),
-    tools:(Array.isArray(project.tools)?project.tools:[]).map(tool=>pick(tool,['id','name','x','y','rotation','depth','moduleId','points','fingerGrips','pocketMagnets','sizeLabel','nominalSize']))});
+    modules:(Array.isArray(project.modules)?project.modules:[]).map(module=>pick(module,['id','name','x','y','width','height','shape','cells','pocketMargin'])),
+    tools:(Array.isArray(project.tools)?project.tools:[]).map(tool=>pick(tool,['id','name','x','y','rotation','depth','moduleId','points','fingerGrips','pocketMagnets','sizeLabel','nominalSize','pocketMargin']))});
 }
 const PLANE_EPS=1e-5;
 const dot3=(a,b)=>a[0]*b[0]+a[1]*b[1]+a[2]*b[2];

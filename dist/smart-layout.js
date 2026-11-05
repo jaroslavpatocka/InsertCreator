@@ -7,6 +7,7 @@ import {orderTools} from './tool-size.js';
 import {addToolGroup} from './set-module.js';
 import {moduleOutline,moduleIntersects,modulePadding,steppedModuleFootprint} from './module-footprint.js';
 import {tightenLayout} from './space-layout.js';
+import {effectivePocketMargin} from './pocket-margin.js';
 
 const EPS=.001,SCALE=10000,CELL=2,MAX_CANDIDATES=32000,footprints=new WeakMap();
 const copy=value=>typeof structuredClone==='function'?structuredClone(value):JSON.parse(JSON.stringify(value));
@@ -64,7 +65,7 @@ function orientations(tool,project,separation,{nest=false}={}){
   const aligned=90-principalAngle(tool.points),rotations=[aligned,aligned+180,aligned+90,aligned+270,...(nest?[]:[number(tool.rotation),number(tool.rotation)+90,number(tool.rotation)+180,number(tool.rotation)+270])];
   const unique=[...new Set(rotations.map(angle))],padding=modulePadding(project,.26),grid=number(project.grid,42),result=[];
   for(const rotation of unique){
-    const source=pocketOutline({...tool,x:0,y:0,rotation},project.clearance),bounds=box(source),polygon=source.map(p=>({x:p.x-bounds.minX,y:p.y-bounds.minY}));
+    const source=pocketOutline({...tool,x:0,y:0,rotation},project),bounds=box(source),polygon=source.map(p=>({x:p.x-bounds.minX,y:p.y-bounds.minY}));
     const width=Math.ceil((bounds.width+2*padding-EPS)/grid)*grid,height=Math.ceil((bounds.height+2*padding-EPS)/grid)*grid;
     if(width>project.width+EPS||height>project.height+EPS)continue;
     result.push({tool,rotation,bounds,polygon,width,height,...(nest?{profile:profile(expanded(polygon,separation/2+.06))}:{})});
@@ -126,7 +127,7 @@ function pack(project,fixed,atoms,order,{moduleShape='rectangular',maxPositions=
   // Tools that stay parked must not land on modules already parked outside the drawer.
   let outsideY=fixed.filter(module=>!inside(module,project)).reduce((bottom,module)=>Math.max(bottom,module.y+module.height+grid),0),positions=0,searchLimited=false;
   for(const atom of ranked){
-    const protectedShape=atom.preserveFootprint||atom.module.sizeMode==='manual'||atom.module.setLayout==='uniform'&&(project.toolSets||[]).some(set=>set.layout==='uniform'&&set.id===atom.module.setId);
+    const protectedShape=atom.preserveFootprint||atom.module.sizeMode==='manual'||atom.module.pocketMargin!=null||atom.module.setLayout==='uniform'&&(project.toolSets||[]).some(set=>set.layout==='uniform'&&set.id===atom.module.setId);
     const options=atom.options.map(option=>{
       // The same option comes back in every packing order, and its cut is the slow part.
       const known=moduleShape==='stepped'&&!protectedShape&&footprints.get(option);if(known)return{...option,...known};
@@ -171,8 +172,8 @@ async function largeArrange(project,{mode='compact',moduleShape='rectangular',on
   if(initialIssue)throw Error(initialIssue.message);
   // A parked tool must pass the same contour/depth checks as a placed one.
   for(const tool of source.tools){
-    const poly=pocketOutline(tool,source.clearance),bounds=box(poly),padding=modulePadding(source,.26),width=bounds.width+2*padding,height=bounds.height+2*padding;
-    const issue=validateLayout({...source,width,height,modules:[{id:'check',x:0,y:0,width,height}],tools:[{...tool,x:tool.x+padding-bounds.minX,y:tool.y+padding-bounds.minY,moduleId:'check'}]})[0];
+    const poly=pocketOutline(tool,source),bounds=box(poly),padding=modulePadding(source,.26),width=bounds.width+2*padding,height=bounds.height+2*padding;
+    const issue=validateLayout({...source,width,height,modules:[{id:'check',x:0,y:0,width,height,pocketMargin:effectivePocketMargin(tool,source)}],tools:[{...tool,x:tool.x+padding-bounds.minX,y:tool.y+padding-bounds.minY,moduleId:'check'}]})[0];
     if(issue)throw Error(issue.message);
   }
   const sets=findToolSets(source).sets,originalScore=setCoherence(source,sets).score,own=(p,module)=>p.tools.filter(tool=>tool.moduleId===module.id);
@@ -191,13 +192,13 @@ async function largeArrange(project,{mode='compact',moduleShape='rectangular',on
     const allocate=base=>{let id=base,index=2;while(ids.has(id))id=`${base}-${index++}`;ids.add(id);return id;};
     const single=(tool,module)=>{
       const rotations=[...new Set([number(tool.rotation),number(tool.rotation)+90])],padding=modulePadding(source),options=[];
-      for(const rotation of rotations){const bounds=box(pocketOutline({...tool,x:0,y:0,rotation},source.clearance)),width=Math.ceil((bounds.width+2*padding-1e-7)/grid)*grid,height=Math.ceil((bounds.height+2*padding-1e-7)/grid)*grid;options.push({width,height,items:[{tool,x:(width-bounds.width)/2-bounds.minX,y:(height-bounds.height)/2-bounds.minY,rotation}]});}
+      for(const rotation of rotations){const bounds=box(pocketOutline({...tool,x:0,y:0,rotation},source)),width=Math.ceil((bounds.width+2*padding-1e-7)/grid)*grid,height=Math.ceil((bounds.height+2*padding-1e-7)/grid)*grid;options.push({width,height,items:[{tool,x:(width-bounds.width)/2-bounds.minX,y:(height-bounds.height)/2-bounds.minY,rotation}]});}
       return{id:module.id,module,options};
     };
     for(const module of p.modules){
       const members=own(p,module);for(const tool of members)reserved.add(tool.id);
       if(module.locked||!members.length||members.some(tool=>tool.locked)){fixed.push(copy(module));continue;}
-      if(!rigidOnly&&module.sizeMode!=='manual'&&!uniform(p,module)&&members.length===1){atoms.push(single(members[0],copy(module)));continue;}
+      if(!rigidOnly&&module.sizeMode!=='manual'&&module.pocketMargin==null&&!uniform(p,module)&&members.length===1){atoms.push(single(members[0],copy(module)));continue;}
       atoms.push({id:module.id,module:copy(module),...(rigidOnly?{preserveFootprint:true}:{}),options:[{width:module.width,height:module.height,items:members.map(tool=>({tool,x:tool.x-module.x,y:tool.y-module.y,rotation:tool.rotation||0}))}]});
     }
     for(const tool of p.tools.filter(tool=>!reserved.has(tool.id))){if(tool.locked)throw Error('Zamčený nástroj musí mít vlastní platný modul.');const id=allocate(`mod-${hash(tool.id)}`);atoms.push(single(tool,{id,name:tool.name,sizeMode:'auto',locked:false}));}
@@ -213,7 +214,7 @@ async function largeArrange(project,{mode='compact',moduleShape='rectangular',on
     if(family.layout==='uniform')continue;
     const members=family.toolIds.map(id=>minimized.tools.find(tool=>tool.id===id));if(members.length<2||members.some(tool=>!tool||tool.locked||used.has(tool.id)))continue;
     const memberIds=new Set(members.map(tool=>tool.id)),touching=baseline.atoms.filter(atom=>atom.options[0].items.some(item=>memberIds.has(item.tool.id)));
-    if(members.some(tool=>baseline.fixed.some(module=>module.id===tool.moduleId))||touching.some(atom=>atom.module.sizeMode==='manual'||uniform(minimized,atom.module)||atom.options[0].items.some(item=>!memberIds.has(item.tool.id))))continue;
+    if(members.some(tool=>baseline.fixed.some(module=>module.id===tool.moduleId))||touching.some(atom=>atom.module.sizeMode==='manual'||atom.module.pocketMargin!=null||uniform(minimized,atom.module)||atom.options[0].items.some(item=>!memberIds.has(item.tool.id))))continue;
     let prepared;try{prepared=members.map(tool=>Object.hasOwn(tool,'fingerGrips')?tool:{...tool,fingerGrips:automaticFingerGrips(tool,{radius:9})});}catch{continue;}
     if(prepared.some(tool=>!usefulGrips(tool)))continue;
     try{
@@ -270,8 +271,8 @@ async function compactArrange(project,{onProgress,signal,moduleShape='rectangula
   const initialIssues=validateLayout({...source,modules:placedModules,tools:source.tools.filter(tool=>placedIds.has(tool.moduleId))});
   if(initialIssues.length)throw Error('Nejdříve opravte sestavu: '+initialIssues[0].message);
   for(const tool of source.tools){
-    const poly=pocketOutline(tool,source.clearance),bounds=box(poly),padding=modulePadding(source,.26),w=bounds.width+2*padding,h=bounds.height+2*padding;
-    const check=validateLayout({...source,width:w,height:h,modules:[{id:'check',x:0,y:0,width:w,height:h}],tools:[{...tool,x:tool.x+padding-bounds.minX,y:tool.y+padding-bounds.minY,moduleId:'check'}]});
+    const poly=pocketOutline(tool,source),bounds=box(poly),padding=modulePadding(source,.26),w=bounds.width+2*padding,h=bounds.height+2*padding;
+    const check=validateLayout({...source,width:w,height:h,modules:[{id:'check',x:0,y:0,width:w,height:h,pocketMargin:effectivePocketMargin(tool,source)}],tools:[{...tool,x:tool.x+padding-bounds.minX,y:tool.y+padding-bounds.minY,moduleId:'check'}]});
     if(check.length)throw Error('Nejdříve opravte nástroj: '+check[0].message);
   }
   const fixed=[],rigid=[],free=[],reserved=new Set(),byModule=new Map(source.modules.map(module=>[module.id,source.tools.filter(tool=>tool.moduleId===module.id)]));
@@ -280,7 +281,7 @@ async function compactArrange(project,{onProgress,signal,moduleShape='rectangula
     if(locked||!own.length){fixed.push(copy(module));for(const tool of own)reserved.add(tool.id);continue;}
     const uniform=module.setLayout==='uniform'&&(source.toolSets||[]).some(set=>set.layout==='uniform'&&(set.id===module.setId||own.some(tool=>set.toolIds.includes(tool.id))));
     const explicitShared=(source.toolSets||[]).some(set=>set.layout==='shared'&&set.id===module.setId);
-    if(module.sizeMode==='manual'||uniform||explicitShared||own.length>1&&!module.grouped&&!module.setId){
+    if(module.sizeMode==='manual'||module.pocketMargin!=null||uniform||explicitShared||own.length>1&&!module.grouped&&!module.setId){
       rigid.push({id:module.id,module:copy(module),options:[{width:module.width,height:module.height,items:own.map(tool=>({tool,x:tool.x-module.x,y:tool.y-module.y,rotation:tool.rotation||0}))}]});for(const tool of own)reserved.add(tool.id);
     }
   }
@@ -291,7 +292,7 @@ async function compactArrange(project,{onProgress,signal,moduleShape='rectangula
   for(const tool of free){
     const originalModule=source.modules.find(module=>module.id===tool.moduleId),id=allocate(originalModule?.id||`mod-${hash(tool.id)}`),module={...(originalModule||{}),id,name:originalModule?.name||tool.name,locked:false,sizeMode:'auto'};
     const available=orientations(tool,source,separation);
-    if(!available.length){const bounds=box(pocketOutline(tool,source.clearance)),width=Math.ceil((bounds.width+2*modulePadding(source,.26))/grid)*grid,height=Math.ceil((bounds.height+2*modulePadding(source,.26))/grid)*grid;available.push({tool,rotation:tool.rotation||0,bounds,width,height});}
+    if(!available.length){const bounds=box(pocketOutline(tool,source)),width=Math.ceil((bounds.width+2*modulePadding(source,.26))/grid)*grid,height=Math.ceil((bounds.height+2*modulePadding(source,.26))/grid)*grid;available.push({tool,rotation:tool.rotation||0,bounds,width,height});}
     const options=available.map(orientation=>singleOption(orientation,module));singleAtoms.push({id,module,options});singleCosts.push(Math.min(...options.map(area)));
     let prepared=tool;
     if(!Object.hasOwn(tool,'fingerGrips')){try{prepared={...tool,fingerGrips:automaticFingerGrips(tool,{radius:9})};}catch{prepared=null;}}

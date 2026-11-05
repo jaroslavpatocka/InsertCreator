@@ -117,7 +117,7 @@ function verticalRange(polygon,x){
 }
 /** Read rows from actual pockets. Compact rows may nest vertically, so bbox bottoms are not row identifiers. */
 function sharedSequence(project,members){
-  const items=members.map(tool=>{const polygon=pocketOutline(tool,project.clearance??.8);return{tool,polygon,left:Math.min(...polygon.map(p=>p.x)),right:Math.max(...polygon.map(p=>p.x)),before:new Set()};});
+  const items=members.map(tool=>{const polygon=pocketOutline(tool,project);return{tool,polygon,left:Math.min(...polygon.map(p=>p.x)),right:Math.max(...polygon.map(p=>p.x)),before:new Set()};});
   for(let i=0;i<items.length;i++)for(let j=i+1;j<items.length;j++){
     const a=items[i],b=items[j],left=Math.max(a.left,b.left),right=Math.min(a.right,b.right);
     if(right-left<=.001)continue;

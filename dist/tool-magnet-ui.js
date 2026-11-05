@@ -1,6 +1,7 @@
 // Editor side of holding magnets: inspector panel, placement dialog and 2D marks.
 import {pocketOutline,toolWorldPoint} from './finger-grip.js';
 import {clone,uid} from './model.js';
+import {effectivePocketMargin} from './pocket-margin.js';
 import {moduleMagnetLift,requiredInsertHeight} from './print-material.js';
 import {POCKET_MAGNET_DEFAULT,POCKET_MAGNET_LIMITS,automaticPocketMagnets,hasPocketMagnets,magnetHoleDepth,magnetHoleDiameter,pocketMagnetHoles,pocketMagnetProblem,validatePocketMagnets} from './tool-magnet.js';
 import {t as tr,i18nError} from './i18n.js';
@@ -20,7 +21,7 @@ export function planPocketMagnets(project,toolId,magnets){
   const fromHeight=next.insertHeight,liftBefore=moduleMagnetLift(project,peersOf(project,project.tools.find(item=>item.id===toolId)));
   tool.pocketMagnets=validatePocketMagnets(magnets);
   if(!tool.pocketMagnets.length)delete tool.pocketMagnets;
-  const problem=hasPocketMagnets(tool)?pocketMagnetProblem(tool,pocketOutline(tool,next.clearance)):null;
+  const problem=hasPocketMagnets(tool)?pocketMagnetProblem(tool,pocketOutline(tool,next)):null;
   if(problem==='wall')throw i18nError('Magnet v kapse „{name}“ je příliš blízko stěny nebo mimo dno kapsy.',{name:tool.name});
   if(problem==='spacing')throw i18nError('Magnety v kapse „{name}“ jsou příliš blízko sebe.',{name:tool.name});
   const peers=peersOf(next,tool),required=hasPocketMagnets(tool)?requiredInsertHeight(next,peers):0;
@@ -52,7 +53,7 @@ export function pocketMagnetPanel(tool,{unit}={}){
 
 function preview(project,tool,draft,active){
   const local={...tool,x:0,y:0,rotation:0,fingerGrips:tool.fingerGrips||[]},world=toolWorldPoint(local);
-  let pocket;try{pocket=pocketOutline(local,project.clearance);}catch{pocket=local.points.map(world);}
+  let pocket;try{pocket=pocketOutline(local,project);}catch{pocket=local.points.map(world);}
   const raw=local.points.map(world),all=[...pocket,...raw],pad=4;
   const minX=Math.min(...all.map(p=>p.x))-pad,minY=Math.min(...all.map(p=>p.y))-pad,width=Math.max(...all.map(p=>p.x))+pad-minX,height=Math.max(...all.map(p=>p.y))+pad-minY;
   const path=points=>`M${points.map(p=>`${p.x} ${p.y}`).join('L')}Z`;
@@ -75,7 +76,7 @@ export function openPocketMagnetDialog({project,tool,unit:u,onSave,errorText}){
   const limits=POCKET_MAGNET_LIMITS;
   const modal=openModal({title:tr('Magnety v kapse'),subtitle:tool.name,wide:true,body:'',footer:`<span class="footnote">${tr('Zadejte skutečný rozměr magnetu. Díra je o {play} větší, pod ní zůstane alespoň {cover}.',{play:fmtLen(.2,{unit:u}),cover:fmtLen(1.2,{unit:u})})}</span><button class="btn btn-primary" data-magnets-save>${tr('Uložit magnety')}</button>`});
   const body=modal.body,error=text=>{const el=body.querySelector('[data-magnet-error]');if(el)el.textContent=text||'';};
-  const automatic=()=>{draft=automaticPocketMagnets(tool,{...size,count,clearance:project.clearance}).map(magnet=>({...magnet,id:uid()}));active=0;};
+  const automatic=()=>{draft=automaticPocketMagnets(tool,{...size,count,clearance:effectivePocketMargin(tool,project)}).map(magnet=>({...magnet,id:uid()}));active=0;};
   const status=()=>{
     const el=body.querySelector('[data-magnet-status]');if(!el)return;
     if(!draft.length){el.textContent='';return;}

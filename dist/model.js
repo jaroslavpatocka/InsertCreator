@@ -1,5 +1,6 @@
 import {materialConfig} from './print-material.js';
 import {validateFingerGrips} from './finger-grip.js';
+import {optionalPocketMargin} from './pocket-margin.js';
 import {validatePocketMagnets} from './tool-magnet.js';
 import {validateToolSets} from './tool-sets.js';
 import {validateModuleFootprint} from './module-footprint.js';
@@ -34,12 +35,13 @@ export function validateProject(input){
   const ids=new Set();
   out.modules=p.modules.map(m=>{
     const id=text(m.id||uid());if(ids.has(id))throw i18nError('Duplicitní identifikátor modulu.');ids.add(id);
+    const pocketMargin=optionalPocketMargin(m.pocketMargin);
     let setFields={};
     if(Object.hasOwn(m,'setId')||Object.hasOwn(m,'setLayout')){
       if(typeof m.setId!=='string'||!m.setId.trim()||m.setId.length>100||!['auto','uniform','shared'].includes(m.setLayout))throw i18nError('Modul sady musí mít platný identifikátor sady a způsob uspořádání.');
       setFields={setId:m.setId,setLayout:m.setLayout};
     }
-    return{id,name:text(m.name||t('Modul')),x:finite(m.x,0,4000,'pozice X'),y:finite(m.y,0,4000,'pozice Y'),width:finite(m.width,5,3000,'šířka modulu'),height:finite(m.height,5,3000,'hloubka modulu'),...(['mm','in'].includes(m.unit)?{unit:m.unit}:{}),locked:!!m.locked,sizeMode:m.sizeMode==='manual'?'manual':'auto',...(m.grouped===true?{grouped:true}:{}),...setFields,...validateModuleFootprint(m,out.grid)};
+    return{id,name:text(m.name||t('Modul')),x:finite(m.x,0,4000,'pozice X'),y:finite(m.y,0,4000,'pozice Y'),width:finite(m.width,5,3000,'šířka modulu'),height:finite(m.height,5,3000,'hloubka modulu'),...(['mm','in'].includes(m.unit)?{unit:m.unit}:{}),locked:!!m.locked,sizeMode:m.sizeMode==='manual'?'manual':'auto',...(m.grouped===true?{grouped:true}:{}),...(pocketMargin!==undefined?{pocketMargin}:{}),...setFields,...validateModuleFootprint(m,out.grid)};
   });
   const toolIds=new Set();
   out.tools=p.tools.map(t=>{
@@ -51,6 +53,7 @@ export function validateProject(input){
     if(width<.1||height<.1)throw i18nError('Kontura nemá platnou plochu.');
     if(width>3000||height>3000)throw i18nError('Kontura nesmí v žádném směru přesáhnout {max}.',{max:fmtLen(3000)});
     const sizeFields={};
+    const pocketMargin=optionalPocketMargin(t.pocketMargin);if(pocketMargin!==undefined)sizeFields.pocketMargin=pocketMargin;
     if(Object.hasOwn(t,'sizeLabel')){if(typeof t.sizeLabel!=='string')throw i18nError('Popisek velikosti musí být text.');sizeFields.sizeLabel=t.sizeLabel.replace(/[\u0000-\u001f]/g,'').trim().slice(0,24);}
     if(Object.hasOwn(t,'nominalSize')){
       const size=t.nominalSize;

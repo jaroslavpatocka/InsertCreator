@@ -2,11 +2,16 @@
 // Keep {placeholders} identical in both languages.
 // Worker progress messages, quality reasons and worker errors travel as Czech text and are translated in capture.js.
 export default {
+  'Vůle kapes v novém modulu':'Pocket clearance in the new module',
+  'Vůle je na každé straně: 1 mm přidá 2 mm k délce i šířce kapsy. Modrá čára ukazuje výslednou kapsu.':'Clearance applies on each side: 1 mm adds 2 mm to the pocket length and width. The blue line shows the finished pocket.',
+  'Vlastní vůle této kapsy':'Custom clearance for this pocket',
+  'Prázdné pole převezme vůli modulu {margin}. Nula vytvoří kapsu bez přídavku.':'Leave blank to inherit the module clearance of {margin}. Zero adds no clearance.',
+  'Přídavek kapsy musí být číslo od {min} do {max} mm.':'Pocket allowance must be a number between {min} and {max} mm.',
   'Tvar kapsy':'Pocket shape',
   'Vyvážený obrys (50 : 50)':'Balanced outline (50 : 50)',
   'Pravidelné tvary podél osy':'Regular shapes along the axis',
   'Naměřený obrys':'Measured outline',
-  'Vyvážený obrys je napůl mezi naměřeným obrysem a pravidelnými tvary. Přerušovaná čára ukazuje osu. Vůli přidá nastavení šuplíku.':'The balanced outline is halfway between the measured outline and regular shapes. The dashed line shows the axis. Drawer settings add the clearance.',
+  'Vyvážený obrys je napůl mezi naměřeným obrysem a pravidelnými tvary. Přerušovaná čára ukazuje osu. Vůli nastavte pro tento modul nebo jednotlivou kapsu.':'The balanced outline is halfway between the measured outline and regular shapes. The dashed line shows the axis. Set the clearance for this module or an individual pocket.',
   'Zachovat rozložení z fotky (jeden modul)':'Keep the photo layout (one module)',
   'Zachová polohu, natočení a rozestupy vybraných nástrojů v jednom modulu. Mezi nástroji musí zbýt místo na vůli kapes a stěny.':'Keeps the selected tools’ positions, orientations and spacing in one module. Leave room between tools for pocket clearance and walls.',
   'Modul přidán se zachovaným rozložením z fotky.':'Module added with the photo layout preserved.',

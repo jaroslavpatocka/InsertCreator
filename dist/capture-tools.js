@@ -1,9 +1,10 @@
-import {simpleOutline} from './finger-grip.js';
+import {simpleOutline,pocketOutline} from './finger-grip.js';
 import {getToolDimensions,resizeToolDimensions} from './tool-dimensions.js';
 import {CATEGORIES} from './tool-categories.js';
 import {t,i18nError} from './i18n.js';
 import {fitFunctionalPocket,fitHybridPocket} from './functional-pocket.js';
 import {pocketFitSignature} from './pocket-fit-meta.js';
+import {effectivePocketMargin,optionalPocketMargin} from './pocket-margin.js';
 
 const categories=new Set(CATEGORIES.map(category=>category.id));
 const geometryCache=new WeakMap();
@@ -38,14 +39,19 @@ export function captureToolPoints(item,scale){
 }
 
 /** The fit and its axis in photo pixels, shared by both capture previews. */
-export function capturePhotoGeometry(item,scale){
+export function capturePhotoGeometry(item,scale,{includeMargin=false,pocketMargin=0}={}){
   const geometry=capturePocketGeometry(item,scale),source=sourcePoints(item,scale);
   const xs=source.map(point=>point.x),ys=source.map(point=>point.y);
   const px=item.contour.points.map(point=>point.x),py=item.contour.points.map(point=>point.y);
   const center={x:(Math.min(...px)+Math.max(...px))/2,y:(Math.min(...py)+Math.max(...py))/2};
   const origin={x:center.x-(Math.max(...xs)+Math.min(...xs))*scale/2,y:center.y-(Math.max(...ys)+Math.min(...ys))*scale/2};
   const photo=point=>({x:origin.x+point.x*scale,y:origin.y+point.y*scale});
-  return{...geometry,points:geometry.points.map(photo),axis:geometry.axis?{start:photo(geometry.axis.start),end:photo(geometry.axis.end)}:null};
+  let points=geometry.points;
+  if(includeMargin){
+    const margin=effectivePocketMargin(item,pocketMargin),minX=Math.min(...points.map(point=>point.x)),minY=Math.min(...points.map(point=>point.y));
+    points=pocketOutline({points,x:minX,y:minY,rotation:0,fingerGrips:[]},margin);
+  }
+  return{...geometry,points:points.map(photo),axis:geometry.axis?{start:photo(geometry.axis.start),end:photo(geometry.axis.end)}:null};
 }
 
 export function captureItemDimensions(item,scale){
@@ -64,6 +70,7 @@ export function resizeCaptureItem(item,scale,dimensions){
  *  A corrected outline stays centred on its original photograph, including after repeated resizes. */
 export function toolFromCaptureItem(item,{scale,depth,id,preservePosition=false}){
   const metadata={};
+  const margin=optionalPocketMargin(item.pocketMargin);if(margin!==undefined)metadata.pocketMargin=margin;
   if(item.category!=null&&item.category!==''){
     if(!categories.has(item.category))throw i18nError('Vyberte platnou kategorii nástroje.');
     metadata.category=item.category;

@@ -1,6 +1,7 @@
 // Tool sets as ONE shared module (or as few print-bed sized modules), and uniform tool scaling. Pure geometry, no DOM.
 import Clipper from './vendor/clipper.js';
 import {pocketOutline,automaticFingerGrips} from './finger-grip.js';
+import {effectivePocketMargin} from './pocket-margin.js';
 import {autoArrange,validateLayout,exportSTL} from './geometry.js';
 import {analyzeToolShape} from './tool-sets.js';
 import {uid} from './model.js';
@@ -79,16 +80,16 @@ function orient(tool,rotation,clearance,separation){
  *  heading=null: longest pocket side horizontal (current rotation or +90°); heading=0|90: analyzeToolShape(tool).rotation+heading
  *  — one common heading as set-layout.js expects; rotation=number: exactly that rotation. */
 function prepareOne(tool,index,ctx,{heading=null,rotation=null}={}){
-  let base;
+  let base;const clearance=effectivePocketMargin(tool,ctx.next);
   if(rotation!=null)base=rotation;
   else if(heading===null){
     const r=num(tool.rotation);let a,b;
-    try{a=box(pocketOutline({...tool,x:0,y:0,rotation:r},ctx.clearance));b=box(pocketOutline({...tool,x:0,y:0,rotation:r+90},ctx.clearance));}catch(error){throw invalidPocket(tool,error.message);}
+    try{a=box(pocketOutline({...tool,x:0,y:0,rotation:r},clearance));b=box(pocketOutline({...tool,x:0,y:0,rotation:r+90},clearance));}catch(error){throw invalidPocket(tool,error.message);}
     base=a.width>=a.height-EPS||b.width<b.height?r:r+90;
   }else{let shape;try{shape=analyzeToolShape(tool);}catch(error){throw invalidPocket(tool,error.message);}base=shape.rotation+heading;}
-  const normal=orient(tool,base,ctx.clearance,ctx.separation);
+  const normal=orient(tool,base,clearance,ctx.separation);
   let turned=null;
-  return{tool,index,normal,bounds:normal.bounds,turned:()=>turned||(turned=orient(tool,base+180,ctx.clearance,ctx.separation))};
+  return{tool,index,normal,bounds:normal.bounds,turned:()=>turned||(turned=orient(tool,base+180,clearance,ctx.separation))};
 }
 
 /** Rows of at most `shelf` mm. */
@@ -400,7 +401,7 @@ export function splitForBed(project,tools,opts={}){
     let turned=false;
     if(opts.diagonal!==false){
       const base=heads.get(tool.id)[0].normal.rotation;let outline=null,bestTurn=null;
-      try{outline=pocketOutline({...tool,x:0,y:0,rotation:base},ctx.clearance);}catch{}
+      try{outline=pocketOutline({...tool,x:0,y:0,rotation:base},ctx.next);}catch{}
       for(let a=1;outline&&a<180;a++){
         if(a===90)continue;
         const r=a*Math.PI/180,c=Math.cos(r),s=Math.sin(r),d=ctx.size(box(outline.map(p=>({x:p.x*c-p.y*s,y:p.x*s+p.y*c}))));

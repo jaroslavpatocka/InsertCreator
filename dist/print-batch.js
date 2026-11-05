@@ -131,7 +131,7 @@ export async function preparePrintBatch(project,{moduleIds,signal,onProgress}={}
   if(total>MAX_PARTS)throw i18nError('Pro jeden export lze připravit nejvýše 400 tiskových dílů. Vyberte méně modulů nebo větší tiskovou plochu.');
   const files=[],parts=[],splitSummary=[],slots=colors.enabled?materialSlots({...colors,floor:colors.floor&&source.tools.length>0,text:colors.text&&planSizeLabels(source).labels.length>0}):null,zoneColor={body:colors.bodyColor,floor:colors.floorColor,text:colors.textColor};let completed=0,bytes=0;
   for(const [moduleIndex,{module,tiles}] of plans.entries()){
-    const own=source.tools.filter(tool=>tool.moduleId===module.id).map(tool=>({...tool,poly:pocketOutline(tool,source.clearance)})),labelPlan=planSizeLabels(source,[module],own),moduleParts=[];
+    const own=source.tools.filter(tool=>tool.moduleId===module.id).map(tool=>({...tool,poly:pocketOutline(tool,source)})),labelPlan=planSizeLabels(source,[module],own),moduleParts=[];
     for(const tile of tiles){
       progress({stage:'cutting',progress:total?completed/total:0,completed,total,moduleId:module.id});await pause();
       const geometry=buildPrintPart(source,module,own,tile,{labelPlan,jointPlan});abort();completed++;

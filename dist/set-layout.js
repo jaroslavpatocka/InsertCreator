@@ -3,6 +3,7 @@ import {automaticFingerGrips} from './finger-grip.js';
 import {analyzeToolShape,findToolSets,setCoherence} from './tool-sets.js';
 import {orderTools} from './tool-size.js';
 import {addToolGroup} from './set-module.js';
+import {effectivePocketMargin} from './pocket-margin.js';
 import {moduleOutline,moduleIntersects,modulePadding,steppedModuleFootprint} from './module-footprint.js';
 
 const EPS=.001,copy=value=>structuredClone(value),area=m=>{if(!m.cells)return(m.width-.5)*(m.height-.5);const grid=m.width/(Math.max(...m.cells.map(cell=>cell.x))+1),poly=moduleOutline(m,grid,{inset:.25});return Math.abs(poly.reduce((sum,p,index)=>{const q=poly[(index+1)%poly.length];return sum+p.x*q.y-q.x*p.y;},0)/2);};
@@ -37,7 +38,7 @@ function planOptions(project,set,allocate){
     if(layout==='shared'){
       try{tools=tools.map(t=>Object.hasOwn(t,'fingerGrips')?t:{...t,fingerGrips:automaticFingerGrips(t,{radius:9})});}
       catch{continue;}
-      if(tools.some(t=>!t.fingerGrips?.length||polygonArea(pocketOutline(t,project.clearance))-polygonArea(transformedPoints(t,project.clearance))<6))continue;
+      if(tools.some(t=>!t.fingerGrips?.length||polygonArea(pocketOutline(t,project))-polygonArea(transformedPoints(t,effectivePocketMargin(t,project)))<6))continue;
       // The shared packer nests actual pockets (including grips) while retaining nominal size order.
       // Keep the regular shelf alternatives below as well: a different footprint may fit a free bay better.
       {
@@ -53,7 +54,7 @@ function planOptions(project,set,allocate){
       }
     }
     for(const heading of [0,90]){
-      const items=tools.map(t=>{const rotation=analyzeToolShape(t).rotation+heading,b=bounds(pocketOutline({...t,x:0,y:0,rotation},project.clearance));return{tool:t,rotation,b};});
+      const items=tools.map(t=>{const rotation=analyzeToolShape(t).rotation+heading,b=bounds(pocketOutline({...t,x:0,y:0,rotation},project));return{tool:t,rotation,b};});
       const maxW=Math.max(...items.map(i=>i.b.width)),maxH=Math.max(...items.map(i=>i.b.height));
       const cellW=layout==='uniform'?Math.ceil((maxW+2*padding-EPS)/grid)*grid:maxW+gap;
       const cellH=layout==='uniform'?Math.ceil((maxH+2*padding-EPS)/grid)*grid:maxH+gap;
@@ -114,8 +115,8 @@ export async function arrangeToolSets(project,{onProgress,signal,compactArrange,
   sets=findToolSets(source).sets;before=metric(source,sets);best=source;bestMetric=before;
   const placedModules=source.modules.filter(m=>inside(m,source)),placedIds=new Set(placedModules.map(m=>m.id));
   const issue=validateLayout({...source,modules:placedModules,tools:source.tools.filter(t=>placedIds.has(t.moduleId))})[0];if(issue)throw Error(issue.message);
-  for(const tool of source.tools)pocketOutline(tool,source.clearance);
-  const own=m=>source.tools.filter(t=>t.moduleId===m.id),protectedIds=new Set(source.modules.filter(m=>m.locked||m.sizeMode==='manual'||!own(m).length||own(m).some(t=>t.locked)||(!m.grouped&&m.setLayout!=='uniform'&&own(m).length>1)).map(m=>m.id));
+  for(const tool of source.tools)pocketOutline(tool,source);
+  const own=m=>source.tools.filter(t=>t.moduleId===m.id),protectedIds=new Set(source.modules.filter(m=>m.locked||m.sizeMode==='manual'||m.pocketMargin!=null||!own(m).length||own(m).some(t=>t.locked)||(!m.grouped&&m.setLayout!=='uniform'&&own(m).length>1)).map(m=>m.id));
   const blocked=new Set();for(const set of sets)if(set.toolIds.some(id=>protectedIds.has(source.tools.find(t=>t.id===id)?.moduleId))){blocked.add(set.id);warnings.push(`${set.name}: zamčené nebo ručně rozměrované moduly zůstaly zachované.`);}
   const usedIds=new Set(source.modules.map(m=>m.id)),allocate=id=>{let next=id,n=2;while(usedIds.has(next))next=`${id}-${n++}`;usedIds.add(next);return next;};
   const families=sets.filter(s=>!blocked.has(s.id)).map(set=>{const options=planOptions(source,set,allocate);if(moduleShape==='stepped'&&set.layout!=='uniform')for(const option of options){option.modules=option.modules.map(module=>steppedModuleFootprint({...source,tools:option.tools},module));const b=bounds(option.modules.flatMap(module=>[{x:module.x,y:module.y},{x:module.x+module.width,y:module.y+module.height}]));option.width=b.width;option.height=b.height;option.cost=option.modules.reduce((sum,module)=>sum+area(module),0);}if(!options.length)warnings.push(`${set.name}: požadované uspořádání celé sady se nevejde do šuplíku, případně chybí přístup pro prsty.`);return{set,options};});
@@ -126,7 +127,7 @@ export async function arrangeToolSets(project,{onProgress,signal,compactArrange,
   const consider=async candidate=>{const value=metric(candidate,sets);if([...before.placed].some(id=>!value.placed.has(id))||!better(value,bestMetric))return;
     const modules=candidate.modules.filter(m=>inside(m,candidate)),ids=new Set(modules.map(m=>m.id));if(validateLayout({...candidate,modules,tools:candidate.tools.filter(t=>ids.has(t.moduleId))}).length)return;
     for(const module of modules.filter(m=>m.setLayout==='shared'&&!source.modules.some(old=>old.id===m.id))){
-      const own=candidate.tools.filter(t=>t.moduleId===module.id),signature=JSON.stringify({module:{width:module.width,height:module.height},tools:own.map(t=>({...t,x:t.x-module.x,y:t.y-module.y})),config:[source.wall,source.clearance,source.base,source.insertHeight,source.printMode,source.bottomMode,source.magnetDiameter,source.magnetDepth]});
+      const own=candidate.tools.filter(t=>t.moduleId===module.id),signature=JSON.stringify({module:{width:module.width,height:module.height,pocketMargin:module.pocketMargin},tools:own.map(t=>({...t,x:t.x-module.x,y:t.y-module.y})),config:[source.wall,source.clearance,source.base,source.insertHeight,source.printMode,source.bottomMode,source.magnetDiameter,source.magnetDepth]});
       if(!manufacturing.has(signature)){
         progress(.8,'Ověřuji výrobní složitost společného modulu…');await pause();
         try{exportSTL(candidate,{moduleId:module.id,checkBed:false});manufacturing.set(signature,true);}

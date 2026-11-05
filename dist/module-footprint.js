@@ -139,7 +139,7 @@ export function steppedModuleFootprint(project,module){
   if(!(grid>0&&cols>0&&rows>0)||cols*rows>MAX_CELLS||Math.abs(cols*grid-next.width)>EPS||Math.abs(rows*grid-next.height)>EPS||[next.x,next.y].some(value=>!Number.isFinite(value)||Math.abs(value/grid-Math.round(value/grid))>EPS))return next;
   const own=(project.tools||[]).filter(tool=>tool.moduleId===module.id);if(!own.length)return next;
   try{
-    const wall=Number(project.wall??2.4),clearance=Number(project.clearance??.8),pockets=own.map(tool=>tool.poly||pocketOutline(tool,clearance));
+    const wall=Number(project.wall??2.4),pockets=own.map(tool=>tool.poly||pocketOutline(tool,project));
     if(pockets.some(poly=>!containsPocketWalls(next,poly,wall,grid)))return next;
     const grown=pockets.flatMap(poly=>offset(poly,modulePadding(project))),occupied=new Set();
     // Rasterize each small pocket only over its own bounding cells. A large set must not
