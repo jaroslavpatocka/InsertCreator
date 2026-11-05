@@ -4,7 +4,7 @@ Add-Type -AssemblyName System.IO.Compression.FileSystem
 $androidRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
 $archivePath = Join-Path $androidRoot 'artifacts\InsertCreator-Android.zip'
 $packageItems = @()
-foreach ($name in @('.gitattributes','.gitignore','AGENTS.md','build.gradle','settings.gradle','gradle.properties','gradlew','gradlew.bat','BUILD.cmd','README.md','VERIFICATION.md','validate.gradle')) {
+foreach ($name in @('.gitattributes','.gitignore','AGENTS.md','build.gradle','app/build.gradle','settings.gradle','gradle.properties','gradlew','gradlew.bat','BUILD.cmd','README.md','VERIFICATION.md','validate.gradle')) {
     $packageItems += @{ name=$name; source=(Join-Path $androidRoot $name) }
 }
 function Add-SourceDirectory($directory) {
