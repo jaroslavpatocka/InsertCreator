@@ -1,5 +1,6 @@
 import { traceMask, polygonArea } from './trace.js';
 import { regularizeContour, CONTOUR_SMOOTHING_MM } from './contour-smoothing.js';
+import { refineContours } from './contour-refine.js';
 
 // These are measured image-evidence scores, not a probability of dimensional accuracy.
 // A single photograph cannot recover an edge with the same appearance as its background.
@@ -399,7 +400,7 @@ function restore(candidate, original, im) {
  * probability is an optional source-sized Float32Array (0..1) from a segmentation model.
  * onProgress receives {stage,progress,message}. score0to1 is a heuristic evidence score.
  */
-export async function autoTraceImage(imageData, { pxPerMm = 1, kind = 'paper', probability = null, onProgress } = {}) {
+export async function autoTraceImage(imageData, { pxPerMm = 1, kind = 'paper', probability = null, source = null, onProgress } = {}) {
   const started = performance.now(), progress = (stage, value, message) => { try { onProgress?.({ stage, progress: value, message }); } catch {} };
   progress('background', .03, 'Měřím barvu papíru a vyrovnávám osvětlení…'); await pause();
   const im = prepare(imageData, probability), scale = Number.isFinite(pxPerMm) && pxPerMm > 0 ? pxPerMm / im.scaleX : 1;
@@ -448,7 +449,19 @@ export async function autoTraceImage(imageData, { pxPerMm = 1, kind = 'paper', p
   }
   if (kind !== 'paper' && status === 'ready' && model.fitResidual > 5) { status = 'review'; reasons.push('U složitého pozadí pomůže fotografie nástroje na celém listu A4.'); }
   if (status === 'ready') reasons.push('Obrys má souvislou obrazovou hranu a automatické metody se na něm shodují.');
-  const restored = restore(regularizeCandidate(best, im, scale), imageData, im);
+  let restored = null;
+  if (source && best.contours.length) {
+    // A tray map is good for finding tools, not for measuring them, so its outlines may move further.
+    // On paper the mask is already close, and a wider search could settle on a cast shadow.
+    progress('refine', .95, 'Měřím přesné hrany nástrojů na původní fotce…'); await pause();
+    const size = { width: imageData.width, height: imageData.height };
+    // Measuring only improves outlines that are already valid, so its failure must not lose them.
+    try {
+      const measured = refineContours(source, restore(best, imageData, im).contours, kind === 'tray' ? {} : { search: .004 });
+      restored = { ...regularizeCandidate({ contours: measured }, size, Number.isFinite(pxPerMm) && pxPerMm > 0 ? pxPerMm : 1), ...size };
+    } catch { /* The enhanced outlines below remain usable. */ }
+  }
+  restored ??= restore(regularizeCandidate(best, im, scale), imageData, im);
   progress('complete', 1, status === 'ready' ? 'Kontury jsou připravené.' : 'Fotografie potřebuje ověření.');
   return { ...restored, threshold: strictDark, method: best.name, quality: { status, score0to1: score, reasons, methods }, diagnostics: { elapsedMs: performance.now() - started, processingWidth: im.width, processingHeight: im.height, noise: features.noise, backgroundResidual: model.fitResidual, illuminationRange: features.illuminationRange, boundaryCoverage: best.coverage, candidateAgreement: best.agreement, clippedForeground, candidates: candidates.map(c => ({ method: c.name, score: c.score, agreement: c.agreement, contours: c.contours.length, boundaryCoverage: c.coverage, areaFraction: c.fill, rejected: c.rejected, fragments: c.fragments, neuralAgreement: c.neuralAgreement })) } };
 }

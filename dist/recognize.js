@@ -29,7 +29,8 @@ function classical(image, options, signal) {
     worker.onerror = () => finish(i18nError('Automatické rozpoznávání se nepodařilo spustit. Obnovte aplikaci a zkuste to znovu.'));
     const pixels = new Uint8ClampedArray(image.data);
     const probability = options.probability ? new Float32Array(options.probability) : null;
-    worker.postMessage({ image: { width: image.width, height: image.height, data: pixels }, options: { pxPerMm: options.pxPerMm, kind: options.kind, probability } }, probability ? [pixels.buffer, probability.buffer] : [pixels.buffer]);
+    const source = options.source ? { width: options.source.width, height: options.source.height, data: new Uint8ClampedArray(options.source.data) } : null;
+    worker.postMessage({ image: { width: image.width, height: image.height, data: pixels }, options: { pxPerMm: options.pxPerMm, kind: options.kind, probability, source } }, [pixels.buffer, ...(probability ? [probability.buffer] : []), ...(source ? [source.data.buffer] : [])]);
   });
 }
 
@@ -42,7 +43,7 @@ export async function recognizeTools(image, { pxPerMm = 1, kind = 'paper', signa
   if (readable) {
     progress({ stage: 'enhance', progress: .05, message: 'Upravuji fotku, aby byly nástroje čitelné…' });
     const recovered = recoverDarkTools(image, readable.image);
-    const result = await classical(recovered, { pxPerMm, kind: 'tray', onProgress: progress }, signal);
+    const result = await classical(recovered, { pxPerMm, kind: 'tray', source: image, onProgress: progress }, signal);
     if (signal?.aborted) throw aborted();
     if (result.quality.status !== 'retake' && result.contours.length >= 2) {
       result.enhanced = readable.name; result.neuralModel = null;
@@ -52,17 +53,18 @@ export async function recognizeTools(image, { pxPerMm = 1, kind = 'paper', signa
   }
   progress({ stage: 'recognition', progress: .05, message: 'Odděluji nástroje od papíru…' });
   const [base, neural] = await Promise.allSettled([
-    classical(image, { pxPerMm, kind, onProgress: progress }, signal),
+    // With a worker this pass is normally replaced by the neural one below, so it skips the measuring.
+    classical(image, { pxPerMm, kind, source: typeof Worker === 'function' ? null : image, onProgress: progress }, signal),
     typeof Worker === 'function' ? segmentNeural(image, { onProgress: progress, signal }) : Promise.resolve(null)
   ]);
   if (signal?.aborted) throw aborted();
   let result;
   if (neural.status === 'fulfilled' && neural.value?.probability) {
     progress({ stage: 'refine', progress: .86, message: 'Zpřesňuji skutečné hrany a odstraňuji stíny…' });
-    result = await classical(image, { pxPerMm, kind, probability: neural.value.probability, onProgress: progress }, signal);
+    result = await classical(image, { pxPerMm, kind, probability: neural.value.probability, source: image, onProgress: progress }, signal);
     result.neuralModel = neural.value.model;
   } else if (base.status === 'fulfilled') {
-    result = base.value;
+    result = typeof Worker === 'function' ? await classical(image, { pxPerMm, kind, source: image, onProgress: progress }, signal) : base.value;
     result.neuralModel = null;
     result.neuralUnavailable = neural.status === 'rejected';
   } else throw base.reason || i18nError('Fotografii se nepodařilo zpracovat.');

@@ -212,7 +212,7 @@ function intersects(a, b, c, d) {
   return on(a, b, c, abC) || on(a, b, d, abD) || on(c, d, a, cdA) || on(c, d, b, cdB);
 }
 
-function simple(points) {
+export function simple(points) {
   // Two dimensional buckets also bound dense vertical/horizontal outlines,
   // where a one dimensional sweep would retain thousands of parallel edges.
   let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity;
