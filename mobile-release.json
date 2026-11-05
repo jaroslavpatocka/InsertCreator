@@ -1,0 +1,766 @@
+{
+  "version": 1,
+  "sourceCommit": "b820c376b5d1024b12fa72e344706fc73b6b2bc1",
+  "files": [
+    {
+      "path": "app.js",
+      "sha256": "49F41AD99E64B52C08251298E969036FE64F1CB8084D7EDDD0FD759F4325F402",
+      "bytes": 224453
+    },
+    {
+      "path": "auto-trace.js",
+      "sha256": "45E1090684CF809F57626A2C279A32808A2762726AAD78E54E09729ACA6009A1",
+      "bytes": 36624
+    },
+    {
+      "path": "bulk-edit.js",
+      "sha256": "DAB67BA6A7ECCDBCD01DB7362FEFAB40DE6B98FD7047374ABD170F96DEB1F5FB",
+      "bytes": 11594
+    },
+    {
+      "path": "capture-context-menu.js",
+      "sha256": "68375ACC31C14BDE88C51B559E78A42B805A2A53028B8CF9214899C0F2DA114E",
+      "bytes": 4294
+    },
+    {
+      "path": "capture-guide.css",
+      "sha256": "1ED9127CA054212349319D7136ED992688020EC6779BC7EF3726CC87621B2783",
+      "bytes": 5756
+    },
+    {
+      "path": "capture-guide.js",
+      "sha256": "AC3E41279AB22EA088C5D06C9302B88CDC4203B4DB64F1CE9EB65C95A111791B",
+      "bytes": 15866
+    },
+    {
+      "path": "capture-preview.js",
+      "sha256": "54E0288966335C2FA7A0B5DAEC64B042055968F84877A990CDFBBC7EC2DA66D7",
+      "bytes": 4927
+    },
+    {
+      "path": "capture-tools.js",
+      "sha256": "8CBBF5C55D4F43B1F2DC3E801A65DF1A1B790A83B874F2C57D1712291FD61F8F",
+      "bytes": 5237
+    },
+    {
+      "path": "capture-view.js",
+      "sha256": "934761431AF1491226261D1A0D32D1EA195BE1AC30B61478A34B374276E89439",
+      "bytes": 9690
+    },
+    {
+      "path": "capture.js",
+      "sha256": "D111AE7ABFFDBC355F1C89E27D56E3B1F0557466DE8F76EEF5CB445173C04495",
+      "bytes": 52956
+    },
+    {
+      "path": "catalog-ui.js",
+      "sha256": "3BF80B54A8238A67EFF08A7DCB59F6798FD2CD176C6858F748FCB6B18CBB7625",
+      "bytes": 46500
+    },
+    {
+      "path": "catalog/imported.js",
+      "sha256": "2542CB54C5C799E204817A5AFE7B82F79878132577EC474A1061D95ADF5D25BC",
+      "bytes": 50492
+    },
+    {
+      "path": "catalog/index.js",
+      "sha256": "567B7302F43CA753990E46D4496BBF8E83B9B6ADACAA323DC145BAFB3840A969",
+      "bytes": 2823
+    },
+    {
+      "path": "catalog/parametric.js",
+      "sha256": "B4B40F002561FC9E497D91AE60988060ADF379E799CB014D620182B1AC03D302",
+      "bytes": 26102
+    },
+    {
+      "path": "catalog/sets.js",
+      "sha256": "C2926FB22093B2349B3D8F28BBB2EB7EFA158D26AA2FB40E57D6E7960A0382D9",
+      "bytes": 21628
+    },
+    {
+      "path": "catalog/sources/freecad-library/Digital_caliper.stl.gz",
+      "sha256": "5ACCEF16BAC306524D84296CC8C0E5D63DEE39D56166A2D0686AA22B5D7BA5FB",
+      "bytes": 747224
+    },
+    {
+      "path": "catalog/sources/freecad-library/LICENSE-Assets.txt",
+      "sha256": "F14F4D7CF4BF40F8F589B6B461A110D849031E2E43958235E018B3763E54B859",
+      "bytes": 20620
+    },
+    {
+      "path": "catalog/sources/freecad-library/README.md",
+      "sha256": "EBB407775787BA1BDEA138A3B9AAD389E99451FFD2D2D2936715861A28ED8CD9",
+      "bytes": 1761
+    },
+    {
+      "path": "catalog/sources/polyhaven/LICENSE.txt",
+      "sha256": "22151D4A4847A422CE86FB7729DCC10122D6B74D04898174A90EEBA096E75B03",
+      "bytes": 532
+    },
+    {
+      "path": "catalog/sources/polyhaven/README.md",
+      "sha256": "799E1CBEC2B2F1C75306A7B3656E54DF5D732AF3B06D08FAF2C0764DDD2BAD8D",
+      "bytes": 4944
+    },
+    {
+      "path": "catalog/sources/polyhaven/models/adjustable_wrench.bin.gz",
+      "sha256": "1B39DB2DE6EC9F4493833FD655B293BDB27034B4AAB30D18A6ED545414D65839",
+      "bytes": 100423
+    },
+    {
+      "path": "catalog/sources/polyhaven/models/adjustable_wrench.gltf",
+      "sha256": "1FC7DF249BD4AA5F8CAD48EB0B23381BAD305B17A3095D06758D76AC1605FEA1",
+      "bytes": 5659
+    },
+    {
+      "path": "catalog/sources/polyhaven/models/combination_wrench.bin.gz",
+      "sha256": "8ADF317AD146FEFA26C7AA6062EA4E4479DA4C8AF375D4F4598F34848DF254F7",
+      "bytes": 40883
+    },
+    {
+      "path": "catalog/sources/polyhaven/models/combination_wrench.gltf",
+      "sha256": "9A04C36B03F25550495C32E36522B603B23B30AD4EB5F55C1BB20CFC41D64444",
+      "bytes": 2828
+    },
+    {
+      "path": "catalog/sources/polyhaven/models/cross_pein_hammer.bin.gz",
+      "sha256": "66C3A2688D4066757E4F31B8E157FA80E532B0C64E2439C0D71BFDC7CE166656",
+      "bytes": 43805
+    },
+    {
+      "path": "catalog/sources/polyhaven/models/cross_pein_hammer.gltf",
+      "sha256": "C198C0D9213A7EE9D6872F8C1EDD7E2C0CAD3814D173D31127FF2812C8895A6C",
+      "bytes": 2819
+    },
+    {
+      "path": "catalog/sources/polyhaven/models/fish_knife.bin.gz",
+      "sha256": "2DA5E24FC7BF34C43246298D21C549A96079FC413445807142432350A36D696B",
+      "bytes": 47093
+    },
+    {
+      "path": "catalog/sources/polyhaven/models/fish_knife.gltf",
+      "sha256": "868D30C0BCAF12C4D7F426CE66D9CD1D98BAF1407F6D5FAEAF1A568C969B5539",
+      "bytes": 4611
+    },
+    {
+      "path": "catalog/sources/polyhaven/models/flathead_screwdriver.bin.gz",
+      "sha256": "A4DAE8177023CDC01CB819481C9987F6E7A7016108EA1B6ECF1CA1E0B1F749C0",
+      "bytes": 37710
+    },
+    {
+      "path": "catalog/sources/polyhaven/models/flathead_screwdriver.gltf",
+      "sha256": "68518D28DCD55F26BA68FBDEEC7B7A6B2B2FA688F96519F65FCEAC32B230D60A",
+      "bytes": 2848
+    },
+    {
+      "path": "catalog/sources/polyhaven/models/hatchet.bin.gz",
+      "sha256": "AEF4BD0FBF7D971CE5ECEFEAA8E6A1F9CCD366A38614FDDE66FF0EDC9EF92AF6",
+      "bytes": 109486
+    },
+    {
+      "path": "catalog/sources/polyhaven/models/hatchet.gltf",
+      "sha256": "DB11C85EF102708CA71A4A53A6367703FD325BE6A7BC7D06522D37EAAB7DBF61",
+      "bytes": 2718
+    },
+    {
+      "path": "catalog/sources/polyhaven/models/measuring_tape_01.bin.gz",
+      "sha256": "4EDAE13F5223682808614008746767A1CACDA2D3C7ACF92B313AE1D0FC122802",
+      "bytes": 60048
+    },
+    {
+      "path": "catalog/sources/polyhaven/models/measuring_tape_01.gltf",
+      "sha256": "F4D36918FCBE3DE138FBF7A0C5CC1AB2C7C049DB6A5E7EE24673D78D3D9ED74D",
+      "bytes": 2720
+    },
+    {
+      "path": "catalog/sources/polyhaven/models/pipe_wrench.bin.gz",
+      "sha256": "94BBB1075B0D64968A798F09220EF67214DE72916C7F44BE78F57BAD9559B89E",
+      "bytes": 174586
+    },
+    {
+      "path": "catalog/sources/polyhaven/models/pipe_wrench.gltf",
+      "sha256": "F6B9B8BCB40842411A9B8D4C74B7E5D5623F64E55C04F54B7E4747759DCBA9ED",
+      "bytes": 2756
+    },
+    {
+      "path": "catalog/sources/polyhaven/models/pliers.bin.gz",
+      "sha256": "79277E43425EAE740E0C30BD305040110C30CF1011A070573D44F6B8C88DE1E3",
+      "bytes": 83660
+    },
+    {
+      "path": "catalog/sources/polyhaven/models/pliers.gltf",
+      "sha256": "7D347749569FC43CB256DB9B077BA4EAE16586C927B3AC8C3AF119561A00BC34",
+      "bytes": 5560
+    },
+    {
+      "path": "catalog/sources/polyhaven/models/ratchet_wrench.bin.gz",
+      "sha256": "08FA9D96F3E5CDF5A2C7347F6C9AF3D3A0AB0B92979C352A4CE98E5BCBC30E9E",
+      "bytes": 167059
+    },
+    {
+      "path": "catalog/sources/polyhaven/models/ratchet_wrench.gltf",
+      "sha256": "6212AF117EABA863BE506D0DBCA06D3AEFBEF84E1A4172B7F8FC3C8170576EFF",
+      "bytes": 2788
+    },
+    {
+      "path": "catalog/sources/polyhaven/models/rusted_hacksaw.bin.gz",
+      "sha256": "2D9A5FF1B3AB6634DCA1A8156809085D6BC2E9743254426623C9F96E10195CC4",
+      "bytes": 106854
+    },
+    {
+      "path": "catalog/sources/polyhaven/models/rusted_hacksaw.gltf",
+      "sha256": "3BD152A8F1A690B0A4FBC2647AE3350F3BF7F4868D322173CF71561D96CD27B1",
+      "bytes": 2783
+    },
+    {
+      "path": "catalog/sources/polyhaven/models/screwdriver.bin.gz",
+      "sha256": "2F9859ED6763CBED6DBE1540C7860CD856F5AC8914F57E2854B0EE92493F557B",
+      "bytes": 55366
+    },
+    {
+      "path": "catalog/sources/polyhaven/models/screwdriver.gltf",
+      "sha256": "4B58921F68F3F158D5F46C185A3FCABE6A5E0F1C92375DFDAAF4B4296F716BA1",
+      "bytes": 2757
+    },
+    {
+      "path": "catalog/sources/polyhaven/models/screwdrivers_02.bin.gz",
+      "sha256": "C9F5B0B7E9F0FD0C86DCB5D271639CC108E8974D23CDFF579D5999398BDAE1F3",
+      "bytes": 55874
+    },
+    {
+      "path": "catalog/sources/polyhaven/models/screwdrivers_02.gltf",
+      "sha256": "9CA01ADAFEF10D8ABD0E8BCA4672C874E3D3950C8C81B1B74627A47FE152DE23",
+      "bytes": 4293
+    },
+    {
+      "path": "catalog/sources/polyhaven/models/tongue_groove_pliers.bin.gz",
+      "sha256": "58FA3AA2CE5B13D2ADBE637D1150DA1FA2530030FA73564AB8986D44AB66F014",
+      "bytes": 47801
+    },
+    {
+      "path": "catalog/sources/polyhaven/models/tongue_groove_pliers.gltf",
+      "sha256": "C39782EB7FA9D49999F9649A492963952F65B5CD3367486B1405CC44A94E501E",
+      "bytes": 4263
+    },
+    {
+      "path": "catalog/sources/polyhaven/models/wooden_hammer_01.bin.gz",
+      "sha256": "00BC479F55161947ECD4B5B5BE2E51A341189BD26D0E23326F087C63C06E14E2",
+      "bytes": 70812
+    },
+    {
+      "path": "catalog/sources/polyhaven/models/wooden_hammer_01.gltf",
+      "sha256": "C2149D9F54BD2115AF7EDEAC528E4890E8E68F0D2E3E939367268547837C6B29",
+      "bytes": 2709
+    },
+    {
+      "path": "context-menu.js",
+      "sha256": "FFF875DAC1B55669FCCD201E029F737A84D97C3EDEB4791A49ECC6D773414B8F",
+      "bytes": 2933
+    },
+    {
+      "path": "contour-refine.js",
+      "sha256": "DE7550EE07B74419FFDE4EDE11C81B5BFB0B6BDD68BA97DC47CCAEDE2B999332",
+      "bytes": 28468
+    },
+    {
+      "path": "contour-shape.js",
+      "sha256": "F6F3076412A5B3497E1C6757F98AC9788836290792D5838A1A5CF308E4DE88B6",
+      "bytes": 15210
+    },
+    {
+      "path": "contour-smoothing.js",
+      "sha256": "6DCF586B74530427B820C28A28CE36DCAC3C2940AC08C153A88D763706CB9C4E",
+      "bytes": 15690
+    },
+    {
+      "path": "editor-cache.js",
+      "sha256": "53BEEB9871BB06D96207E7534E815B159DA17E95BB2D7617AE4C5EE00CEFE167",
+      "bytes": 2027
+    },
+    {
+      "path": "finger-grip.js",
+      "sha256": "A27184E05BBF0EB3C70C95A2D313C563D5355E166F00723F35A93E2F4AF6DC8E",
+      "bytes": 11257
+    },
+    {
+      "path": "fit-sheet.js",
+      "sha256": "1D65B3F010302B963C9E4E8286AB2E544EBB5C35B6E4A159F370F2B212A1772B",
+      "bytes": 5093
+    },
+    {
+      "path": "fonts/DM-Sans-OFL.txt",
+      "sha256": "9AF36190332437F5ECD09974DE43C1F7C77A310A996CDD8CEB25628B458840E1",
+      "bytes": 4482
+    },
+    {
+      "path": "fonts/Manrope-OFL.txt",
+      "sha256": "58172E0C0FAC2CDA8A37B348164BB55E44B0E69051E557E92B1D3F6910141F7B",
+      "bytes": 4387
+    },
+    {
+      "path": "fonts/dm-sans.ttf",
+      "sha256": "8CD08D97E89C24D0AA92EDD2F0F4C8EE6195EEE9B7C9F154865A58B02F0C1C0D",
+      "bytes": 240164
+    },
+    {
+      "path": "fonts/manrope.ttf",
+      "sha256": "3AE11C49DB0455A3CC33E37D380F20FDB8C7F8B41DC07625C177E3D87A9D6AE6",
+      "bytes": 164700
+    },
+    {
+      "path": "functional-pocket.js",
+      "sha256": "E7A63D299EE5C14072FC83205FEC52C9A7E14031C95D04D0332112BCC7ED39DC",
+      "bytes": 17142
+    },
+    {
+      "path": "geometry.js",
+      "sha256": "0AB83F3E484020AAC345B2468D5A8647D09697A0BB58402D448E08D8E65364E8",
+      "bytes": 36055
+    },
+    {
+      "path": "gridfinity-baseplate.js",
+      "sha256": "F823A2AB07509FC477297FDAC6B582101DCD697BE15AA04932A08DF4C5842196",
+      "bytes": 6758
+    },
+    {
+      "path": "i18n.js",
+      "sha256": "C02E61AFF9508E2C022B184F0C626045F7546E77F21D00FD2059C6C9489FFEAE",
+      "bytes": 3700
+    },
+    {
+      "path": "icon-192.png",
+      "sha256": "BD13410F464F235F42EF8017A3C9054F2154C29DEE37ED0990526579AFE5C6EA",
+      "bytes": 1665
+    },
+    {
+      "path": "icon-512.png",
+      "sha256": "716B44A1F31DDCEA91544704BDB0B47B1492BB907A0E76B16C14C6C00A558830",
+      "bytes": 4846
+    },
+    {
+      "path": "icon-apple.png",
+      "sha256": "2F932B4FCC8C1F2D18EDAE392AC6DDB5A0A86FB1FA4EBCDC46E3D6AAED7F7586",
+      "bytes": 1425
+    },
+    {
+      "path": "icon.svg",
+      "sha256": "2E4D1F3D32ED733CE2B8FFBAB4BD96A98A37BD7EFB1953006263AAC7B8D7103D",
+      "bytes": 400
+    },
+    {
+      "path": "index.html",
+      "sha256": "F51F2881733922C00DB6EB073B13DF7F72453C4B46B3E608BCFAA64FB16223BC",
+      "bytes": 2205
+    },
+    {
+      "path": "joint-fit.js",
+      "sha256": "A432383CF19EDA6681FED319E58EA089C285537A18E703AABAF5A86D60FBF4E1",
+      "bytes": 1401
+    },
+    {
+      "path": "licenses-en.html",
+      "sha256": "D189CD15C19D4E6A830E9025148C9168BE2A6DBADCEB822437007BC07FB8758D",
+      "bytes": 12167
+    },
+    {
+      "path": "licenses.css",
+      "sha256": "C1BCAD97675997C013804C9C70DA0A5082709300A92CBA37C8CFB03A5539DBA0",
+      "bytes": 3718
+    },
+    {
+      "path": "licenses.html",
+      "sha256": "682FB92C31EAF9865E1FCBBFC7A48670C89FD9DB6DB29348DBE43CE350AE763A",
+      "bytes": 12412
+    },
+    {
+      "path": "loading-ui.css",
+      "sha256": "98448292AF2E7736C79ACE9D506255A8FD67D4E2DCFCF87A6CA2B107602233D8",
+      "bytes": 7879
+    },
+    {
+      "path": "loading-ui.js",
+      "sha256": "271BF8C8A3532A8BA023A9B12527EF1F0407B1F0C46214DEACA3819111D3EB48",
+      "bytes": 4313
+    },
+    {
+      "path": "locales/en-app.js",
+      "sha256": "186901955CF654B4FE0320CEF0C9053CAA3BF25CE48FAD24B75C8FB693B16DAA",
+      "bytes": 87817
+    },
+    {
+      "path": "locales/en-capture.js",
+      "sha256": "6AE6865E93AA8A1D3227D82822E8680FCC17248BD9FB5517560A89F45F65EFDA",
+      "bytes": 24874
+    },
+    {
+      "path": "locales/en-core.js",
+      "sha256": "0FEBA80447BD5CF9FDE1D94769A30D55EDF152A4BCD4EF98E0EC9F992D889649",
+      "bytes": 21658
+    },
+    {
+      "path": "locales/en-magnet.js",
+      "sha256": "7EA22FDD7027C1346F01D6D407DDA95385ED596DF9629169E8800489712E14C5",
+      "bytes": 4409
+    },
+    {
+      "path": "magnet-pockets.js",
+      "sha256": "DD58D55EC344B4D358204F12B4B29300C32BD6EAD445F46CEE4B4CFE33416AF3",
+      "bytes": 2582
+    },
+    {
+      "path": "manifest.webmanifest",
+      "sha256": "A4BD1F78CA19A96D02BC308231092077230E39B1CB24268756E0DE2664E77C17",
+      "bytes": 529
+    },
+    {
+      "path": "manufacturing-client.js",
+      "sha256": "0DA36E676FF2A36BB3C7913CFEB407B84C3AA571AFDF572D28CFBF6E6EEF5733",
+      "bytes": 7608
+    },
+    {
+      "path": "manufacturing-coordinates.js",
+      "sha256": "8A84A17E807343B441685BA9F4690D749A2FD3D6A0D09BAEA481D8DB41094B59",
+      "bytes": 1217
+    },
+    {
+      "path": "manufacturing-worker.js",
+      "sha256": "4B14142C13EB38A717DF30CF4A838ED755E86A98F0ABC776C1D25A8D930FB2D2",
+      "bytes": 11201
+    },
+    {
+      "path": "mesh-client.js",
+      "sha256": "2605247EFAE405CC80A8DDDC24F72E08D49195E8459E78E18C25F6DF01D30759",
+      "bytes": 5828
+    },
+    {
+      "path": "mesh-worker.js",
+      "sha256": "BFCA43DC8E95F6DFDE4095F7E26C4D13CBE9C4BCAD16376508DF7566D0DDBDAB",
+      "bytes": 1038
+    },
+    {
+      "path": "mobile-platform.js",
+      "sha256": "7EAE6D86ED5548C883C7F841AE6CA65F33938F720E74EDDF2F4C72CF034CDCE7",
+      "bytes": 2907
+    },
+    {
+      "path": "mobile-shell.js",
+      "sha256": "2B769251CCF384C083704327A1434A5F4B55D264D5B7DCE02441A9531AB0C31E",
+      "bytes": 7663
+    },
+    {
+      "path": "mobile.css",
+      "sha256": "F5A29A86C7275346A354EFA36B404D9D5B93D8E495D1D8EC018E489578575C49",
+      "bytes": 29920
+    },
+    {
+      "path": "model.js",
+      "sha256": "35F7FE0539BE0B298FF91C8EAA54D31568B3F6C1ED720798A46509A79327C6D5",
+      "bytes": 7523
+    },
+    {
+      "path": "models/README.txt",
+      "sha256": "26FBFF3574C04E941E03D8F2D9D76E039309ADC0862CC1CEFC65958E232B810B",
+      "bytes": 879
+    },
+    {
+      "path": "models/REMBG-LICENSE",
+      "sha256": "90A3215072968FD304669C5389F04F1274A587ABDD0507D99DEAD0F5511F8999",
+      "bytes": 1069
+    },
+    {
+      "path": "models/U2NET-LICENSE",
+      "sha256": "C71D239DF91726FC519C6EB72D318EC65820627232B2F796219E87DCF35D0AB4",
+      "bytes": 11357
+    },
+    {
+      "path": "models/u2netp.onnx",
+      "sha256": "309C8469258DDA742793DCE0EBEA8E6DD393174F89934733ECC8B14C76F4DDD8",
+      "bytes": 4574861
+    },
+    {
+      "path": "module-edit.js",
+      "sha256": "2DE6E2AB4AF44BDDBA5C96E51189FA867564CE8785C4F224FE0960C9FF546F2D",
+      "bytes": 5676
+    },
+    {
+      "path": "module-footprint.js",
+      "sha256": "798FFB883193A9C586CE2A4175543C23A80D925B7C0EF654D2A43F58570AE5C7",
+      "bytes": 13484
+    },
+    {
+      "path": "module-joints.js",
+      "sha256": "BD650C01305FA853036BCED88097207EC94E56FFBE64F4154F3436E3629BFE2D",
+      "bytes": 14138
+    },
+    {
+      "path": "module-margin.js",
+      "sha256": "5E377938586A7CA3386429E14DE08F2F0F7FAB83E42EB55225B418554661E180",
+      "bytes": 4155
+    },
+    {
+      "path": "neural-core.js",
+      "sha256": "B30ACC8085CFC162B8D15F4E8013AAE52832E2AD2AAB70357BD4CBA2C38ED531",
+      "bytes": 2977
+    },
+    {
+      "path": "neural-worker.js",
+      "sha256": "BD6AF72D117475F593ADF5FDA99D2196045422686523DE0F25DC217999E7E428",
+      "bytes": 2428
+    },
+    {
+      "path": "neural.js",
+      "sha256": "C36B9B518DD9C06D5219EEB51B4D357FA0294A9EAF20B479926C206FE2C4BD78",
+      "bytes": 3119
+    },
+    {
+      "path": "photo-enhance.js",
+      "sha256": "38BBAB47766F8038CF5B63F6A0B4E260773404DAE4DB946ECF6754B9D35112F8",
+      "bytes": 25849
+    },
+    {
+      "path": "photo-layout.js",
+      "sha256": "3262B7860DAFD66AE9CC9CDDD03063902A01C77D29E2DBFC6590E944E3029739",
+      "bytes": 2052
+    },
+    {
+      "path": "photo-module.js",
+      "sha256": "569F318D237214506CE85B0C3E31D8F43DCB7A0C9A59F28AE1F56D8D79232692",
+      "bytes": 4435
+    },
+    {
+      "path": "photo-recovery.js",
+      "sha256": "909032ACF906DBAA9E26C9FB7700220163225C420291BFEEAF4BADC867A2E258",
+      "bytes": 14817
+    },
+    {
+      "path": "pocket-fit-meta.js",
+      "sha256": "6F2D19BDD657B1679B9F8846EC703496D033022FF28F3D1B5E88270CEAE75844",
+      "bytes": 471
+    },
+    {
+      "path": "pocket-growth.js",
+      "sha256": "676DCF8AAB09364D9156321BB7F63467E1FB1528E34E0F4EE1E17DBB82EBA4E6",
+      "bytes": 8076
+    },
+    {
+      "path": "pocket-margin.js",
+      "sha256": "0D4BAB55716D09D7D4B1A112304C82C3F038D3C266599A112CE1E1D108D93C78",
+      "bytes": 1913
+    },
+    {
+      "path": "preview-live.js",
+      "sha256": "F05294BE90A8DEEB1BD6147ED867DF776671A8DE6E99DEEA248B17A96623FF01",
+      "bytes": 8884
+    },
+    {
+      "path": "preview-mesh.js",
+      "sha256": "E970633991F90BDAAC646809724740D0323B91DDC3A6D298A3674A574523BF51",
+      "bytes": 4710
+    },
+    {
+      "path": "preview3d.js",
+      "sha256": "AF4E8C802E80D9668600C8443E4481A42B6D991D7614B2B8655CDF8A24D9DAD7",
+      "bytes": 30965
+    },
+    {
+      "path": "print-batch.js",
+      "sha256": "F4B7638B476244107C0ED13A9ADB142037AB7B6832BE43AF5C86DEEF2CAF9C62",
+      "bytes": 16257
+    },
+    {
+      "path": "print-geometry.js",
+      "sha256": "9293F63790935A0DB6037E44F1C6AEABE42C5C551B66116B8DAE7C231616A256",
+      "bytes": 32166
+    },
+    {
+      "path": "print-material.js",
+      "sha256": "62EEB97B0B2FD838777D64A3F0C8F5FF9D0D1EA5AD6540863A79FF2E2E1EE5E5",
+      "bytes": 6752
+    },
+    {
+      "path": "recognize-worker.js",
+      "sha256": "844AD089ACC32D6746159AC119B0B21717424BF8DB040FD5C33E7E68F891939C",
+      "bytes": 382
+    },
+    {
+      "path": "recognize.js",
+      "sha256": "A983635617B14762B5737184DD5513A5009356051895436F2D12A586904EBCB1",
+      "bytes": 4669
+    },
+    {
+      "path": "ruler-calibration.js",
+      "sha256": "2CD5BE81325B3F051C6E4CE4EC86892C9D43C8437D6481AAABE3A3EEC6D9F2F8",
+      "bytes": 4571
+    },
+    {
+      "path": "set-layout.js",
+      "sha256": "63AE49E3CD58235095E3DC367A56A541EE50FE4ACE7D787100AC01E2C8FB6CA4",
+      "bytes": 19285
+    },
+    {
+      "path": "set-module.js",
+      "sha256": "42610E7C1B540251FD89BA4EFCD085EF0C84C40FA4E6E22A649A5D2B6E6CB692",
+      "bytes": 35265
+    },
+    {
+      "path": "size-labels.js",
+      "sha256": "62988D5A04493C14B03943D7038FFFC8F6923D3C4613E396A870F3F34584C4FB",
+      "bytes": 11875
+    },
+    {
+      "path": "smart-layout-client.js",
+      "sha256": "EB73861E6CFCC9404DF926B2809474E3DF9BD46347DDD9028BC2F392CA93BE8D",
+      "bytes": 3425
+    },
+    {
+      "path": "smart-layout-worker.js",
+      "sha256": "62E04B62150FF4E6ABF4FD409FDF4EBE06C5111FCF90296AC54F32F017AB7F8A",
+      "bytes": 880
+    },
+    {
+      "path": "smart-layout.js",
+      "sha256": "4B65A54A88A831B41A9DFF64CC35275DD836B052EE02F29C19985949BD9EA68A",
+      "bytes": 46031
+    },
+    {
+      "path": "space-layout.js",
+      "sha256": "703F38C7FBCCED771E2D172D4EB86F72A18079C3A6F590E370D42E579642D45B",
+      "bytes": 18291
+    },
+    {
+      "path": "style.css",
+      "sha256": "D40388A529422CDC5055899195F04DE0F24053E3313E357B32BFF0CE5D5CBAA9",
+      "bytes": 72360
+    },
+    {
+      "path": "sw.js",
+      "sha256": "C7244099A9F61FF5980A040F775FA4006C29CF0B83F4EBDB86F48E365A413083",
+      "bytes": 3981
+    },
+    {
+      "path": "three-mf.js",
+      "sha256": "D0B9CB5FB3FC84DBC6B56A219A581E27F42CF1FC02FA7B8CB382A8500D0EDA0D",
+      "bytes": 4507
+    },
+    {
+      "path": "tool-categories.js",
+      "sha256": "257033F269703AB9DE638283A22A8EA3991F481E6968E2A6CCA0A09AC2DC428F",
+      "bytes": 2865
+    },
+    {
+      "path": "tool-contour.js",
+      "sha256": "E11D13133DFBEE8B547453425D31583CBACC04CF19DFC4873DA69914E84AE5D5",
+      "bytes": 4093
+    },
+    {
+      "path": "tool-dimensions.js",
+      "sha256": "DE3E495A1816632360EE2FCC4230B7C074431F58485E16AEE84A29C57E6694CD",
+      "bytes": 5108
+    },
+    {
+      "path": "tool-functional-pocket.js",
+      "sha256": "0BB3B92722444D02FAF80A7308F1D6C4F3777BDE46911901625E324264526867",
+      "bytes": 3186
+    },
+    {
+      "path": "tool-magnet-ui.js",
+      "sha256": "571B2B96CC24E3DC9D9A5AD2B64621A4985F0412D4B018409055EF6B80372E53",
+      "bytes": 12012
+    },
+    {
+      "path": "tool-magnet.js",
+      "sha256": "247C394F72E606B02F28AC3A8AE6F887A9C82569B648CB82D6E6AE6A8F2A1558",
+      "bytes": 6759
+    },
+    {
+      "path": "tool-sets.js",
+      "sha256": "747F2FAED28BC7B8046771A84048C061B117EE2BE5491DE76611BB97D0D095E6",
+      "bytes": 14433
+    },
+    {
+      "path": "tool-size.js",
+      "sha256": "381F4623BA0D7496C93BE8756F371CA556C8CFBCEFC7494ED70A48182C824D7F",
+      "bytes": 3470
+    },
+    {
+      "path": "trace.js",
+      "sha256": "94B955D2FC9FA18AB86600DD9293639B5244616159B54D846D76118EA5A3B735",
+      "bytes": 17276
+    },
+    {
+      "path": "ui.js",
+      "sha256": "79FB6204CF357E03A34AAACA6703FBCA6B75203661C8A0D4F9187115E7472EC2",
+      "bytes": 9689
+    },
+    {
+      "path": "units.js",
+      "sha256": "06D9549F0DB5D4FEBD951A775439FCE48191E45DCAB1A73952000F32A6487861",
+      "bytes": 5296
+    },
+    {
+      "path": "vendor/clipper.LICENSE",
+      "sha256": "644E033F263BA3316286D1EFE6F81B29E35AD6451C100340BDB36EFB9E290778",
+      "bytes": 1646
+    },
+    {
+      "path": "vendor/clipper.README.md",
+      "sha256": "38EF99D1CDC2F4CA39B455EFF3FD87373E129DDDBB81C6546981F8657D38FF76",
+      "bytes": 1814
+    },
+    {
+      "path": "vendor/clipper.js",
+      "sha256": "C231EFF85859364F99BAA2714E747F964D07AB38D94E8DA087E20515B1264F12",
+      "bytes": 203250
+    },
+    {
+      "path": "vendor/earcut.LICENSE",
+      "sha256": "324139C19D87AF03FDA38AFEA1590E00CA354C4159BDB2AE9E9CEC070CFA46A8",
+      "bytes": 738
+    },
+    {
+      "path": "vendor/earcut.js",
+      "sha256": "83D5B59BC520601BB2DD7401A2F8382A008D8D95E0E6E0FE45759AE4FDA1AA56",
+      "bytes": 21256
+    },
+    {
+      "path": "vendor/jsbn.LICENSE",
+      "sha256": "E0E396530FD1624126E9A7E0DF94811E4062E03BAECCB07BC33C934B0FD93A85",
+      "bytes": 1544
+    },
+    {
+      "path": "vendor/ort/LICENSE",
+      "sha256": "2F07C72751AED99790B8A4869CF2311DF85A860B22DED05FA22803587A48922C",
+      "bytes": 1073
+    },
+    {
+      "path": "vendor/ort/ThirdPartyNotices.txt",
+      "sha256": "CF7342F7BA482EF715AE58F5F497A8D3564FA255164175AEA324CD293C5701A0",
+      "bytes": 338538
+    },
+    {
+      "path": "vendor/ort/ort-wasm-simd-threaded.mjs",
+      "sha256": "745EB7C0CE6F18A6AA521971B2877BABC7FFB27EECB58AB3BC6E5EF4692672E8",
+      "bytes": 24618
+    },
+    {
+      "path": "vendor/ort/ort-wasm-simd-threaded.wasm",
+      "sha256": "207D02BE4591C156B0A98F024F3D58005B5B04C92274D759FB390338C63559EA",
+      "bytes": 11246032
+    },
+    {
+      "path": "vendor/ort/ort.wasm.min.mjs",
+      "sha256": "F53ED4792E758E7232F779D479EB8931B97FF3AB2E3B9A33EE00D1251FFDAAD6",
+      "bytes": 48904
+    },
+    {
+      "path": "view-controls.js",
+      "sha256": "0DF5D9FBEEB2779254EC56C39B1F3C3A22BF3970B1E34C2C2A7F05D9F9933B6E",
+      "bytes": 10591
+    },
+    {
+      "path": "webgl-preview.js",
+      "sha256": "16B02F1C512FF1524553BD8C922110AAC34BCD596E0B5E6EBC43EFB62E0A8D97",
+      "bytes": 7237
+    }
+  ]
+}

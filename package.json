@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "node serve.mjs",
+    "sync:mobile": "node scripts/sync-mobile.mjs",
     "test": "node --max-old-space-size=1536 --test --test-concurrency=3 tests/*.test.mjs",
     "check": "node check.mjs"
   },

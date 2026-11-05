@@ -1,0 +1,5 @@
+# The mobile release manifest verifies exact published bytes on Windows and CI.
+dist/mobil/** -text whitespace=cr-at-eol
+# Preserve bundled third-party license whitespace without rewriting licenses.
+dist/mobil/vendor/** whitespace=-blank-at-eol
+dist/mobil/fonts/*-OFL.txt whitespace=-blank-at-eol

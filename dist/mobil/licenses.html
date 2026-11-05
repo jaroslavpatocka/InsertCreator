@@ -1,0 +1,107 @@
+<!doctype html>
+<html lang="cs">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="description" content="Přehled knihoven, fontů, modelu a katalogových podkladů použitých v InsertCreator, jejich autorů a licencí.">
+  <title>Použité součásti a licence · InsertCreator</title>
+  <link rel="alternate" hreflang="cs" href="./licenses.html">
+  <link rel="alternate" hreflang="en" href="./licenses-en.html">
+  <link rel="stylesheet" href="./licenses.css">
+</head>
+<body>
+  <a class="skip" href="#content">Přejít na obsah</a>
+  <header class="site-head">
+    <a class="brand" href="./">InsertCreator</a>
+    <nav class="language-nav" aria-label="Jazyk stránky">
+      <a href="./licenses.html" lang="cs" aria-current="page">Čeština</a>
+      <a href="./licenses-en.html" lang="en" hreflang="en">English</a>
+    </nav>
+  </header>
+  <main class="document" id="content">
+    <p class="eyebrow">Autoři a původ</p>
+    <h1>Použité součásti a licence</h1>
+    <p class="lead">InsertCreator používá vlastní aplikační kód společně s knihovnami, fonty, modelem pro zpracování obrazu a geometrickými podklady od dalších autorů. Zde najdete jejich původ a úplné licenční texty.</p>
+    <aside class="intro" aria-labelledby="app-license">
+      <h2 id="app-license">Licence vlastní aplikace</h2>
+      <p>Pro vlastní kód InsertCreator zatím není v repozitáři deklarována celková licence. Otevřené licence níže platí pro jednotlivé uvedené součásti; automaticky neudělují stejná práva k celé aplikaci. Zveřejnění zdrojového kódu samo o sobě není open-source licencí.</p>
+    </aside>
+    <nav class="contents" aria-label="Obsah">
+      <a href="#libraries">Knihovny</a><a href="#model">Obrazový model</a><a href="#fonts">Fonty</a><a href="#catalogue">Katalogové podklady</a><a href="#references">Reference a sdílení</a>
+    </nav>
+
+    <section id="libraries" aria-labelledby="libraries-title">
+      <h2 id="libraries-title">Knihovny</h2>
+      <article class="component">
+        <div class="component-head"><div><h3>Earcut 3.0.2</h3><p class="byline">Mapbox · triangulace geometrie</p></div><span class="license-tag">ISC</span></div>
+        <p>Rozděluje mnohoúhelníky na trojúhelníky pro náhled a výrobní geometrii. Licence dovoluje použití, úpravy a distribuci včetně komerčního použití při zachování copyrightu a licenčního oznámení.</p>
+        <ul class="links"><li><a href="./vendor/earcut.LICENSE">Úplná přibalená licence</a></li><li><a href="https://github.com/mapbox/earcut/tree/v3.0.2">Zdroj verze 3.0.2</a></li></ul>
+      </article>
+      <article class="component">
+        <div class="component-head"><div><h3>JavaScript Clipper 6.4.2.2</h3><p class="byline">Angus Johnson · překlad do JavaScriptu Timo Kähkönen</p></div><span class="license-tag">Boost 1.0</span></div>
+        <p>Provádí sjednocení, rozdíly a odsazení kontur, například pro vůli kolem nástroje. Místní adaptace na ES modul je uvedena v přibalené licenci. Při šíření zdrojové nebo upravené verze zachovejte příslušný copyright a úplný text licence.</p>
+        <ul class="links"><li><a href="./vendor/clipper.LICENSE">Úplná přibalená licence</a></li><li><a href="./vendor/clipper.README.md">Původ knihovny</a></li><li><a href="https://sourceforge.net/p/jsclipper/wiki/Home%206/">Oficiální projekt</a></li></ul>
+      </article>
+      <article class="component">
+        <div class="component-head"><div><h3>JSBN uvnitř Clipperu</h3><p class="byline">Tom Wu · aritmetika velkých celých čísel</p></div><span class="license-tag">Permisivní licence Toma Wu</span></div>
+        <p>Clipper obsahuje část knihovny JSBN. Ta má vlastní licenční podmínky, nezávislé na Boost licenci Clipperu. Při redistribuci musí zůstat zachován její copyright, udělená oprávnění a omezení odpovědnosti.</p>
+        <ul class="links"><li><a href="./vendor/jsbn.LICENSE">Úplná přibalená licence JSBN</a></li><li><a href="https://sourceforge.net/p/jsclipper/wiki/Home%206/#licence">Rozlišení licencí v původním projektu</a></li></ul>
+      </article>
+      <article class="component">
+        <div class="component-head"><div><h3>ONNX Runtime Web 1.20.1</h3><p class="byline">Microsoft a další přispěvatelé · místní výpočet modelu</p></div><span class="license-tag">MIT + oznámení dalších součástí</span></div>
+        <p>Spouští obrazový model v prohlížeči pomocí WebAssembly. Přibalená distribuce zahrnuje licenci MIT i soupis podmínek a oznámení dalších součástí; při dalším šíření je zachovejte.</p>
+        <ul class="links"><li><a href="./vendor/ort/LICENSE">Úplná licence MIT</a></li><li><a href="./vendor/ort/ThirdPartyNotices.txt">Úplná oznámení dalších součástí</a></li><li><a href="https://github.com/microsoft/onnxruntime/tree/v1.20.1">Zdroj verze 1.20.1</a></li></ul>
+      </article>
+    </section>
+
+    <section id="model" aria-labelledby="model-title">
+      <h2 id="model-title">Obrazový model</h2>
+      <article class="component">
+        <div class="component-head"><div><h3>U2Netp / U-2-Net</h3><p class="byline">Xuebin Qin a další autoři U-2-Net · ONNX distribuce rembg: Daniel Gatis a přispěvatelé</p></div><span class="license-tag">Apache 2.0 / MIT</span></div>
+        <p>Původní projekt U-2-Net uvádí licenci Apache 2.0, distribuce a konverze rembg licenci MIT. InsertCreator přibaluje oba texty i záznam původu souboru <code>u2netp.onnx</code> z vydání rembg <code>v0.0.0</code>. Při redistribuci zachovejte příslušné licence, původ a požadovaná oznámení.</p>
+        <p>Váhy modelu jsou samostatný podklad, odlišný od aplikačního kódu. Tento přehled neověřuje trénovací data ani neoznačuje celý systém jako „plně open-source AI“.</p>
+        <ul class="links"><li><a href="./models/U2NET-LICENSE">Úplná licence původního projektu</a></li><li><a href="./models/REMBG-LICENSE">Úplná licence rembg</a></li><li><a href="./models/README.txt">Původ modelu a kontrolní součet</a></li><li><a href="https://github.com/xuebinqin/U-2-Net">Původní U-2-Net</a></li><li><a href="https://github.com/danielgatis/rembg/blob/main/rembg/sessions/u2netp.py">Oficiální zdroj souboru v rembg</a></li></ul>
+      </article>
+    </section>
+
+    <section id="fonts" aria-labelledby="fonts-title">
+      <h2 id="fonts-title">Fonty</h2>
+      <article class="component">
+        <div class="component-head"><div><h3>DM Sans a Manrope</h3><p class="byline">DM Sans Project Authors · Manrope Project Authors</p></div><span class="license-tag">SIL OFL 1.1</span></div>
+        <p>Aplikace používá místní fonty DM Sans 4.004 a Manrope 4.505. Licence dovoluje jejich použití a přibalení k aplikaci; při šíření fontů zachovejte copyright a licenci. Fonty se nesmějí prodávat samostatně a případné úpravy podléhají dalším podmínkám OFL.</p>
+        <ul class="links"><li><a href="./fonts/DM-Sans-OFL.txt">Úplná licence DM Sans</a></li><li><a href="./fonts/Manrope-OFL.txt">Úplná licence Manrope</a></li><li><a href="https://github.com/googlefonts/dm-fonts">Projekt DM Sans</a></li><li><a href="https://github.com/googlefonts/manrope">Projekt Manrope</a></li></ul>
+      </article>
+    </section>
+
+    <section id="catalogue" aria-labelledby="catalogue-title">
+      <h2 id="catalogue-title">Katalogové podklady</h2>
+      <article class="component">
+        <div class="component-head"><div><h3>Modely nástrojů Poly Haven</h3><p class="byline">16 obrysů z 15 modelových podkladů · převzata geometrie bez textur</p></div><span class="license-tag">CC0 1.0</span></div>
+        <p>Autoři podkladů: BKS, Mateusz Sadek, Will Evarts, John Hutcheson, PierreB3D, Dylan Detwiller, James Ray Cock, Ulan Cabanilla, Tics, Dabou Master a Kuutti Siitonen. Převod zahrnuje projekci modelů do horního pohledu, zarovnání a zjednodušení obrysů.</p>
+        <p>CC0 dovoluje další použití a šíření včetně komerčního bez povinné atribuce. Původ, autoři, změny a kontrolní součty jsou přesto zdokumentovány.</p>
+        <ul class="links"><li><a href="./catalog/sources/polyhaven/LICENSE.txt">Přibalené licenční oznámení</a></li><li><a href="./catalog/sources/polyhaven/README.md">Seznam modelů, autorů a provedených změn</a></li><li><a href="https://polyhaven.com/license">Oficiální licence Poly Haven</a></li><li><a href="https://creativecommons.org/publicdomain/zero/1.0/legalcode">Úplný právní text CC0</a></li></ul>
+      </article>
+      <article class="component" id="freecad">
+        <div class="component-head"><div><h3>Digitální posuvné měřítko FreeCAD-library</h3><p class="byline">Digital_caliper · autor hasecilu</p></div><span class="license-tag">CC BY 3.0</span></div>
+        <p>Podkladem je model z FreeCAD Parts Library. Atribuce: <span lang="en">Digital caliper by hasecilu, FreeCAD-library, CC BY 3.0.</span> Při sdílení podkladu nebo jeho odvozenin uveďte autora, zdroj, odkaz na licenci a příslušné provedené změny.</p>
+        <p class="attribution"><strong>Úpravy pro InsertCreator:</strong> model byl rozdělen na souvislé části. Všechny části kromě nosníku byly posunuty o 69,0 mm podél nosníku, aby se vnější čelisti zavřely. Následovala projekce do horního pohledu, sjednocení promítnutých trojúhelníků, zarovnání nosníku s osou X a zjednodušení obrysu metodou Douglas–Peucker s tolerancí 0,1 mm. Katalogový obrys je označen jako typický tvar.</p>
+        <ul class="links"><li><a href="./catalog/sources/freecad-library/LICENSE-Assets.txt">Úplná přibalená licence CC BY 3.0</a></li><li><a href="./catalog/sources/freecad-library/README.md">Přesný původ a úplný popis změn</a></li><li><a href="https://github.com/FreeCAD/FreeCAD-library/tree/f5ca01cdcaa2f69b9295a6382719c2d90628780c/Industrial%20Design/Hand%20tools/Measuring%20tools/Digital_caliper">Původní podklad v konkrétní revizi</a></li><li><a href="https://creativecommons.org/licenses/by/3.0/">Podmínky CC BY 3.0</a></li></ul>
+      </article>
+      <article class="component">
+        <div class="component-head"><div><h3>Parametrické obrysy InsertCreator</h3><p class="byline">230 generovaných obrysů podle jmenovitých rozměrů</p></div><span class="license-tag">Deklarováno CC0 1.0</span></div>
+        <p>Pro tyto generované geometrické podklady je v katalogu výslovně uvedeno CC0 1.0. Tato deklarace neuděluje licenci ke zbytku aplikace ani k textům norem DIN/ISO.</p>
+        <ul class="links"><li><a href="./catalog/parametric.js">Deklarace a generátor obrysů</a></li><li><a href="https://creativecommons.org/publicdomain/zero/1.0/legalcode">Úplný právní text CC0</a></li></ul>
+      </article>
+    </section>
+
+    <section class="reference-note" id="references" aria-labelledby="references-title">
+      <h2 id="references-title">Reference, vývojové nástroje a sdílení</h2>
+      <p>Odkazy v projektu na Gridfinity, DIN/ISO a další návrhové nebo rozměrové reference samy o sobě neznamenají převzetí jejich programového kódu. Rozměrová kompatibilita, inspirace, převzatý model a převzatá knihovna jsou různé věci; konkrétní převzaté součásti jsou uvedeny výše.</p>
+      <p>Pro vývoj a testy se používají také <code>@napi-rs/canvas</code> 1.1.0 (MIT), <code>happy-dom</code> 21.0.4 (MIT) a <code>pdfjs-dist</code> 4.10.38 (Apache 2.0). Nejsou součástí statické aplikace publikované z adresáře <code>dist/</code>.</p>
+      <p><strong>Při dalším šíření:</strong> ponechte úplné licenční texty příslušných součástí. Při sdílení odvozených katalogových modelů zachovejte atribuci vyžadovanou jejich licencí. Aktuální export projektu nebo výrobních souborů nepřipojuje automaticky všechny tyto údaje; u podkladu FreeCAD je při sdílení doplňte, například přiloženým README.</p>
+      <p>Tato stránka je přehled. Úplné podmínky obsahují odkazované licenční texty a dokumentace původu.</p>
+    </section>
+  </main>
+  <footer class="site-foot"><p><a href="./">Zpět do InsertCreator</a></p><p>Stav soupisu: <time datetime="2026-11-04">4. 11. 2026</time></p></footer>
+</body>
+</html>

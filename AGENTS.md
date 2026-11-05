@@ -41,6 +41,17 @@ Průběžně mi zobrazuj stručně:
 - co dělá Agent 2,
 - co dělá Agent 3,4,5.
 
+## Povinně desktop i mobil
+
+Na výslovný pokyn uživatele se všechny budoucí změny vyvíjejí a ověřují pro desktop i mobil (iOS/Android). Toto pravidlo platí pro Codex i Claude. U každé opravy nebo funkce posuď dopad na obě verze; společné chování udržuj shodné, mobilní UI, responzivitu a dotykové ovládání ověř zvlášť. Výjimku zdůvodni v záznamu práce.
+
+- Desktop se upravuje v `suplik-studio/dist`; zdroj mobilní verze zůstává v samostatné sousední složce `mobil/dist`.
+- Kompletní výstup hlavního webu musí obsahovat `suplik-studio/dist/mobil` včetně modelů, vendor souborů a licencí. Jde o publikovanou kopii mobilního runtime, nikoli druhé místo pro ruční úpravy.
+- Po dokončení a otestování mobilních změn spusť v hlavním projektu `npm run sync:mobile`; tím obnovíš `dist/mobil` a kontrolní manifest `mobile-release.json`. Před kopírováním ověř, že druhý agent právě neupravuje zdrojové soubory.
+- Před commitem a nasazením spusť odpovídající testy obou verzí, `npm run check` a `git diff --check`. Kontrola nesmí projít s chybějící nebo změněnou mobilní kopií. CI ověřuje commitnutý `dist/mobil`, nepotřebuje sousední vývojovou složku.
+- Zachovej oddělené úložiště i cache obou aplikací. Root worker nesmí obsluhovat `/mobil/` ani mazat mobilní cache; mobilní worker čistí pouze vlastní scope. Při změně runtime aktualizuj odpovídající assety a verzi cache.
+- Na hosting patří celý obsah `suplik-studio/dist`, tedy také podsložka `mobil`. Samotné kořenové tři soubory nejsou kompletní release. Postup a hranice jsou v `MOBILE-DEVELOPMENT.md`.
+
 ## Souběžná práce více agentů
 
 Na projektu může současně pracovat více AI agentů (Claude, Codex) a ve dvou kopiích repozitáře: `suplik-studio` a `InsertCreator-deployment`. Přehled práce je v `../PRACE-AGENTU.md`.
