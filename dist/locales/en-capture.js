@@ -2,7 +2,8 @@
 // Keep {placeholders} identical in both languages.
 // Worker progress messages, quality reasons and worker errors travel as Czech text and are translated in capture.js.
 export default {
-  'Pravé kliknutí na nástroj zobrazí údaje a možnosti úprav.':'Right-click a tool to see its details and editing options.',
+  'Kolečko přibližuje, levé tlačítko posouvá. Pravé kliknutí na nástroj zobrazí údaje a možnosti úprav.':'Wheel zooms, left button pans. Right-click a tool to see its details and editing options.',
+  'Kolečko přibližuje, levé tlačítko posouvá.':'Wheel zooms, left button pans.',
   'Prázdné pole převezme společnou hloubku {depth}. Nejvýše {max}.':'Leave blank to use the shared depth of {depth}. Maximum {max}.',
   'Hloubka kapsy musí být od {min} do {max}.':'Pocket depth must be between {min} and {max}.',
   'Změnu rozměrů nejdřív potvrďte nebo vraťte původní rozměry.':'Apply the dimension changes or restore the previous dimensions first.',

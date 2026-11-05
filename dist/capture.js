@@ -3,6 +3,7 @@ import { calibrateRulers, rectifyRulers } from './ruler-calibration.js';
 import { recognizeTools } from './recognize.js';
 import { captureToolPoints, captureItemDimensions, resizeCaptureItem, toolFromCaptureItem } from './capture-tools.js';
 import { drawCaptureContours, drawCaptureToolPreview } from './capture-preview.js';
+import { bindCanvasView, identityView, photoToView, viewToPhoto } from './capture-view.js';
 import { mountCaptureGuide } from './capture-guide.js';
 import { bindCaptureContextMenu } from './capture-context-menu.js';
 import { icon, esc, openModal } from './ui.js';
@@ -55,7 +56,7 @@ function info(contour,scale){
 }
 
 export function openCapture({onAdd,toast=()=>{},maxDepth=()=>MAX_DEPTH}){
-  let closed=false,controller=null,observer=null,cancelCalibration=null,photoRun=0,guide=null,guided=false,resultContext=null,resultMaskPixels=null,resultPhoto=null,resultPhotoMask=false;
+  let closed=false,controller=null,observer=null,cancelCalibration=null,photoRun=0,guide=null,guided=false,resultContext=null,resultMaskPixels=null,resultPhoto=null,resultPhotoMask=false,resultView=identityView(),resultViewCleanup=null,detailView=identityView(),detailViewCanvas=null,detailViewIndex=null,detailViewCleanup=null;
   const state={step:0,reference:'a4',mode:'portrait',image:null,imageCanvas:null,corners:[],ruler:[],rulerMm:100,rulerSecond:false,rulerSecondMm:100,rulerPointer:null,calibrationView:{zoom:1,x:0,y:0},referencePoints:[],activePoint:0,detected:false,busy:false,work:null,scale:1,result:null,items:[],activeItem:null,showMask:false,error:'',progress:null,message:'Načítám fotografii…'};
   if(!document.getElementById('capture-guide-styles')){
     const stylesheet=document.createElement('link');stylesheet.id='capture-guide-styles';stylesheet.rel='stylesheet';
@@ -262,9 +263,12 @@ export function openCapture({onAdd,toast=()=>{},maxDepth=()=>MAX_DEPTH}){
         onError:message=>setError(typeof message==='string'?message:errorText(message))
       });
       canvas.tabIndex=0;canvas.setAttribute('aria-haspopup','menu');
-      canvas.title=t('Pravé kliknutí na nástroj zobrazí údaje a možnosti úprav.');
+      canvas.title=t('Kolečko přibližuje, levé tlačítko posouvá. Pravé kliknutí na nástroj zobrazí údaje a možnosti úprav.');
+      resultViewCleanup=bindCanvasView(canvas,{getView:()=>resultView,setView:view=>{resultView=view;},draw:drawResult});
       resultContext=bindCaptureContextMenu(canvas,{
         getItems:()=>state.items,getActiveIndex:()=>state.activeItem,isBusy:()=>closed||state.busy,
+        getScale:()=>canvas.width/Math.max(250,canvas.clientWidth||550)/resultView.zoom,
+        toPhoto:point=>viewToPhoto(resultView,point),fromPhoto:point=>photoToView(resultView,point),
         onSelect:index=>guided?guide.open(index):selectActiveItem(index),
         getDescription:item=>{
           const measured=captureItemDimensions(item,state.scale),raw=item.depth?.trim()||modal.body.querySelector('#capture-depth').value,depth=parseLength(raw);
@@ -337,17 +341,26 @@ export function openCapture({onAdd,toast=()=>{},maxDepth=()=>MAX_DEPTH}){
   }
   function drawResult(){
     const canvas=modal.body.querySelector('#trace-canvas');if(!canvas)return;const ctx=canvas.getContext('2d'),image=state.work||state.image;
-    ctx.putImageData(resultPixels(),0,0);
-    const scale=canvas.width/Math.max(250,canvas.clientWidth||550);
+    const photo=()=>{if(!resultPhoto||resultPhotoMask!==state.showMask){resultPhoto=canvasFromImage(resultPixels());resultPhotoMask=state.showMask;}return resultPhoto;};
+    const zoomed=resultView.zoom>1;
+    if(zoomed){ctx.save();ctx.setTransform(resultView.zoom,0,0,resultView.zoom,resultView.x,resultView.y);ctx.drawImage(photo(),0,0);}
+    else ctx.putImageData(resultPixels(),0,0);
+    const scale=canvas.width/Math.max(250,canvas.clientWidth||550)/resultView.zoom;
     if(state.result?.quality.status==='ready')drawCaptureContours(ctx,state.items,{activeIndex:state.activeItem,scale});
+    if(zoomed)ctx.restore();
     const detail=modal.body.querySelector('#capture-guide-preview');
     if(detail&&state.items[state.activeItem]){
-      if(!resultPhoto||resultPhotoMask!==state.showMask){resultPhoto=canvasFromImage(resultPixels());resultPhotoMask=state.showMask;}
-      drawCaptureToolPreview(detail,resultPhoto,state.items[state.activeItem],state.activeItem);
+      // The guide replaces this canvas when it opens a tool; each tool starts from its full view.
+      if(detail!==detailViewCanvas||detailViewIndex!==state.activeItem){
+        detailViewCleanup?.();detailView=identityView();detailViewCanvas=detail;detailViewIndex=state.activeItem;
+        detail.title=t('Kolečko přibližuje, levé tlačítko posouvá.');
+        detailViewCleanup=bindCanvasView(detail,{getView:()=>detailView,setView:view=>{detailView=view;},draw:drawResult});
+      }
+      drawCaptureToolPreview(detail,photo(),state.items[state.activeItem],state.activeItem,detailView);
     }
   }
   function render(){
-    if(closed)return;resultContext?.();resultContext=null;guide?.destroy();guide=null;guided=false;resultMaskPixels=null;resultPhoto=null;cancelCalibration?.();cancelCalibration=null;observer?.disconnect();
+    if(closed)return;resultContext?.();resultContext=null;resultViewCleanup?.();resultViewCleanup=null;detailViewCleanup?.();detailViewCleanup=null;detailViewCanvas=null;resultView=identityView();guide?.destroy();guide=null;guided=false;resultMaskPixels=null;resultPhoto=null;cancelCalibration?.();cancelCalibration=null;observer?.disconnect();
     if(state.step===0)renderUpload();else if(state.step===1)renderCalibration();else if(state.step===3)renderProcessing();else renderResult();
     const canvas=modal.body.querySelector('canvas');if(canvas&&typeof ResizeObserver==='function'&&state.step!==3){observer=new ResizeObserver(()=>{if(!closed)state.step===1?drawCalibration():drawResult();});observer.observe(canvas);}
   }

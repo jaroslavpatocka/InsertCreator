@@ -49,7 +49,7 @@ export function drawCaptureContours(ctx, items, {activeIndex = null, scale = 1} 
 }
 
 /** An enlarged photo of the current tool; manufacturing corrections never warp the photo. */
-export function drawCaptureToolPreview(canvas, photo, item, index) {
+export function drawCaptureToolPreview(canvas, photo, item, index, view = { zoom: 1, x: 0, y: 0 }) {
   if (!canvas || !photo || !item) return;
   canvas.width = 640;
   canvas.height = 360;
@@ -64,11 +64,13 @@ export function drawCaptureToolPreview(canvas, photo, item, index) {
   ctx.fillStyle = '#f6f7f3';
   ctx.fillRect(0, 0, canvas.width, canvas.height);
   ctx.save();
+  ctx.translate(view.x, view.y);
+  ctx.scale(view.zoom, view.zoom);
   ctx.translate(canvas.width / 2, canvas.height / 2);
   ctx.scale(zoom, zoom);
   ctx.translate(-(minX + maxX) / 2, -(minY + maxY) / 2);
   ctx.drawImage(photo, 0, 0);
   ctx.lineJoin = 'round';
-  drawItem(ctx, item, index, displayScale / zoom, true);
+  drawItem(ctx, item, index, displayScale / (zoom * view.zoom), true);
   ctx.restore();
 }

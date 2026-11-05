@@ -41,6 +41,7 @@ export function hitCaptureItem(items,point,{activeIndex=null,scale=1}={}){
 export function bindCaptureContextMenu(canvas,{
   getItems=()=>[],getActiveIndex=()=>null,isBusy=()=>false,
   getScale=()=>canvas.width/Math.max(250,canvas.clientWidth||550),
+  toPhoto=point=>point,fromPhoto=point=>point,
   onSelect,onEdit,getDescription
 }={}){
   let ownedMenu=null,disposed=false;
@@ -61,7 +62,7 @@ export function bindCaptureContextMenu(canvas,{
     if(disposed||isBusy())return;
     const rect=canvas.getBoundingClientRect();
     const point={x:(event.clientX-rect.left)*canvas.width/(rect.width||canvas.width),y:(event.clientY-rect.top)*canvas.height/(rect.height||canvas.height)};
-    const index=hitCaptureItem(getItems(),point,{activeIndex:getActiveIndex(),scale:getScale()});
+    const index=hitCaptureItem(getItems(),toPhoto(point),{activeIndex:getActiveIndex(),scale:getScale()});
     if(index!==null)open(index,event.clientX,event.clientY);
   };
   const keyboard=event=>{
@@ -70,7 +71,7 @@ export function bindCaptureContextMenu(canvas,{
     if(disposed||isBusy())return;
     const index=getActiveIndex(),item=Number.isInteger(index)?getItems()[index]:null;
     if(!item||!finitePoint(item.info?.center))return;
-    const rect=canvas.getBoundingClientRect(),center=item.info.center;
+    const rect=canvas.getBoundingClientRect(),center=fromPhoto(item.info.center);
     open(index,rect.left+center.x*(rect.width||canvas.width)/canvas.width,rect.top+center.y*(rect.height||canvas.height)/canvas.height);
   };
   canvas.addEventListener('contextmenu',context);
