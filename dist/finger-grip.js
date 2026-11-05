@@ -42,11 +42,13 @@ function combine(subject,clip=[],operation=Clipper.ClipType.ctUnion){
 }
 function offset(points,distance){
   if(!distance)return points;
-  const engine=new Clipper.ClipperOffset(2,.015*SCALE),result=[];
+  const engine=new Clipper.ClipperOffset(2,.015*SCALE),result=new Clipper.PolyTree();
   engine.AddPath(toInt(points),Clipper.JoinType.jtRound,Clipper.EndType.etClosedPolygon);
   engine.Execute(result,distance*SCALE);
-  if(result.length!==1)throw i18nError('Vůle nevytvořila jednu jednoznačnou kapsu nástroje.');
-  return fromInt(result[0]);
+  if(result.ChildCount()!==1)throw i18nError('Vůle nevytvořila jednu jednoznačnou kapsu nástroje.');
+  // Clearance may seal a narrow recess and leave an enclosed island. Use the
+  // single outer boundary as the pocket; separate outer components still fail.
+  return fromInt(result.Childs()[0].Contour());
 }
 function circle(grip){
   // Multiples of four retain the exact radius at cardinal extrema; chord error
