@@ -1,6 +1,11 @@
 // English translations for the app area. Key = exact Czech source text passed to t()/plural()/i18nError().
 // Keep {placeholders} identical in both languages.
 export default {
+  'Vyhladit obrys':'Smooth outline',
+  'Vyhlazení kontury musí být od 0 do 1 mm.':'Outline smoothing must be between 0 and 1 mm.',
+  'Odstraní drobné zuby a vyhladí oblouky. Změnu lze vrátit.':'Remove small jagged edges and smooth curves. You can undo this change.',
+  'Obrys se nezměnil.':'The outline did not change.',
+  'Obrys vyhlazen. Změnu můžete vrátit tlačítkem Zpět.':'Outline smoothed. You can undo this change.',
   'Vybraný 3D model se nevejde na podložku vcelku. Při exportu se rozřeže na tisknutelné díly.':'A selected 3D model does not fit the bed in one piece. Export will cut it into printable parts.',
   'Zamkněte hotové moduly a přidejte další nástroje. Rozložení zachová jejich polohu.':'Lock finished modules and add more tools. Arrangement keeps their positions.',
   'Zadejte vnitřní rozměr šuplíku. Rozložit nástroje nejprve připraví základní rozložení a potom porovná chytré varianty v rastru. Je to praktická heuristika, nemusí najít nejúspornější možné řešení. Vytištěné moduly zamkněte a přidávejte další kolem nich.':'Enter the inner drawer dimensions. Arrange tools prepares the basic layout, then compares smart grid arrangements. It is a practical heuristic and may not find the smallest possible result. Lock printed modules and add others around them.',

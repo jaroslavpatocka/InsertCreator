@@ -1,4 +1,5 @@
 import { traceMask, polygonArea } from './trace.js';
+import { regularizeContour, CONTOUR_SMOOTHING_MM } from './contour-smoothing.js';
 
 // These are measured image-evidence scores, not a probability of dimensional accuracy.
 // A single photograph cannot recover an edge with the same appearance as its background.
@@ -346,6 +347,45 @@ function evaluateCandidate(name, binary, im, features, pxPerMm, separated = fals
   return { name, contours: accepted.map(c => c.contour), mask, score, coverage, strength, foregroundEvidence, fragments, fill, rejected: measured.length - accepted.length, rawContours: measured.length, weakestCoverage: accepted.length ? Math.min(...accepted.map(c => c.coverage)) : 0, neuralAgreement, agreement: 0 };
 }
 
+function contoursTouch(a, b) {
+  const cross = (p, q, r) => (q.x - p.x) * (r.y - p.y) - (q.y - p.y) * (r.x - p.x);
+  const on = (p, q, r) => Math.abs(cross(p, q, r)) < 1e-8 && r.x >= Math.min(p.x, q.x) - 1e-8 && r.x <= Math.max(p.x, q.x) + 1e-8 && r.y >= Math.min(p.y, q.y) - 1e-8 && r.y <= Math.max(p.y, q.y) + 1e-8;
+  const inside = (p, polygon) => {
+    let result = false;
+    for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
+      const p1 = polygon[i], p2 = polygon[j];
+      if ((p1.y > p.y) !== (p2.y > p.y) && p.x < (p2.x - p1.x) * (p.y - p1.y) / (p2.y - p1.y) + p1.x) result = !result;
+    }
+    return result;
+  };
+  const box = points => points.reduce((b, p) => ({ x0: Math.min(b.x0, p.x), y0: Math.min(b.y0, p.y), x1: Math.max(b.x1, p.x), y1: Math.max(b.y1, p.y) }), { x0: Infinity, y0: Infinity, x1: -Infinity, y1: -Infinity });
+  const aa = box(a), bb = box(b);
+  if (aa.x1 < bb.x0 || bb.x1 < aa.x0 || aa.y1 < bb.y0 || bb.y1 < aa.y0) return false;
+  for (let i = 0; i < a.length; i++) for (let j = 0; j < b.length; j++) {
+    const p = a[i], q = a[(i + 1) % a.length], r = b[j], s = b[(j + 1) % b.length];
+    if ((cross(p, q, r) * cross(p, q, s) < 0 && cross(r, s, p) * cross(r, s, q) < 0) || on(p, q, r) || on(p, q, s) || on(r, s, p) || on(r, s, q)) return true;
+  }
+  return inside(a[0], b) || inside(b[0], a);
+}
+
+function regularizeCandidate(candidate, im, pxPerMm) {
+  // Quality still describes the measured image edges. Only the chosen final
+  // outlines are denoised, with the same physical budget at every photo scale.
+  const points = candidate.contours.map(c => regularizeContour(c.points, CONTOUR_SMOOTHING_MM * pxPerMm));
+  const blocked = new Set();
+  for (let i = 0; i < points.length; i++) for (let j = i + 1; j < points.length; j++) {
+    // Check both possible fallbacks as well: smoothing must never join tools or
+    // invade a measured neighbour, even when that neighbour cannot be smoothed.
+    if (contoursTouch(points[i], points[j]) || contoursTouch(points[i], candidate.contours[j].points) || contoursTouch(candidate.contours[i].points, points[j])) { blocked.add(i); blocked.add(j); }
+  }
+  const contours = candidate.contours.map((c, i) => {
+    if (blocked.has(i)) return c;
+    const p = points[i], xs = p.map(p => p.x), ys = p.map(p => p.y);
+    return { ...c, points: p, area: Math.abs(polygonArea(p)), width: Math.max(...xs) - Math.min(...xs), height: Math.max(...ys) - Math.min(...ys) };
+  });
+  return { contours, mask: rasterize(contours, im.width, im.height) };
+}
+
 function restore(candidate, original, im) {
   const contours = candidate.contours.map(c => ({ ...c, points: c.points.map(p => ({ x: p.x * im.scaleX, y: p.y * im.scaleY })), area: c.area * im.scaleX * im.scaleY, width: c.width * im.scaleX, height: c.height * im.scaleY }));
   if (im.width === original.width && im.height === original.height) return { contours, mask: candidate.mask, width: original.width, height: original.height };
@@ -408,7 +448,7 @@ export async function autoTraceImage(imageData, { pxPerMm = 1, kind = 'paper', p
   }
   if (kind !== 'paper' && status === 'ready' && model.fitResidual > 5) { status = 'review'; reasons.push('U složitého pozadí pomůže fotografie nástroje na celém listu A4.'); }
   if (status === 'ready') reasons.push('Obrys má souvislou obrazovou hranu a automatické metody se na něm shodují.');
-  const restored = restore(best, imageData, im);
+  const restored = restore(regularizeCandidate(best, im, scale), imageData, im);
   progress('complete', 1, status === 'ready' ? 'Kontury jsou připravené.' : 'Fotografie potřebuje ověření.');
   return { ...restored, threshold: strictDark, method: best.name, quality: { status, score0to1: score, reasons, methods }, diagnostics: { elapsedMs: performance.now() - started, processingWidth: im.width, processingHeight: im.height, noise: features.noise, backgroundResidual: model.fitResidual, illuminationRange: features.illuminationRange, boundaryCoverage: best.coverage, candidateAgreement: best.agreement, clippedForeground, candidates: candidates.map(c => ({ method: c.name, score: c.score, agreement: c.agreement, contours: c.contours.length, boundaryCoverage: c.coverage, areaFraction: c.fill, rejected: c.rejected, fragments: c.fragments, neuralAgreement: c.neuralAgreement })) } };
 }

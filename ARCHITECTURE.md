@@ -117,6 +117,8 @@ Reset a zavření dialogu ruší úlohu a kontrola identity běhu brání použi
 
 Fotografie se nikam neodesílají. Model, runtime i fonty jsou lokální soubory stejného hostingu. Model má přibližně 4,6 MB, WASM 11,2 MB; celá neuronová část přibližně 16 MB. Licence a původ jsou v `dist/models/` a `dist/vendor/`. U2Netp je obecný model popředí, ne záruka rozměrové přesnosti.
 
+Po vyhodnocení obrazové kvality upravuje `contour-smoothing.js` pouze vítězné kontury: lokální vyhlazení v obloukové délce potlačí pixelové zuby, zachová přetrvávající rohy a narovná odpovídající přímé úseky. Rozpočet odchylky je 0,5 mm podle kalibrace, bez vynucování souměrnosti či šablony nástroje. Neplatná geometrie nebo nový kontakt sousedních kontur ponechá původní obrys; segmentační masky, bariéry a skóre kvality se předem nemění. Výsledná maska a rozměry odpovídají vyhlazeným bodům. `tool-contour.js` dovoluje stejnou úpravu jednotlivého uloženého nástroje přes **Rozměry a měřítko → Vyhladit obrys**, se zachováním světové polohy, ručních výřezů a pevného modulu. Změna projde kontrolou kapsy i kolizí a tvoří jeden vratný krok historie.
+
 ## Geometrie, rozvržení a exporty
 
 Geometrická vrstva nemá závislost na DOM. Používá lokální Clipper pro posun a booleovské operace kontur a Earcut pro triangulaci ploch s otvory. Konstrukci STL poskytuje `print-geometry.js`; jednotlivé geometrické exporty zůstávají v `geometry.js`. Dávku vybraných STL modulů a řezání jejich výrobních sítí koordinuje `print-batch.js`.

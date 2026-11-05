@@ -92,3 +92,115 @@ test('a valid tool cannot conceal another tool cut off by the calibrated paper e
   assert.equal(result.quality.status, 'review', JSON.stringify(result.quality));
   assert.ok(result.quality.reasons.some(reason => reason.includes('okraji papíru')));
 });
+
+// Inverse-map an analytic open-ended wrench into a photograph. The edge defects
+// represent segmentation chatter, not intentional details of the tool.
+function noisyWrench(pxPerMm, angle = 0) {
+  const size = Math.ceil(140 * pxPerMm), im = fixture(size, size), cosine = Math.cos(angle), sine = Math.sin(angle);
+  for (let y = 0; y < size; y++) for (let x = 0; x < size; x++) {
+    const worldX = (x + .5 - size / 2) / pxPerMm, worldY = (y + .5 - size / 2) / pxPerMm;
+    const xx = worldX * cosine + worldY * sine, yy = -worldX * sine + worldY * cosine;
+    const headAngle = Math.atan2(yy + 32, xx), radius = 18 + .2 * Math.sin(headAngle * 23) + .12 * Math.sin(headAngle * 47);
+    const head = Math.hypot(xx, yy + 32) <= radius && !(Math.abs(xx) < 6 && yy < -30);
+    const chatter = .24 * Math.sin(yy * 4.3) + .1 * Math.sin(yy * 9.1);
+    const spur = yy > 18 && yy < 18.55 ? .3 : 0;
+    const shaft = yy > -16 && yy <= 52 && xx > -4 + chatter && xx < 4 + chatter + spur;
+    const cap = Math.hypot(xx, yy - 52) <= 4;
+    if (head || shaft || cap) paint(im, x, y, 1, 1, [55, 61, 57]);
+  }
+  return { im, local: p => {
+    const x = (p.x - size / 2) / pxPerMm, y = (p.y - size / 2) / pxPerMm;
+    return { x: x * cosine + y * sine, y: -x * sine + y * cosine };
+  } };
+}
+
+function horizontalCrossings(points, y) {
+  const intersections = [];
+  for (let i = 0; i < points.length; i++) {
+    const a = points[i], b = points[(i + 1) % points.length];
+    if ((a.y <= y && b.y > y) || (b.y <= y && a.y > y)) intersections.push(a.x + (y - a.y) * (b.x - a.x) / (b.y - a.y));
+  }
+  return intersections.sort((a, b) => a - b);
+}
+
+function containsPoint(points, p) { return horizontalCrossings(points, p.y).filter(x => x < p.x).length % 2 === 1; }
+
+function lineRegularity(samples) {
+  const n = samples.length, meanX = samples.reduce((sum, p) => sum + p.x, 0) / n, meanY = samples.reduce((sum, p) => sum + p.y, 0) / n;
+  const slope = samples.reduce((sum, p) => sum + (p.x - meanX) * (p.y - meanY), 0) / samples.reduce((sum, p) => sum + (p.y - meanY) ** 2, 0);
+  const residuals = samples.map(p => p.x - meanX - slope * (p.y - meanY)), turns = [];
+  for (let i = 1; i < n - 1; i++) {
+    const a = samples[i - 1], b = samples[i], c = samples[i + 1];
+    const turn = Math.atan2(c.x - b.x, c.y - b.y) - Math.atan2(b.x - a.x, b.y - a.y);
+    if (Math.abs(turn) > .02) turns.push(Math.sign(turn)); // Ignore sub-degree tessellation noise.
+  }
+  return { rms: Math.sqrt(residuals.reduce((sum, value) => sum + value ** 2, 0) / n), alternations: turns.filter((value, i) => i > 0 && value !== turns[i - 1]).length };
+}
+
+function outerArcSamples(points, start) {
+  const samples = [], cross = (a, b) => a.x * b.y - a.y * b.x;
+  // Equal polar steps inspect curvature independently of the output vertex
+  // density. These arcs stay clear of the genuine jaw and neck transitions.
+  for (let theta = start; theta <= start + 1.6 + 1e-6; theta += .05) {
+    const ray = { x: Math.cos(theta), y: Math.sin(theta) }; let outer = -Infinity;
+    for (let i = 0; i < points.length; i++) {
+      const p = points[i], q = points[(i + 1) % points.length], a = { x: p.x, y: p.y + 32 }, edge = { x: q.x - p.x, y: q.y - p.y }, denominator = cross(ray, edge);
+      if (Math.abs(denominator) < 1e-9) continue;
+      const radius = cross(a, edge) / denominator, along = cross(a, ray) / denominator;
+      if (radius > 0 && along >= 0 && along <= 1) outer = Math.max(outer, radius);
+    }
+    assert.ok(Number.isFinite(outer), 'the head must retain its complete outer arc');
+    samples.push({ x: outer * ray.x, y: outer * ray.y });
+  }
+  return samples;
+}
+
+function arcRegularity(samples) {
+  const concave = [];
+  for (let i = 1; i < samples.length - 1; i++) {
+    const a = samples[i - 1], b = samples[i], c = samples[i + 1], ux = b.x - a.x, uy = b.y - a.y, vx = c.x - b.x, vy = c.y - b.y;
+    const turn = Math.atan2(ux * vy - uy * vx, ux * vx + uy * vy);
+    if (turn < -.01) concave.push(-turn);
+  }
+  return { concaveTurns: concave.length, negativeTurn: concave.reduce((sum, value) => sum + value, 0) };
+}
+
+for (const [pxPerMm, angle] of [[3, 0], [4, .37]]) {
+  test(`photo contour regularizes wrench chatter while preserving its open jaw (${pxPerMm} px/mm, ${angle} rad)`, async () => {
+    const { im, local } = noisyWrench(pxPerMm, angle), result = await autoTraceImage(im, { pxPerMm });
+    assert.equal(result.contours.length, 1, JSON.stringify(result.diagnostics));
+    assert.equal(result.quality.status, 'ready', JSON.stringify(result.quality));
+    const points = result.contours[0].points.map(local), shaftError = [], sides = [[], []];
+    for (let y = -8; y <= 43; y += .5) {
+      const crossings = horizontalCrossings(points, y);
+      assert.equal(crossings.length, 2, `the shaft must stay continuous at ${y} mm`);
+      shaftError.push(crossings[0] + 4, crossings[1] - 4);
+      sides[0].push({ x: crossings[0], y }); sides[1].push({ x: crossings[1], y });
+      assert.ok(Math.abs(crossings[1] - crossings[0] - 8) < .65, `shaft width changed at ${y} mm`);
+    }
+    const shaftRms = Math.sqrt(shaftError.reduce((sum, e) => sum + e * e, 0) / shaftError.length);
+    assert.ok(shaftRms < .18, `straight shaft RMS error ${shaftRms.toFixed(3)} mm`);
+    for (const side of sides) {
+      const regularity = lineRegularity(side);
+      assert.ok(regularity.rms < .035, `shaft must be straight after fitting its own axis: ${regularity.rms.toFixed(3)} mm RMS`);
+      assert.ok(regularity.alternations <= 6, `shaft must not retain repeated waves: ${regularity.alternations} significant turn reversals`);
+    }
+    const arcErrors = points.filter(p => p.y < -20 && Math.abs(p.x) > 9).map(p => Math.abs(Math.hypot(p.x, p.y + 32) - 18));
+    const arcRms = Math.sqrt(arcErrors.reduce((sum, e) => sum + e * e, 0) / arcErrors.length);
+    assert.ok(arcErrors.length >= 8, 'the head must retain a rounded exterior');
+    assert.ok(arcRms < .22, `rounded head RMS error ${arcRms.toFixed(3)} mm`);
+    const arcs = [-1.1, Math.PI - .5].map(start => arcRegularity(outerArcSamples(points, start)));
+    const concaveTurns = arcs.reduce((sum, arc) => sum + arc.concaveTurns, 0), negativeTurn = arcs.reduce((sum, arc) => sum + arc.negativeTurn, 0);
+    assert.ok(concaveTurns <= 2, `a rounded convex head must not alternate between bulges and dents: ${concaveTurns} inward turns`);
+    assert.ok(negativeTurn < .06, `the rounded head must not retain angular inward kinks: ${negativeTurn.toFixed(3)} rad in total`);
+    assert.equal(containsPoint(points, { x: 0, y: -40 }), false, 'the jaw opening must not be filled');
+    assert.equal(containsPoint(points, { x: 0, y: -27 }), true, 'the bottom of the jaw must remain');
+    assert.equal(containsPoint(points, { x: 11, y: -40 }), true, 'the jaw arms must remain');
+    const width = Math.max(...points.map(p => p.x)) - Math.min(...points.map(p => p.x));
+    const length = Math.max(...points.map(p => p.y)) - Math.min(...points.map(p => p.y));
+    assert.ok(Math.abs(width - 36) < .7, `head width changed to ${width.toFixed(3)} mm`);
+    const expectedLength = 88 + Math.sqrt(18 ** 2 - 6 ** 2); // The open jaw removes the very top of the circle.
+    assert.ok(Math.abs(length - expectedLength) < .7, `tool length changed to ${length.toFixed(3)} mm`);
+    assert.ok(iou(result.mask, im.truth) > .96, 'regularization must preserve the measured silhouette');
+  });
+}
