@@ -1,6 +1,6 @@
 # Zásady ochrany soukromí – InsertCreator
 
-**PRACOVNÍ NÁVRH. Před zveřejněním doplnit a ověřit údaje označené „K POTVRZENÍ“. Tento soubor ještě nenahrazuje veřejnou stránku zásad.**
+**PRACOVNÍ NÁVRH. Veřejné znění je v `dist/mobil/privacy.html`. Mobilní verze používá po souhlasu Google Analytics, tento návrh k tomu neslouží jako zdroj.**
 
 Verze návrhu: 5. listopadu 2026. Datum účinnosti doplnit při schválení a zveřejnění.
 

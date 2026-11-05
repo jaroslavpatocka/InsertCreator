@@ -14,7 +14,7 @@ Audit vychází ze zdrojového snímku `dist/mobil/`, jehož manifest `mobile-re
 | JSON import a výrobní exporty | Uživatel vybere soubor nebo uloží vytvořený Blob do zařízení. | Nebyl nalezen upload na server vydavatele. |
 | Sdílení exportu jiné aplikaci | Až po výslovném klepnutí; systémový výběr příjemce. | Posoudit jako očekávaný přenos vyvolaný uživatelem, který může spadat do výjimky z deklarovaného sdílení. |
 | Účet a přihlášení | Současný web účet nevytváří a nevyžaduje přihlášení. | Žádný serverový účet ke smazání není v této implementaci doložen. |
-| Analytika a reklama | V mobilním `index.html` ani ostatním auditovaném mobilním kódu nebyla nalezena analytika nebo reklama. | Znovu ověřit finální webové odpovědi a SDK Android obalu. |
+| Analytika a reklama | Reklama není. Google Analytics `G-6CMM882CWH` běží i v mobilní verzi, ale až po výslovném souhlasu v liště (`dist/mobil/consent.js`). Reklamní funkce a Google signály jsou vypnuté. | **Deklarovat:** sběr a sdílení s Googlem pro účel Analytika, volitelné pro uživatele. Konkrétní datové typy ověřit podle dokumentace Googlu. |
 | Poloha, kontakty, mikrofon, SMS | V auditovaném mobilním kódu nebyl nalezen přístup k těmto rozhraním. | Zkontrolovat také oprávnění v podepsaném Android balíčku. |
 
 Google vymezuje sběr podle přenosu mimo zařízení, místní zpracování z této definice vyjímá a uvádí výjimku pro očekávané sdílení na konkrétní pokyn uživatele. Rozhodnutí musí zahrnout celý výsledný produkt i jeho dodavatele. [Oficiální definice a formulář Data Safety](https://support.google.com/googleplay/android-developer/answer/10787469?hl=en)
@@ -31,6 +31,6 @@ Zdrojová evidence: `dist/mobil/capture.js` načítá uživatelem vybraný sním
 
 Do vyřízení těchto bodů **neodesílat globální prohlášení „žádná data se nesbírají“**. U bezpečnostních odpovědí ověřit HTTPS a chování finálního balíčku; nepřisuzovat aplikaci nezávislý bezpečnostní audit, který neproběhl.
 
-## Desktopová analytika je oddělený rozsah
+## Analytika po souhlasu
 
-Kořenový `dist/index.html` obsahuje Google Analytics `G-6CMM882CWH`, načítaný před `mobile-route.js`. Start Android aplikace musí vést přímo na `/mobil/`. Pokud obal začne načítat kořen webu nebo se analytika přidá do mobilní verze, tento podklad přestává odpovídat produktu a formulář je třeba znovu vyhodnotit. Existující cookies stejného webu a serverové logy je nutné zahrnout do provozní kontroly.
+Kořenový i mobilní web načítají Google Analytics `G-6CMM882CWH` výhradně po souhlasu přes `consent.js`. Před volbou ani po odmítnutí se ke Googlu nic neposílá. Souhlas lze odvolat odkazem Nastavení cookies v patičce. Odpověď „žádná data se nesbírají“ proto není pravdivá.

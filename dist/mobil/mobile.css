@@ -398,3 +398,6 @@
 @media (prefers-reduced-motion:reduce){
   *,*::before,*::after{animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important;scroll-behavior:auto!important}
 }
+@media (max-width:1024px){.consent-bar{left:12px;right:12px;bottom:calc(var(--mobile-nav-height,72px) + 12px + env(safe-area-inset-bottom,0px));padding:14px}.consent-bar p{flex-basis:100%;font-size:13px}.consent-actions{flex:1 1 100%}.consent-actions .btn{flex:1;min-width:0}}
+@media (max-width:1024px) and (max-height:540px) and (orientation:landscape){.consent-bar{right:84px;bottom:8px;max-height:calc(100dvh - 16px);overflow:auto}}
+.footer-links{flex-wrap:wrap}

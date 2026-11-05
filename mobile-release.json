@@ -1,11 +1,11 @@
 {
   "version": 1,
-  "sourceCommit": "718a0570c65a4a7e34607ee7e50b35e80aae223b",
+  "sourceCommit": "437438a614ea70fce8dbef72d99176a54336ac86",
   "files": [
     {
       "path": "app.js",
-      "sha256": "49F41AD99E64B52C08251298E969036FE64F1CB8084D7EDDD0FD759F4325F402",
-      "bytes": 224453
+      "sha256": "549A1B67FD540B188594D212A813EA7B280945931EC4A746C98D1BA9A1B43948",
+      "bytes": 224654
     },
     {
       "path": "auto-trace.js",
@@ -253,6 +253,11 @@
       "bytes": 2709
     },
     {
+      "path": "consent.js",
+      "sha256": "4E08AC3F39C99B2DA5B85066F0029FB0E5674B4EB8BA1C4F2648BC302E9B103B",
+      "bytes": 4157
+    },
+    {
       "path": "context-menu.js",
       "sha256": "FFF875DAC1B55669FCCD201E029F737A84D97C3EDEB4791A49ECC6D773414B8F",
       "bytes": 2933
@@ -349,8 +354,8 @@
     },
     {
       "path": "index.html",
-      "sha256": "41A0C5E7FC9D80BBD3BC128767CAE713A5D78DAA113E6FF97653F1E13A95023D",
-      "bytes": 2510
+      "sha256": "BBBBC1BFC8EECB62C8B811CA93994CA5CED7AA965441F6D7977ED9444E768EB6",
+      "bytes": 2735
     },
     {
       "path": "joint-fit.js",
@@ -384,8 +389,8 @@
     },
     {
       "path": "locales/en-app.js",
-      "sha256": "186901955CF654B4FE0320CEF0C9053CAA3BF25CE48FAD24B75C8FB693B16DAA",
-      "bytes": 87817
+      "sha256": "24648DE06C2C4EF479C319305F0902EFA1C72B9EEBB4FD9DA3F5DD3C702D2C59",
+      "bytes": 87907
     },
     {
       "path": "locales/en-capture.js",
@@ -449,8 +454,8 @@
     },
     {
       "path": "mobile.css",
-      "sha256": "F5A29A86C7275346A354EFA36B404D9D5B93D8E495D1D8EC018E489578575C49",
-      "bytes": 29920
+      "sha256": "61F311697EE384986649A9F23FB4A7A583C5B39FECD053DBD2BB17D76BA1796A",
+      "bytes": 30386
     },
     {
       "path": "model.js",
@@ -578,6 +583,16 @@
       "bytes": 6752
     },
     {
+      "path": "privacy-en.html",
+      "sha256": "A94B8D8E60595890E2FC3FAC4049311D152AF5E648112C41CBF0FC9144CDD809",
+      "bytes": 2577
+    },
+    {
+      "path": "privacy.html",
+      "sha256": "DFEADF100BACB3CAEF901884DFC0EC7B4C4CE1A2505C871F89814EA79CD66E8C",
+      "bytes": 2649
+    },
+    {
       "path": "recognize-worker.js",
       "sha256": "844AD089ACC32D6746159AC119B0B21717424BF8DB040FD5C33E7E68F891939C",
       "bytes": 382
@@ -629,13 +644,13 @@
     },
     {
       "path": "style.css",
-      "sha256": "D40388A529422CDC5055899195F04DE0F24053E3313E357B32BFF0CE5D5CBAA9",
-      "bytes": 72360
+      "sha256": "477D41BD8DA79BD9F5CF001857F08C35E73958D572FA655E534CA9DFB288485F",
+      "bytes": 72870
     },
     {
       "path": "sw.js",
-      "sha256": "3CD220AC86CB2289E4B263F20E669D088145CFAFB6AFBA69B4FB969E2FDD0F6F",
-      "bytes": 3982
+      "sha256": "4E08D657381C35DEF546A517298C871232081586D5CCB7843091512DE5456FAA",
+      "bytes": 4038
     },
     {
       "path": "three-mf.js",

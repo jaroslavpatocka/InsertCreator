@@ -113,6 +113,8 @@ export default {
   'Navrženo ve skutečných rozměrech. Vyrobeno pro vaši dílnu.':'Designed at real size. Made for your workshop.',
   'Návod a inspirace':'Guide and inspiration',
   'Použité součásti a licence':'Components and licences',
+  'Zásady ochrany soukromí':'Privacy policy',
+  'Nastavení cookies':'Cookie settings',
 
   // Workspace
   'Editor sestavy':'Layout editor',
