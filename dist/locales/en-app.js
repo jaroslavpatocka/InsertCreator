@@ -87,7 +87,7 @@ export default {
   'Smazat šuplík „{name}“? Tuto akci nelze vrátit.':'Delete the drawer “{name}”? This cannot be undone.',
   'Šuplík „{name}“ smazán.':'Drawer “{name}” deleted.',
   'Jak na to':'How it works',
-  'Všechno zůstává u vás':'Everything stays with you',
+  'Fotky zůstávají u vás':'Your photos stay with you',
   'Fotky zpracovává váš prohlížeč.':'Photos are processed by your browser.',
   'Bez cloudu. Bez předplatného.':'No cloud. No subscription.',
   'Dílna':'Workshop',

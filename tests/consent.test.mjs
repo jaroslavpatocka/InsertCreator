@@ -89,3 +89,12 @@ test('the privacy pages are bundled offline and available in both languages',()=
   assert.match(read('privacy.html'),/Google Analytics/);
   assert.match(read('privacy-en.html'),/Google Analytics/);
 });
+
+test('the hosting headers allow measurement but no inline script or foreign framing',()=>{
+  const config=read('.htaccess');
+  assert.match(config,/<IfModule mod_headers\.c>/);
+  const policy=config.match(/Content-Security-Policy "([^"]+)"/)[1];
+  assert.doesNotMatch(policy,/ 'unsafe-eval'|sha256-|script-src[^;]*unsafe-inline/);
+  assert.match(policy,/frame-ancestors 'self'/);
+  assert.match(policy,/script-src[^;]*https:\/\/www\.googletagmanager\.com/);
+});

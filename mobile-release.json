@@ -1,11 +1,11 @@
 {
   "version": 1,
-  "sourceCommit": "437438a614ea70fce8dbef72d99176a54336ac86",
+  "sourceCommit": "a0324293433e05c82bfe401198b93f2e7a56cd10",
   "files": [
     {
       "path": "app.js",
-      "sha256": "549A1B67FD540B188594D212A813EA7B280945931EC4A746C98D1BA9A1B43948",
-      "bytes": 224654
+      "sha256": "3BCA5ABFEC80BB8C46DEEC8F57496DD0EC5EE6726AB975C8824CA7AD6ED46E3E",
+      "bytes": 224653
     },
     {
       "path": "auto-trace.js",
@@ -389,8 +389,8 @@
     },
     {
       "path": "locales/en-app.js",
-      "sha256": "24648DE06C2C4EF479C319305F0902EFA1C72B9EEBB4FD9DA3F5DD3C702D2C59",
-      "bytes": 87907
+      "sha256": "52331FFD2CA1F98550EFD058B0126DA45CB9A054ED3285B2D6821EF817C943CE",
+      "bytes": 87906
     },
     {
       "path": "locales/en-capture.js",
@@ -649,8 +649,8 @@
     },
     {
       "path": "sw.js",
-      "sha256": "4E08D657381C35DEF546A517298C871232081586D5CCB7843091512DE5456FAA",
-      "bytes": 4038
+      "sha256": "A6BA4B32B58993279D69EF3595FF7123D25CB25718228F9FAC71D30C09BE5A10",
+      "bytes": 4037
     },
     {
       "path": "three-mf.js",
