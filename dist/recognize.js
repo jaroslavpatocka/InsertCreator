@@ -1,6 +1,7 @@
 import { autoTraceImage } from './auto-trace.js';
 import { segmentNeural } from './neural.js';
 import { readableImage } from './photo-enhance.js';
+import { recoverDarkTools } from './photo-recovery.js';
 import { i18nError } from './i18n.js';
 // Progress messages and worker errors are Czech source text; capture.js translates them with t()/errorText().
 
@@ -40,7 +41,8 @@ export async function recognizeTools(image, { pxPerMm = 1, kind = 'paper', signa
   const readable = readableImage(image);
   if (readable) {
     progress({ stage: 'enhance', progress: .05, message: 'Upravuji fotku, aby byly nástroje čitelné…' });
-    const result = await classical(readable.image, { pxPerMm, kind: 'tray', onProgress: progress }, signal);
+    const recovered = recoverDarkTools(image, readable.image);
+    const result = await classical(recovered, { pxPerMm, kind: 'tray', onProgress: progress }, signal);
     if (signal?.aborted) throw aborted();
     if (result.quality.status !== 'retake' && result.contours.length >= 2) {
       result.enhanced = readable.name; result.neuralModel = null;
