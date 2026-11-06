@@ -249,7 +249,17 @@
 .size-label-editor{padding:12px 0;border-bottom:1px solid #e3e7dd;margin-bottom:12px}
 .catalog-storage-options{display:grid;gap:8px;min-width:0}
 .catalog-storage-options select{max-width:100%}
-.model-size-label{opacity:.9}
+.model-size-label{opacity:.9}.model-size-label.active,.model-size-label:hover{opacity:1}
+.label-plate{fill:#e4e9da;stroke:#a9b59a;stroke-width:.2}.label-ink{pointer-events:none}
+.label-hit{fill:transparent;stroke:transparent;stroke-width:10px;vector-effect:non-scaling-stroke;pointer-events:all;cursor:move}.model-size-label.active .label-hit{touch-action:none}
+.label-outline{fill:none;stroke:none;pointer-events:none}.model-size-label:hover .label-outline,.model-size-label.active .label-outline{stroke:#8a5a14;stroke-width:1px;vector-effect:non-scaling-stroke;stroke-dasharray:3 2}
+.label-handles{opacity:0;pointer-events:none;transition:opacity .12s}.model-size-label:hover .label-handles,.model-size-label.active .label-handles{opacity:1;pointer-events:auto}.model-size-label.dragging .label-handles{opacity:0;pointer-events:none}
+.label-bridge{fill:transparent}.label-bar{fill:#fff;stroke:#2f3833;stroke-width:1px;vector-effect:non-scaling-stroke;filter:drop-shadow(0 1px 2px #2f383340)}
+.label-knob{touch-action:none;cursor:pointer}.label-knob-hit{fill:transparent}.label-knob:hover .label-knob-hit{fill:#f3dba588}.label-icon{fill:none;stroke:#2f3833;stroke-width:1.5px;stroke-linecap:round;stroke-linejoin:round;vector-effect:non-scaling-stroke;pointer-events:none}.label-swatch{stroke:#2f3833;stroke-width:1px;vector-effect:non-scaling-stroke;pointer-events:none}
+.label-knob-move{cursor:move}.label-knob-rotate{cursor:grab}.label-knob-size{cursor:nwse-resize}
+@media (pointer:coarse){.label-hit{stroke-width:22px}}
+.label-color-picker{position:fixed;width:1px;height:1px;padding:0;border:0;opacity:0;pointer-events:none}
+.label-style-fields{display:grid;gap:8px}.label-color-field input[type=color]{width:100%;height:36px;padding:2px;border:1px solid #cfd6c5;border-radius:6px;background:#fff}.label-displaced{color:#a4553f}
 .label-warning p{font-size:12px}
 @media(max-width:760px){.tool-select-row>input{width:22px;height:22px;margin:10px 3px}.bulk-actions .btn{min-height:40px}.bulk-heading{gap:10px}}
 

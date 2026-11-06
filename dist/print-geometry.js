@@ -4,7 +4,7 @@ import {i18nError} from './i18n.js';
 import {fmtLen,fmtSize} from './units.js';
 import {planSizeLabels} from './size-labels.js';
 import {moduleOutline,validateModuleFootprint,containsPocketWalls} from './module-footprint.js';
-import {FLOOR_RESERVE,floorInlay,magnetFloorNeed,materialConfig,moduleMagnetLift} from './print-material.js';
+import {FLOOR_RESERVE,floorInlay,labelColors,magnetFloorNeed,materialConfig,moduleMagnetLift,textZone} from './print-material.js';
 import {pocketMagnetHoles} from './tool-magnet.js';
 import {magnetPocketCenters} from './magnet-pockets.js';
 
@@ -106,7 +106,7 @@ export function validatePrintBed(project,modules){
 /** Build non-overlapping material slabs in local editor coordinates (X right, Y down,
  * Z up), then expose only their actual boundary faces. Serialization callers must
  * convert the whole returned mesh to physical Y-up coordinates exactly once. */
-export function buildPrintTriangles(project,modules,tools,origin={x:0,y:0},{fit=false,clip=null,labelPlan:providedLabelPlan=null,joints=null,inlay=null}={}){
+export function buildPrintTriangles(project,modules,tools,origin={x:0,y:0},{fit=false,clip=null,labelPlan:providedLabelPlan=null,joints=null,inlay=null,textColor=null,omitRaised=false}={}){
   const kernel=clip?cutKernel:defaultKernel,{round,toInt,fromInt,boolean,union,subtract,offset,rect,roundedRect,circle}=kernel;
   const cfg=printConfig(fit?{...project,bottomMode:'plain'}:project),triangles=[];
   if(clip&&(!['x','y','width','height'].every(key=>typeof clip[key]==='number'&&Number.isFinite(clip[key]))||clip.width<=0||clip.height<=0))throw i18nError('Řez modelu musí mít platnou polohu a kladné rozměry.');
@@ -173,7 +173,8 @@ export function buildPrintTriangles(project,modules,tools,origin={x:0,y:0},{fit=
   /** Independent pockets and wall rings need only their own height. Keep touching or overlapping rings on the
    *  original global-Z path: their Boolean junctions require all original depth barriers for stitching. */
   function disjointComponents(outer,pockets,labels,bottom,baseTop,H,magnets,feet){
-    if(pockets.length<2)return false;
+    // Raised letters are many small bodies on the base; the section path below builds them.
+    if(pockets.length<2||labels.some(label=>label.raised))return false;
     const components=pockets.map(tool=>({paths:subtract(offset(tool.poly,cfg.wall),[tool.poly]),envelope:offset(tool.poly,cfg.wall+1/kernel.scale),top:round(baseTop+number(tool.depth,10))}));
     for(const label of labels)components.push({paths:[label.plate],envelope:offset(label.plate,1/kernel.scale),top:label.top,label});
     const bounds=paths=>{let minX=Infinity,minY=Infinity,maxX=-Infinity,maxY=-Infinity;for(const path of paths)for(const p of path){minX=Math.min(minX,p.x);minY=Math.min(minY,p.y);maxX=Math.max(maxX,p.x);maxY=Math.max(maxY,p.y);}return{minX,minY,maxX,maxY};};
@@ -243,7 +244,7 @@ export function buildPrintTriangles(project,modules,tools,origin={x:0,y:0},{fit=
     if(inlay){
       // Separate closed solids that fill what the body leaves open. They share the cut of the body.
       const solid=(paths,z0,z1)=>{let cut=clip?clipped(union(paths)):paths;if(clip)cut=cut.map(poly=>cleanCapBacktracks(poly,kernel.scale));if(!cut.length)return;face(cut,round(z0),false);face(cut,round(z1),true);sides(cut,round(z0),round(z1));};
-      if(inlay==='text')for(const label of labels)solid(label.polygons,label.top-label.depth,label.top);
+      if(inlay==='text')for(const label of labels){if((label.color||null)===textColor)solid(label.polygons,label.top-label.depth,label.top);}
       else{
         const thickness=materialConfig(project).floorThickness;
         for(const tool of pockets){
@@ -268,7 +269,7 @@ export function buildPrintTriangles(project,modules,tools,origin={x:0,y:0},{fit=
     for(let i=0;i<z.length-1;i++){
       const middle=(z[i]+z[i+1])/2;let section;
       if(cfg.printMode==='light'){
-        const active=[...pockets.filter(t=>middle<baseTop+number(t.depth,10)-EPS).flatMap(t=>subtract(offset(t.poly,cfg.wall),[t.poly])),...labels.filter(label=>middle<label.top-EPS).map(label=>label.plate)];
+        const active=[...pockets.filter(t=>middle<baseTop+number(t.depth,10)-EPS).flatMap(t=>subtract(offset(t.poly,cfg.wall),[t.poly])),...labels.filter(label=>middle<label.top-EPS).flatMap(label=>label.raised?omitRaised?[]:label.polygons:[label.plate])];
         section=middle<baseTop-EPS?[outer]:clip?active:union(active);
       }
       else section=subtract([outer],pockets.filter(t=>middle>=H-number(t.depth,10)-EPS).map(t=>t.poly));
@@ -279,7 +280,7 @@ export function buildPrintTriangles(project,modules,tools,origin={x:0,y:0},{fit=
       if(magnets.length&&middle<cfg.magnetDepth-EPS)section=subtract(section,magnets);
       const open=bodyHoles.filter(hole=>middle>=hole.floor-EPS&&middle<hole.top+EPS).map(hole=>hole.poly);
       if(open.length)section=subtract(section,open);
-      const lettering=labels.filter(label=>middle>=label.top-label.depth-EPS&&middle<label.top-EPS).flatMap(label=>label.polygons);
+      const lettering=labels.filter(label=>!label.raised&&middle>=label.top-label.depth-EPS&&middle<label.top-EPS).flatMap(label=>label.polygons);
       if(lettering.length)section=subtract(section,lettering);
       sections.push(section);
     }
@@ -298,9 +299,15 @@ export function buildColorZones(project,modules,tools,origin,options={}){
   const config=materialConfig(project),zones=[];
   const floor=config.floor?buildPrintTriangles(project,modules,tools,origin,{...options,inlay:'floor'}):[];
   const carved=config.floor?tools.map(tool=>({...tool,depth:number(tool.depth,10)+config.floorThickness,floorInlay:config.floorThickness})):tools;
-  zones.push({zone:'body',mesh:buildPrintTriangles(project,modules,carved,origin,options)});
+  // Text zones carry raised letters themselves, so the body must not build the same volume.
+  zones.push({zone:'body',mesh:buildPrintTriangles(project,modules,carved,origin,{...options,omitRaised:config.text})});
   if(floor.length)zones.push({zone:'floor',mesh:floor});
-  if(config.text){const mesh=buildPrintTriangles(project,modules,tools,origin,{...options,inlay:'text'});if(mesh.length)zones.push({zone:'text',mesh});}
+  if(config.text){
+    const plan=options.labelPlan||planSizeLabels(project,modules,tools),own=labelColors(plan.labels).filter(color=>color!==config.textColor);
+    // A label set to the drawer's text colour simply belongs to the common text zone.
+    const labelPlan={...plan,labels:plan.labels.map(label=>label.color===config.textColor?{...label,color:null}:label)};
+    for(const color of [null,...own]){const mesh=buildPrintTriangles(project,modules,tools,origin,{...options,labelPlan,inlay:'text',textColor:color});if(mesh.length)zones.push({zone:color?textZone(color):'text',mesh});}
+  }
   return zones;
 }
 

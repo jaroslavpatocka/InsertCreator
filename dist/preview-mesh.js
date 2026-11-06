@@ -26,11 +26,13 @@ export function moduleParts(project,module,tools,batch){
 
 const facetCount=bytes=>new DataView(bytes.buffer,bytes.byteOffset,bytes.byteLength).getUint32(80,true);
 const ZONES=['body','floor','text'];
+// Labels with their own colour add `text:#rrggbb` zones after the fixed ones.
+const zonesOf=parts=>[...ZONES,...new Set(parts.map(part=>part.zone).filter(zone=>!ZONES.includes(zone)))];
 
 /** Interleaved position + normal vertices, grouped by colour zone so each zone is one draw call. */
 export function packParts(parts){
   const total=parts.reduce((sum,part)=>sum+facetCount(part.bytes),0),vertices=new Float32Array(total*18),ranges=[];let cursor=0;
-  for(const zone of ZONES){
+  for(const zone of zonesOf(parts)){
     const first=cursor/6;
     for(const part of parts.filter(part=>part.zone===zone)){
       const view=new DataView(part.bytes.buffer,part.bytes.byteOffset,part.bytes.byteLength),count=view.getUint32(80,true),m=part.matrix;

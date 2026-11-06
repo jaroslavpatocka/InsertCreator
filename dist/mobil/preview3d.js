@@ -1,4 +1,4 @@
-import {materialConfig} from './print-material.js';
+import {materialConfig,zoneColor} from './print-material.js';
 import {esc} from './ui.js';
 import {t,getLang} from './i18n.js';
 import {unit} from './units.js';
@@ -25,10 +25,10 @@ const budgetError=()=>Object.assign(new Error(previewBudgetMessage()),{previewBu
 const pick=(object,keys)=>Object.fromEntries(keys.map(key=>[key,object?.[key]]));
 export function previewGeometryKey(project){
   const material=materialConfig(project),parts=usesPrintParts(project);
-  return JSON.stringify({lang:getLang(),unit:unit(),...pick(project,['width','height','grid','clearance','wall','base','insertHeight','printMode','bottomMode','sizeLabels','connectors','jointClearance','magnetDiameter','magnetDepth','previewCuts','previewModuleIds']),
+  return JSON.stringify({lang:getLang(),unit:unit(),...pick(project,['width','height','grid','clearance','wall','base','insertHeight','printMode','bottomMode','sizeLabels','sizeLabelStyle','connectors','jointClearance','magnetDiameter','magnetDepth','previewCuts','previewModuleIds']),
     ...(parts?pick(project,['bedWidth','bedHeight']):{}),material:pick(material,['enabled','floor','text','floorThickness']),
     modules:(Array.isArray(project.modules)?project.modules:[]).map(module=>pick(module,['id','name','x','y','width','height','shape','cells','pocketMargin'])),
-    tools:(Array.isArray(project.tools)?project.tools:[]).map(tool=>pick(tool,['id','name','x','y','rotation','depth','moduleId','points','fingerGrips','pocketMagnets','sizeLabel','nominalSize','pocketMargin']))});
+    tools:(Array.isArray(project.tools)?project.tools:[]).map(tool=>pick(tool,['id','name','x','y','rotation','depth','moduleId','points','fingerGrips','pocketMagnets','sizeLabel','labelStyle','nominalSize','pocketMargin']))});
 }
 const PLANE_EPS=1e-5;
 const dot3=(a,b)=>a[0]*b[0]+a[1]*b[1]+a[2]*b[2];
@@ -359,11 +359,11 @@ export function printPreview(project,selected,selectedModule,camera={},viewport=
     const wireLines=module=>wirePath(module,projectPoint);
     // A wire reference belongs below the opaque tool modules, so socket lines do not show through their tops.
     for(const module of scene.modules.filter(module=>module.wire&&module.baseplate))html+=`<g data-baseplate="true" aria-label="${esc(module.name)}"><path d="${wireLines(module)}" fill="none" stroke="#718d91" stroke-width="1.2" stroke-dasharray="5 3" vector-effect="non-scaling-stroke"/></g>`;
-    const sun=[-.35,-.45,.82],colors=materialConfig(project),zoneColor={body:colors.bodyColor,floor:colors.floorColor,text:colors.textColor};
+    const sun=[-.35,-.45,.82],colors=materialConfig(project);
     const referenceHTML=html;let overflow=faces.length>10000;
     // Same-color subpixel overlap seals antialias cracks between render fragments.
     for(const {face,module,facing,points} of overflow?[]:faces){
-      const light=clamp(42+Math.max(0,dot(face.normal,sun))*22+facing*15,40,82),zone=colors.enabled&&!module.baseplate?face.zone:null,color=module.baseplate?`hsl(185 13% ${light.toFixed(1)}%)`:zone?shade(zoneColor[zone],light):activeIds.has(module.id)?`hsl(39 47% ${light.toFixed(1)}%)`:`hsl(88 23% ${light.toFixed(1)}%)`;
+      const light=clamp(42+Math.max(0,dot(face.normal,sun))*22+facing*15,40,82),zone=colors.enabled&&!module.baseplate?face.zone:null,color=module.baseplate?`hsl(185 13% ${light.toFixed(1)}%)`:zone?shade(zoneColor(zone,colors),light):activeIds.has(module.id)?`hsl(39 47% ${light.toFixed(1)}%)`:`hsl(88 23% ${light.toFixed(1)}%)`;
       const attributes=module.baseplate?'data-baseplate="true"':`data-module="${esc(module.id)}"`;
       const partAttribute=face.partKey?` data-print-part="${esc(face.partKey)}"`:'';
       const markup=`<polygon ${attributes} data-face-index="${face.index}" points="${polygon(points)}" fill="${color}" stroke="${color}" stroke-width=".6" vector-effect="non-scaling-stroke" aria-label="${esc(module.name)}"${partAttribute}${module.baseplate?'':` data-module-selected="${activeIds.has(module.id)}"`}/>`;

@@ -35,9 +35,10 @@ async function analysisReady(){const start=performance.now();while($('[data-expo
 test('the 2D board and raw engraving share one Y-down layout before the whole STL conversion',()=>{
   const label=planSizeLabels(saved()).labels.find(label=>label.toolId==='ta');assert.ok(label);
   const path=polygon=>polygon.map((point,i)=>`${i?'L':'M'}${point.x.toFixed(2)},${point.y.toFixed(2)}`).join(' ')+'Z';
-  const paths=Array.from(win.document.querySelectorAll('[data-tool-label="ta"] path'),node=>node.getAttribute('d'));
-  assert.deepEqual(paths,label.screenPolygons.map(path),'the board must use screen font rows');
-  assert.deepEqual(paths,label.polygons.map(path),'lettering must use the same layout frame as pockets and module outlines');
+  // One path per label: the holes of 0, 8 or B only stay open when all its polygons are filled together.
+  const ink=win.document.querySelector('[data-tool-label="ta"] .label-ink').getAttribute('d');
+  assert.equal(ink,label.screenPolygons.map(path).join(' '),'the board must use screen font rows');
+  assert.equal(ink,label.polygons.map(path).join(' '),'lettering must use the same layout frame as pockets and module outlines');
 });
 
 test('legacy PH/PZ/Torx names label the driver code instead of its shaft length, including PH0',()=>{

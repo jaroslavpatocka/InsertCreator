@@ -4,7 +4,7 @@ import {createMeshPool,meshKeys} from './mesh-client.js';
 import {usesPrintParts} from './preview-mesh.js';
 import {baseplateEntry,boundsFor,labelNotes,modulePreviewWire,previewFrame,previewHud,sceneNotes} from './preview3d.js';
 import {wirePath,cutPreviewMarkup,selectionPreviewMarkup} from './preview-overlays.js';
-import {materialConfig} from './print-material.js';
+import {materialConfig,zoneColor} from './print-material.js';
 import {esc} from './ui.js';
 import {t} from './i18n.js';
 import {jointPreviewMarkup,NO_PREVIEW_JOINTS} from './preview-joints.js';
@@ -99,11 +99,11 @@ export function createLivePreview({onChange,createCanvas=()=>document.createElem
     get broken(){return meshes.broken||renderer.failed;},
     render(project,{activeIds,camera,viewport,refresh=true}){
       if(refresh||!scene)sync(project);
-      const frame=previewFrame(scene.fitSize,camera,viewport),colors=materialConfig(project),zones={body:rgb(colors.bodyColor),floor:rgb(colors.floorColor),text:rgb(colors.textColor)};
+      const frame=previewFrame(scene.fitSize,camera,viewport),colors=materialConfig(project);
       const color=(id,zone)=>{
         if(id===BASEPLATE)return zone==='wire'?COLORS.wire:COLORS.baseplate;
         const active=activeIds.has(id);
-        return colors.enabled?zones[zone]:active?COLORS.active:COLORS.idle;
+        return colors.enabled?rgb(zoneColor(zone,colors)):active?COLORS.active:COLORS.idle;
       };
       view={center:scene.center,right:frame.right,down:frame.down,towards:frame.towards,bounds:frame.viewBounds,fitSize:scene.fitSize,viewport:frame.size,reference:scene.reference,color};
       renderer.draw(view);

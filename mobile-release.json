@@ -1,11 +1,11 @@
 {
   "version": 1,
-  "sourceCommit": "74537006dfcbb797abeb0cd51f945ef46b31ce07",
+  "sourceCommit": "aa178609b3f92d58c8867d2489e975dd545cb390",
   "files": [
     {
       "path": "app.js",
-      "sha256": "A4C7B8D495E4647C8B87F16D23D29609A32A569DA1F180FF0F91D4BC43625E63",
-      "bytes": 235117
+      "sha256": "D2CF5D6062DD1EE39C96458998A31C9BB35EBD694D071BB26EED0443A209B8B5",
+      "bytes": 241206
     },
     {
       "path": "auto-trace.js",
@@ -383,6 +383,11 @@
       "bytes": 1401
     },
     {
+      "path": "label-style.js",
+      "sha256": "3430FF5F971A57963A7D0B2828CCD615F528453796BC96C2DF0AAA35157282B8",
+      "bytes": 1997
+    },
+    {
       "path": "licenses-en.html",
       "sha256": "D189CD15C19D4E6A830E9025148C9168BE2A6DBADCEB822437007BC07FB8758D",
       "bytes": 12167
@@ -409,8 +414,8 @@
     },
     {
       "path": "locales/en-app.js",
-      "sha256": "5B3A2461F24AB9872D78B740C7958619EF85948F734A8D793D1FA266AB5330F7",
-      "bytes": 90213
+      "sha256": "DA3EC7834F7163C4135A6C35BA34C25B1B818A72C6209467B69DED79A07E71D3",
+      "bytes": 91682
     },
     {
       "path": "locales/en-capture.js",
@@ -454,8 +459,8 @@
     },
     {
       "path": "manufacturing-worker.js",
-      "sha256": "DEE4AB4E300D900DA71F1072B29F3156ACF950514EA979DB3B7B05747E30094B",
-      "bytes": 10691
+      "sha256": "459128F93C8C959A55B0F2E6863800027044770479405E7A8FC3E36A187BF86E",
+      "bytes": 10699
     },
     {
       "path": "mesh-client.js",
@@ -484,8 +489,8 @@
     },
     {
       "path": "model.js",
-      "sha256": "35F7FE0539BE0B298FF91C8EAA54D31568B3F6C1ED720798A46509A79327C6D5",
-      "bytes": 7523
+      "sha256": "2D02759FD6A2C147450998215A8B2ADCF0B0B5C50C9723D4F81828BD7ACB431A",
+      "bytes": 7811
     },
     {
       "path": "models/README.txt",
@@ -594,13 +599,13 @@
     },
     {
       "path": "preview-live.js",
-      "sha256": "2E3B957BB125FB3994E860491003BC9B03E44756B6055F6A4CDA5A2F287D8C8A",
-      "bytes": 9918
+      "sha256": "ACE2A26748237BCBED6F938E96097AEAE60850A0C9DD0883A9D7BD27BBA8A279",
+      "bytes": 9853
     },
     {
       "path": "preview-mesh.js",
-      "sha256": "AB53B1BCB640344207BA0E4EB95B319C8D6CAF1241C545DBB3EB378210D856B2",
-      "bytes": 7089
+      "sha256": "DA2D8BE2DD4D589E7525AB7BD2CE36C4EA2AF13C74EAEDE79C1976806617C6E4",
+      "bytes": 7287
     },
     {
       "path": "preview-overlays.js",
@@ -609,23 +614,23 @@
     },
     {
       "path": "preview3d.js",
-      "sha256": "485C2939C351BEC707CBC70D606711A66D074624B738F7102B07C83D2303388D",
-      "bytes": 32495
+      "sha256": "A5BB0A2A4D84B07CD915F6CC7865916B3AF948DBFEE1CA0BF50F12A34D1D4E33",
+      "bytes": 32462
     },
     {
       "path": "print-batch.js",
-      "sha256": "22859CE91F5A193E49F01B500E1A549FC189E4486DC92D6B44EDE1E17810815B",
-      "bytes": 19924
+      "sha256": "8ED180225EE4110B06F541A6D31BD392A56BC3EE7BF9DE9CB37074212824C64C",
+      "bytes": 20186
     },
     {
       "path": "print-geometry.js",
-      "sha256": "9293F63790935A0DB6037E44F1C6AEABE42C5C551B66116B8DAE7C231616A256",
-      "bytes": 32166
+      "sha256": "A58761AE2BBD88CEAD185FEEC2F8708392DAC0E5164A7E350CBA2AD08A666D86",
+      "bytes": 33008
     },
     {
       "path": "print-material.js",
-      "sha256": "62EEB97B0B2FD838777D64A3F0C8F5FF9D0D1EA5AD6540863A79FF2E2E1EE5E5",
-      "bytes": 6752
+      "sha256": "69F38D16CBB0F19DB4EE85A1FE7C2F124F3C41DF1E7C4A0A464157FF1E0815B4",
+      "bytes": 7242
     },
     {
       "path": "privacy-en.html",
@@ -668,9 +673,14 @@
       "bytes": 35478
     },
     {
+      "path": "size-label-ui.js",
+      "sha256": "30FE36B8535CF85CEB8C66252BD9523F2C9C32816CC806388A0ADA65DFC7DF7C",
+      "bytes": 6472
+    },
+    {
       "path": "size-labels.js",
-      "sha256": "62988D5A04493C14B03943D7038FFFC8F6923D3C4613E396A870F3F34584C4FB",
-      "bytes": 11875
+      "sha256": "7FFB544A5FD6B7B412DB2F86C919591E3D386F0C951A8C1E2FD59BA128A983F3",
+      "bytes": 14763
     },
     {
       "path": "smart-layout-client.js",
@@ -694,13 +704,13 @@
     },
     {
       "path": "style.css",
-      "sha256": "6A2F67406D4653F5B3A50863B5CE601696EA81909B94F378DB2CF948E9EA4F53",
-      "bytes": 73400
+      "sha256": "005A9795C156B4B45E05454188D303444E9DBF7D3D33EC31B2AC2ED769608C41",
+      "bytes": 75205
     },
     {
       "path": "sw.js",
-      "sha256": "CDF84FBC661E008C814CCBE1C6540A966715CCADE5B9D397CE30756C46A673FE",
-      "bytes": 4613
+      "sha256": "DF23CC0C03A946FEF78410F2A682A550E42506E59A3851CC96F0C0580D33E3C7",
+      "bytes": 4650
     },
     {
       "path": "three-mf.js",

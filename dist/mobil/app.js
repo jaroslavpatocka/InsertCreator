@@ -25,7 +25,9 @@ import {moduleOutline,moduleArea,moduleIntersects,modulePadding} from './module-
 import {gridfinityFreeCells,gridfinityLayout,planBaseplateTiles} from './gridfinity-baseplate.js';
 import {reshapeModules} from './space-layout.js';
 import {sizeText} from './tool-size.js';
-import {SIZE_LABEL_REASONS} from './size-labels.js';
+import {SIZE_LABEL_REASONS,planSizeLabels} from './size-labels.js';
+import {labelStyleFor,normalizeLabelStyle} from './label-style.js';
+import {labelGestureStyle,labelMarkup,labelStyleFields,pickLabelColor} from './size-label-ui.js';
 import * as bulk from './bulk-edit.js';
 import * as moduleEdit from './module-edit.js';
 import {moduleRotationHandles} from './module-rotation-handles.js';
@@ -125,8 +127,10 @@ const same=value=>JSON.stringify(value);
 const analysisClient=createManufacturingClient(),previewClient=createManufacturingClient(),fileClient=createManufacturingClient();
 let fileBusy=false,fileJobId=0,exportSession=null,editorNeedsRefresh=false,labelJob=null,previewSequence=0,previewSource='',previewValue=null,previewSignature='';
 const backgroundOptions=()=>({lang:getLang(),unit:unit()});
-const labelKey=p=>JSON.stringify([p.sizeLabels,p.printMode,p.bottomMode,p.grid,p.wall,p.base,p.insertHeight,p.clearance,p.magnetDepth,p.modules,p.tools,getLang(),unit()]);
+const labelKey=p=>JSON.stringify([p.sizeLabels,p.sizeLabelStyle,p.printMode,p.bottomMode,p.grid,p.wall,p.base,p.insertHeight,p.clearance,p.magnetDepth,p.modules,p.tools,getLang(),unit()]);
 const labelCache=new Map();
+// Keeps labels on the board while the worker recalculates them after an edit.
+let labelHold=null;
 function cachedLabels(){return !project.sizeLabels?{labels:[],skipped:[]}:labelCache.get(labelKey(project));}
 function ensureLabels(){
   const key=labelKey(project),known=cachedLabels();if(known)return Promise.resolve(known);
@@ -135,9 +139,9 @@ function ensureLabels(){
   const snapshot=clone(project),job={key};
   job.promise=analysisClient.run('labels',snapshot,backgroundOptions()).then(plan=>{
     if(labelJob!==job||key!==labelKey(project))return null;
-    labelCache.set(key,plan);while(labelCache.size>3)labelCache.delete(labelCache.keys().next().value);
+    labelCache.set(key,plan);labelHold=null;while(labelCache.size>3)labelCache.delete(labelCache.keys().next().value);
     document.querySelectorAll('[data-label-status]').forEach(element=>{const ids=new Set(JSON.parse(element.dataset.labelStatus));element.innerHTML=labelStatusContent({labels:plan.labels.filter(label=>ids.has(label.moduleId)),skipped:plan.skipped.filter(label=>ids.has(label.moduleId))});});
-    if(view==='2d'&&!drag&&!resizeDrag&&!rotationDrag&&!exportSession&&!fileBusy)renderBoard();return plan;
+    if(view==='2d'&&!drag&&!resizeDrag&&!rotationDrag&&!labelDrag&&!exportSession&&!fileBusy)renderBoard();return plan;
   }).catch(error=>{
     if(error.name!=='AbortError'&&labelJob===job)document.querySelectorAll('[data-label-status]').forEach(element=>element.textContent=errorText(error));return null;
   }).finally(()=>{if(labelJob===job)labelJob=null;});
@@ -436,7 +440,7 @@ function editModuleSize(){
 function sizeModuleAutomatically(){const m=moduleFor();if(!m)return;const next=resizeModule(project,m.id,{mode:'auto'});let note='';commit(()=>{project=next;note=releaseUniformSet(m.id,{ifUnsatisfied:true});});toast(tr('Velikost modulu upravena podle nástroje.')+note);}
 // ---- Direct module resizing: board handles, Alt+Shift+arrows and inspector quick buttons ----
 const SIXTEENTH_IN=25.4/16,LOCKED_RESIZE='Odemkněte modul pro změnu velikosti';
-let resizeDrag=null,rotationDrag=null;
+let resizeDrag=null,rotationDrag=null,labelDrag=null;
 /** Smallest nominal size that still holds every pocket of the module plus the wall on each side. */
 function moduleMinSize(p,m){
   const pts=p.tools.filter(t=>t.moduleId===m.id).flatMap(t=>safePocket(t,p));if(!pts.length)return{width:5,height:5};
@@ -657,7 +661,21 @@ function duplicateCurrentModule(){
   const copied=next.modules.find(m=>!previous.has(m.id));
   commit(()=>{project=next;selected=null;selectedModule=copied?.id||m.id;inspectorTab='tool';},tr('Modul zkopírován.'));
 }
-function sizeLabelPanel(t){return `<div class="size-label-editor">${input(tr('Popisek velikosti'),t.sizeLabel??sizeText(t),'sizeLabel',{type:'text',scope:'tool'})}<p class="muted-note">${tr('Například 13 mm nebo 1/2 in. U nástroje z fotografie zadejte skutečnou velikost. Tisk popisků zapnete pro celý šuplík.')}</p><button class="btn btn-light" data-action="toggle-size-labels">${tr(project.sizeLabels?'Vypnout popisky v modelu':'Zapnout popisky v modelu')}</button></div>`;}
+function sizeLabelPanel(t){return `<div class="size-label-editor">${input(tr('Popisek velikosti'),t.sizeLabel??sizeText(t),'sizeLabel',{type:'text',scope:'tool'})}<p class="muted-note">${tr('Například 13 mm nebo 1/2 in. U nástroje z fotografie zadejte skutečnou velikost. Tisk popisků zapnete pro celý šuplík.')}</p>${toolLabelStyle(t)}<button class="btn btn-light" data-action="toggle-size-labels">${tr(project.sizeLabels?'Vypnout popisky v modelu':'Zapnout popisky v modelu')}</button></div>`;}
+function labelFields(scope,style,rotation=null){return labelStyleFields({scope,style,rotation,light:project.printMode==='light',colors:materialConfig(project),input});}
+function toolLabelStyle(t){
+  if(!project.sizeLabels)return '';
+  const label=cachedLabels()?.labels.find(item=>item.toolId===t.id);
+  return labelFields('tool',labelStyleFor(project,t),label?.rotation??labelStyleFor(project,t).rotation??0)+(label?.displaced?`<p class="muted-note label-displaced">${tr('Na zvolené místo se popisek nevešel, proto je umístěn automaticky.')}</p>`:'')+(t.labelStyle?`<button class="btn btn-light" data-action="reset-tool-label">${tr('Vrátit výchozí vzhled a polohu')}</button>`:'');
+}
+function updateLabelStyle(scope,patch){
+  if(scope==='tool'&&!tool())return;
+  const target=scope==='tool'?tool():null,before=target?target.labelStyle:project.sizeLabelStyle;
+  const next=normalizeLabelStyle({...before,...patch},{position:scope==='tool'});
+  if(same(next)===same(before)){render();return;}
+  labelHold=cachedLabels()||labelHold;
+  commit(()=>{const owner=target?tool():project,key=target?'labelStyle':'sizeLabelStyle';if(next)owner[key]=next;else delete owner[key];});
+}
 function labelStatus(modules=project.modules,summary=null){
   if(!project.sizeLabels)return '';
   const ids=new Set(modules.map(module=>module.id)),known=cachedLabels();
@@ -854,13 +872,21 @@ function renderBoard(){
   }
   if(!project.modules.length&&showGrid)html+=`<text x="${project.width/2}" y="${project.height-14}" text-anchor="middle" font-size="7" fill="#b2bca5">${tr('{cols} × {rows} polí · {grid}',{cols:Math.floor(project.width/project.grid),rows:Math.floor(project.height/project.grid),grid:fmtLen(project.grid)})}</text>`;
   else if(project.modules.length&&showLabels){const unusedY=Math.max(...project.modules.map(m=>m.y+m.height));if(project.height-unusedY>36)html+=`<text x="${project.width/2}" y="${unusedY+(project.height-unusedY)/2}" text-anchor="middle" font-size="8" fill="#b0bca1" letter-spacing=".8">${tr('PROSTOR PRO DALŠÍ NÁPADY')}</text>`;}
-  if(project.sizeLabels){const plan=cachedLabels();if(!plan)ensureLabels();for(const label of plan?.labels||[])html+=`<g class="model-size-label" data-tool-label="${esc(label.toolId)}" aria-label="${esc(label.text)}" pointer-events="none">${label.screenPolygons.map(poly=>`<path d="${paths(poly)}" fill="#4c613c"/>`).join('')}</g>`;}
+  if(project.sizeLabels&&!cachedLabels())ensureLabels();
+  html+=boardLabels(svg,w,h);
   html+=resizeHandles(svg,w,h);
   html+=rotationHandles(svg,w,h);
   svg.innerHTML=html;
-  if(!viewControls)viewControls=createViewControls2D(svg,{canTouchPan:()=>!moveMode&&!rotationDrag,onNavigationStart:()=>cancelEditGesture(undefined,{renderAfter:false}),getCamera:()=>({zoom,panX:pan2D.x,panY:pan2D.y}),setCamera:value=>{zoom=value.zoom;pan2D={x:value.panX,y:value.panY};},getFrame:()=>({width:w/zoom,height:h/zoom}),render:renderCameraFrame});
+  if(!viewControls)viewControls=createViewControls2D(svg,{canTouchPan:()=>!moveMode&&!rotationDrag&&(!labelDrag||labelDrag.mode==='tap'),onNavigationStart:()=>cancelEditGesture(undefined,{renderAfter:false}),getCamera:()=>({zoom,panX:pan2D.x,panY:pan2D.y}),setCamera:value=>{zoom=value.zoom;pan2D={x:value.panX,y:value.panY};},getFrame:()=>({width:w/zoom,height:h/zoom}),render:renderCameraFrame});
 }
 /** Resize targets expand into free space; the central half always remains available for moving. */
+function boardLabels(svg,w,h){
+  const plan=project.sizeLabels&&(cachedLabels()||labelHold);if(!plan)return '';
+  const rect=svg.getBoundingClientRect?.()||{},px=rect.width>0&&rect.height>0?Math.max(w/zoom/rect.width,h/zoom/rect.height):.5,coarse=!!window.matchMedia?.('(pointer:coarse)')?.matches,colors=materialConfig(project),paint=colors.enabled?{ink:colors.text?colors.textColor:colors.bodyColor,plateFill:colors.bodyColor}:{};
+  const [x,y,width,height]=(svg.getAttribute('viewBox')||'').split(/\s+/).map(Number),frame=[x,y,width,height].every(Number.isFinite)?{x,y,width,height}:null;
+  // Touch has no hover, so there the selected tool shows its bar.
+  return plan.labels.map(label=>labelMarkup(label,{px,coarse,frame,active:coarse&&label.toolId===selected,...paint})).join('');
+}
 function rotationHandles(svg,w,h){
   const m=drag||resizeDrag?null:project.modules.find(item=>item.id===(rotationDrag?.id||moduleFor()?.id));if(!m)return '';
   const rect=svg.getBoundingClientRect?.()||{},px=rect.width>0&&rect.height>0?Math.max(w/zoom/rect.width,h/zoom/rect.height):.5;
@@ -1008,7 +1034,8 @@ function renderCameraFrame(){
     const w=project.width+68,h=project.height+68;
     svg.querySelector('.resize-handles')?.remove();
     svg.querySelector('.rotation-handles')?.remove();
-    const handles=document.createElementNS('http://www.w3.org/2000/svg','g');handles.innerHTML=resizeHandles(svg,w,h)+rotationHandles(svg,w,h);
+    svg.querySelectorAll('.model-size-label').forEach(element=>element.remove());
+    const handles=document.createElementNS('http://www.w3.org/2000/svg','g');handles.innerHTML=boardLabels(svg,w,h)+resizeHandles(svg,w,h)+rotationHandles(svg,w,h);
     while(handles.firstChild)svg.append(handles.firstChild);
   }
   const label=$('[data-zoom-value]');if(label)label.textContent=Math.round((view==='3d'?camera3D.zoom:zoom)*100)+' %';
@@ -1241,7 +1268,7 @@ function colorPrintPanel(source=project){
 }
 function manufacturingPanel(){
   const bottoms=bottomNames();
-  return `<section class="panel manufacturing-panel" id="manufacturing-settings"><div class="panel-header"><h2 class="panel-title">${icon('cube')}${tr('Model pro výrobu')}</h2><button class="section-link" data-action="manufacturing-settings">3D</button></div><div class="panel-body"><p class="muted-note">${tr('Změny provedení se ihned zobrazí ve 3D náhledu.')}</p><fieldset class="manufacturing-controls" ${connectorJob?'disabled':''}><label class="print-toggle"><input id="print-light" type="checkbox" ${project.printMode==='light'?'checked':''}><span><strong>${tr('Úsporný tisk')}</strong><small>${project.printMode==='light'?tr('Tenké dno a stěny kolem nástroje. Okolí zůstane otevřené.'):tr('Plný blok s kapsami pro nástroje.')}</small></span></label><label class="field"><span>${tr('Dno a uchycení')}</span><select id="print-bottom" data-field="bottomMode" data-scope="project">${Object.entries(bottoms).map(([key,label])=>`<option value="${key}" ${project.bottomMode===key?'selected':''}>${label}</option>`).join('')}</select></label>${project.bottomMode==='magnet'?`<div class="fields-row">${input(tr('Průměr kapsy'),project.magnetDiameter,'magnetDiameter',{min:3,max:20})}${input(tr('Hloubka kapsy'),project.magnetDepth,'magnetDepth',{min:1,max:8})}</div>`:''}<label class="check-row"><input id="preview-cuts" type="checkbox" ${previewCuts?'checked':''}>${tr('Zobrazit řezy podle tiskové podložky')}</label><p class="muted-note">${tr('Tisková podložka')}: ${fmtSize(project.bedWidth,project.bedHeight)} · <button class="section-link" data-action="export">${tr('Změnit v exportu')}</button></p>${pocketHeightControls()}<label class="check-row"><input id="export-size-labels" type="checkbox" ${project.sizeLabels?'checked':''}>${tr('Popisky velikostí v modelu')}</label>${labelStatus()}${inspectorSection('manufacturing-colors',tr('Materiály a barvy'),colorPrintPanel())}${inspectorSection('manufacturing-joints',tr('Spojky'),jointStatus(project,project.modules))}${gridfinitySummary()}</fieldset><div data-manufacturing-analysis data-analysis-busy="${!!connectorJob}" role="status" aria-live="polite">${connectorJob?loadingMarkup({title:tr('Připravuji spojky…'),compact:true}):''}</div><div data-manufacturing-stats></div><button class="section-link" data-manufacturing-volume>${tr('Vypočítat objem modelu')}</button>${inspectorSection('manufacturing-fit',tr('Nejdřív ověřit velikost'),`<p class="muted-note">${tr('Přiložte nástroj na papír nebo zkuste tenký rámeček. Nemusíte hned tisknout celý inzert.')}</p><div class="test-actions"><button class="btn btn-light" data-fit-pdf ${!project.modules.length||connectorJob?'disabled':''}>${icon('print')}${tr('PDF v měřítku 1:1')}</button><button class="btn btn-light" data-fit-stl ${!project.modules.length||connectorJob?'disabled':''}>${icon('cube')}${tr('Tenká zkouška STL')}</button></div>` )}</div></section>`;
+  return `<section class="panel manufacturing-panel" id="manufacturing-settings"><div class="panel-header"><h2 class="panel-title">${icon('cube')}${tr('Model pro výrobu')}</h2><button class="section-link" data-action="manufacturing-settings">3D</button></div><div class="panel-body"><p class="muted-note">${tr('Změny provedení se ihned zobrazí ve 3D náhledu.')}</p><fieldset class="manufacturing-controls" ${connectorJob?'disabled':''}><label class="print-toggle"><input id="print-light" type="checkbox" ${project.printMode==='light'?'checked':''}><span><strong>${tr('Úsporný tisk')}</strong><small>${project.printMode==='light'?tr('Tenké dno a stěny kolem nástroje. Okolí zůstane otevřené.'):tr('Plný blok s kapsami pro nástroje.')}</small></span></label><label class="field"><span>${tr('Dno a uchycení')}</span><select id="print-bottom" data-field="bottomMode" data-scope="project">${Object.entries(bottoms).map(([key,label])=>`<option value="${key}" ${project.bottomMode===key?'selected':''}>${label}</option>`).join('')}</select></label>${project.bottomMode==='magnet'?`<div class="fields-row">${input(tr('Průměr kapsy'),project.magnetDiameter,'magnetDiameter',{min:3,max:20})}${input(tr('Hloubka kapsy'),project.magnetDepth,'magnetDepth',{min:1,max:8})}</div>`:''}<label class="check-row"><input id="preview-cuts" type="checkbox" ${previewCuts?'checked':''}>${tr('Zobrazit řezy podle tiskové podložky')}</label><p class="muted-note">${tr('Tisková podložka')}: ${fmtSize(project.bedWidth,project.bedHeight)} · <button class="section-link" data-action="export">${tr('Změnit v exportu')}</button></p>${pocketHeightControls()}<label class="check-row"><input id="export-size-labels" type="checkbox" ${project.sizeLabels?'checked':''}>${tr('Popisky velikostí v modelu')}</label>${project.sizeLabels?inspectorSection('manufacturing-labels',tr('Vzhled popisků'),labelFields('project',labelStyleFor(project,null))):''}${labelStatus()}${inspectorSection('manufacturing-colors',tr('Materiály a barvy'),colorPrintPanel())}${inspectorSection('manufacturing-joints',tr('Spojky'),jointStatus(project,project.modules))}${gridfinitySummary()}</fieldset><div data-manufacturing-analysis data-analysis-busy="${!!connectorJob}" role="status" aria-live="polite">${connectorJob?loadingMarkup({title:tr('Připravuji spojky…'),compact:true}):''}</div><div data-manufacturing-stats></div><button class="section-link" data-manufacturing-volume>${tr('Vypočítat objem modelu')}</button>${inspectorSection('manufacturing-fit',tr('Nejdřív ověřit velikost'),`<p class="muted-note">${tr('Přiložte nástroj na papír nebo zkuste tenký rámeček. Nemusíte hned tisknout celý inzert.')}</p><div class="test-actions"><button class="btn btn-light" data-fit-pdf ${!project.modules.length||connectorJob?'disabled':''}>${icon('print')}${tr('PDF v měřítku 1:1')}</button><button class="btn btn-light" data-fit-stl ${!project.modules.length||connectorJob?'disabled':''}>${icon('cube')}${tr('Tenká zkouška STL')}</button></div>` )}</div></section>`;
 }
 function bindManufacturingPanel(){
   window.clearTimeout(manufacturingTimer);manufacturingJob?.controller.abort();manufacturingJob=null;
@@ -1554,7 +1581,7 @@ const actions={
  'hide-tip':()=>{tipVisible=false;writeLocal('suplik-hide-tip',true);render();},
  rotate:()=>rotateCurrentTool(90),'rotate-module':()=>applyModuleEdit(moduleEdit.rotateModule,90,tr('Modul otočen.')),'duplicate-module':duplicateCurrentModule,
  'module-step':stepModule,
- 'arrange-current-set':openSetPlacement,'toggle-size-labels':()=>commit(()=>project.sizeLabels=!project.sizeLabels),
+ 'arrange-current-set':openSetPlacement,'toggle-size-labels':()=>commit(()=>project.sizeLabels=!project.sizeLabels),'reset-tool-label':()=>{const t=tool();if(t)commit(()=>delete t.labelStyle,tr('Popisek vrácen na výchozí nastavení.'));},
  'select-all-tools':()=>{bulkSelection=new Set(project.tools.map(t=>t.id));render();},'select-no-tools':()=>{bulkSelection.clear();render();},
  'bulk-rotate':()=>applyBulk(bulk.bulkRotate,90),'bulk-flip':()=>applyBulk(bulk.bulkRotate,180),'bulk-delete':()=>applyBulk(bulk.bulkDelete),
  'bulk-move':openBulkMove,'bulk-depth':openBulkDepth,'bulk-angle':openBulkAngle,'bulk-align':openBulkAlign,'bulk-grips-auto':()=>applyBulk(bulk.bulkFingerGrips,{mode:'auto',radius:9}),'bulk-grips-clear':()=>applyBulk(bulk.bulkFingerGrips,{mode:'clear'}),'bulk-lock':()=>applyBulk(bulk.bulkLock,true),'bulk-unlock':()=>applyBulk(bulk.bulkLock,false),
@@ -1564,6 +1591,7 @@ const actions={
  delete:()=>{const t=tool(),m=moduleFor();if(!t&&!m)return;commit(()=>{if(t){removeToolSetMember(t.id);project.tools=project.tools.filter(x=>x.id!==t.id);project.modules=project.modules.filter(x=>x.id!==t.moduleId||project.tools.some(o=>o.moduleId===x.id));selected=project.tools[0]?.id||null;}else project.modules=project.modules.filter(x=>x.id!==m.id);selectedModule=null;},tr('Odstraněno ze sestavy. Akci můžete vrátit tlačítkem Zpět.'));}
 };
 $('#app').addEventListener('click',e=>{
+  const labelColor=e.target.closest?.('[data-label-gesture="color"]');if(labelColor){const t=project.tools.find(item=>item.id===labelColor.dataset.labelTool);if(t){const module=project.modules.find(item=>item.id===t.moduleId);if(module)selectBoardTarget(module,t);render();pickLabelColor(labelStyleFor(project,t).color||materialConfig(project).textColor,{x:e.clientX,y:e.clientY},color=>updateLabelStyle('tool',{color}));}return;}
   if(drag||resizeDrag||rotationDrag||boardSelectionGesture){e.preventDefault();return;}
   const open=e.target.closest('[data-drawer-open]'),remove=e.target.closest('[data-drawer-remove]');
   if(remove){removeDrawer(remove.dataset.drawerRemove);return;}
@@ -1582,6 +1610,7 @@ $('#app').addEventListener('click',e=>{
 $('#app').addEventListener('change',e=>{
   if(e.target.matches('[data-smart-shape]')){if(['rectangular','stepped'].includes(e.target.value)){smartShape=e.target.value;writeLocal('suplik-studio-module-shape',smartShape);const next=reshapeModules(project,smartShape);if(JSON.stringify(next.modules)!==JSON.stringify(project.modules))commit(()=>{project.modules=next.modules;});}return;}
   const check=e.target.closest('[data-tool-check]');if(check){toggleToolSelection(check.dataset.toolCheck);return;}
+  const labelControl=e.target.closest('[data-label-scope]');if(labelControl){updateLabelStyle(labelControl.dataset.labelScope,labelControl.type==='color'?{color:labelControl.value}:{background:labelControl.checked});return;}
   const el=e.target.closest('[data-field]');if(!el)return;const field=el.dataset.field,scope=el.dataset.scope;let value=el.value.trim();
   if(field==='pocketMargin'&&['tool','module'].includes(scope)){try{editPocketMargin(scope,el);}catch(error){toast(errorText(error));render();}return;}
   if(scope==='project'&&field==='bottomMode'){
@@ -1590,6 +1619,8 @@ $('#app').addEventListener('change',e=>{
     commit(()=>project.bottomMode=value);return;
   }
   if(el.hasAttribute('data-length')){value=lengthFrom(el);if(value===null){render();return;}}
+  if(field==='labelSize'||field==='labelRelief'){updateLabelStyle(scope,{[field==='labelSize'?'size':'relief']:value});return;}
+  if(field==='labelRotation'){try{updateLabelStyle(scope,{rotation:readAngle(value)});}catch(error){toast(errorText(error));render();}return;}
   if(scope==='project'&&field==='grid'&&Math.abs(value-project.grid)>1e-6){
     if(project.bottomMode==='grid'){toast(tr('Gridfinity patky vyžadují rastr přesně 42 mm.'));render();return;}
     if(project.modules.some(module=>module.cells)){toast(tr('Před změnou rastru převeďte schodové moduly na obdélníky změnou jejich rozměrů.'));render();return;}
@@ -1651,7 +1682,8 @@ $('#app').addEventListener('change',e=>{
 });
 $('#app').addEventListener('pointerdown',e=>{
   // Selection changes obey the same pointer/button ownership as geometry gestures.
-  if(e.button!==0||e.isPrimary===false||rotationDrag||resizeDrag||drag||boardSelectionGesture)return;
+  if(e.button!==0||e.isPrimary===false||rotationDrag||resizeDrag||drag||labelDrag||boardSelectionGesture)return;
+  if(view!=='3d'&&startLabelGesture(e))return;
   if((e.shiftKey||e.ctrlKey||e.metaKey)&&!e.target.closest('[data-rotate-corner]')){
     const moduleId=boardModuleId(e),m=project.modules.find(m=>m.id===moduleId);
     if(m&&!e.target.closest('[data-tool]')){selectBoardTarget(m);render();}
@@ -1698,7 +1730,43 @@ $('#app').addEventListener('pointerdown',e=>{
   drag={pointer:e.pointerId,id:m.id,selectionToolId:t?.id||null,start:p,x:m.x,y:m.y,snapshot:clone(project),pointSources:new Map(project.tools.map(tool=>[tool.id,tool.points])),moved:false,...(movingSelection?{toolIds:chosen}:{}),...(blocked?{blocked:true,error:tr('Nejprve odemkněte polohu modulu.')}:{})};svg.setPointerCapture(e.pointerId);renderBoard();
   if(blocked)toast(drag.error);
 });
+function boardPoint(e){const svg=$('#board-svg'),point=svg.createSVGPoint();point.x=e.clientX;point.y=e.clientY;return point.matrixTransform(svg.getScreenCTM().inverse());}
+function startLabelGesture(e){
+  const target=e.target.closest?.('[data-label-gesture]');if(!target)return false;
+  const svg=$('#board-svg'),mode=target.dataset.labelGesture,label=cachedLabels()?.labels.find(item=>item.toolId===target.dataset.labelTool);
+  // The colour handle acts on click: only a real click may open the picker.
+  if(!svg||!label||mode==='color')return true;
+  // On touch a finger landing on an unselected label selects it; a slide there keeps panning the board.
+  const tap=e.pointerType==='touch'&&label.toolId!==selected;
+  e.preventDefault();
+  labelDrag={pointer:e.pointerId,mode:tap?'tap':mode,label,start:boardPoint(e),element:target.closest('.model-size-label'),moved:false,result:null};
+  labelDrag.element?.classList.add('dragging');
+  try{svg.setPointerCapture(e.pointerId);}catch{}
+  return true;
+}
+function moveLabelGesture(e){
+  const g=labelDrag,point=boardPoint(e);
+  if(g.mode==='tap')return;
+  if(!g.moved&&Math.hypot(point.x-g.start.x,point.y-g.start.y)<.5)return;
+  g.moved=true;g.result=labelGestureStyle(g,point,{step:e.shiftKey?15:1});
+  // Only the picture moves here. The project changes once, on release, as one undo step.
+  g.element?.setAttribute('transform',g.result.transform);
+}
+function endLabelGesture(){
+  const g=labelDrag;labelDrag=null;
+  const module=project.modules.find(item=>item.id===g.label.moduleId),t=project.tools.find(item=>item.id===g.label.toolId);
+  if(!module||!t){render();return;}
+  if(!g.moved){selectBoardTarget(module,t);render();return;}
+  const next={...t,labelStyle:normalizeLabelStyle({...t.labelStyle,...g.result.style})},own=project.tools.map(item=>item.id===t.id?next:item).filter(item=>item.moduleId===module.id);
+  const label=planSizeLabels(project,[module],own).labels.find(item=>item.toolId===t.id);
+  if(!label||label.displaced){render();toast(tr('Popisek se sem nevejde. Musí zůstat uvnitř modulu a mimo kapsy.'));return;}
+  const known=cachedLabels();
+  labelHold=known?{...known,labels:known.labels.map(item=>item.toolId===t.id?label:item)}:labelHold;
+  selectBoardTarget(module,t);
+  commit(()=>{project.tools.find(item=>item.id===t.id).labelStyle=next.labelStyle;});
+}
 $('#app').addEventListener('pointermove',e=>{
+  if(labelDrag&&e.pointerId===labelDrag.pointer){moveLabelGesture(e);return;}
   if(boardSelectionGesture&&e.pointerId===boardSelectionGesture.pointer&&Math.hypot(e.clientX-boardSelectionGesture.x,e.clientY-boardSelectionGesture.y)>=3)boardSelectionGesture.moved=true;
   if(view!=='3d'&&rotationDrag&&e.pointerId===rotationDrag.pointer){
     const svg=$('#board-svg'),point=svg.createSVGPoint();point.x=e.clientX;point.y=e.clientY;const q=point.matrixTransform(svg.getScreenCTM().inverse()),r=rotationDrag;
@@ -1764,6 +1832,7 @@ function finishBoardSelection(e){
   }
 }
 function endDrag(e){
+  if(labelDrag&&e.pointerId===labelDrag.pointer)return endLabelGesture();
   const active=rotationDrag||resizeDrag||drag;if(!active||e.pointerId!==active.pointer)return;if(rotationDrag)return endRotation();if(resizeDrag)return endResize();
   if(!drag.moved){
     const finished=drag;drag=null;project=finished.snapshot;
@@ -1792,6 +1861,7 @@ function cancelEditGesture(e,{renderAfter=true}={}){
   // of that actual edit surface cancels a preview.
   if(e?.type==='lostpointercapture'&&e.target!==$('#board-svg'))return;
   if(boardSelectionGesture&&(e?.pointerId===undefined||e.pointerId===boardSelectionGesture.pointer))boardSelectionGesture=null;
+  if(labelDrag&&(e?.pointerId===undefined||e.pointerId===labelDrag.pointer)){labelDrag=null;if(renderAfter)render();return;}
   const active=rotationDrag||resizeDrag||drag;if(!active||(e?.pointerId!==undefined&&e.pointerId!==active.pointer))return;
   project=active.snapshot;rotationDrag=null;resizeDrag=null;drag=null;
   // Clear the state before releasing capture: the resulting lostpointercapture must not cancel twice.

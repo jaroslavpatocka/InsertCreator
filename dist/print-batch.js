@@ -5,7 +5,7 @@ import {pocketOutline} from './finger-grip.js';
 import {planSizeLabels} from './size-labels.js';
 import {planJoints,planCutJoints,JOINT_BED_RESERVE,jointClearance} from './module-joints.js';
 import {buildColorZones,buildPrintTriangles,encodeSTL,printConfig,trianglesVolume,validatePrintMesh,weldPrintVertices,finalizePrintTriangles} from './print-geometry.js';
-import {FLOOR_RESERVE,materialConfig,materialSlots} from './print-material.js';
+import {FLOOR_RESERVE,labelColors,materialConfig,materialSlots,zoneColor} from './print-material.js';
 import {encodeColor3MF} from './three-mf.js';
 import {i18nError,t} from './i18n.js';
 import {layoutMeshToPhysical} from './manufacturing-coordinates.js';
@@ -22,6 +22,8 @@ const bounds=triangles=>{
   return{min,max,width:round(max[0]-min[0]),height:round(max[1]-min[1]),heightMm:round(max[2]-min[2])};
 };
 const ZONE_NAMES={body:'Tělo',floor:'Dno kapes',text:'Text'},ZONE_FILES={body:'telo',floor:'dno-kapes',text:'text'};
+// A label's own colour is a `text:#rrggbb` zone; two text parts need different names and files.
+const zoneName=zone=>ZONE_NAMES[zone]?t(ZONE_NAMES[zone]):`${t('Text')} ${zone.slice(5)}`,zoneFile=zone=>ZONE_FILES[zone]||`text-${zone.slice(6)}`;
 const fits=(w,h,bw,bh)=>w<=bw+EPS&&h<=bh+EPS;
 const footprintFits=(m,bw,bh)=>fits(m.width-.5,m.height-.5,bw,bh)||fits(m.height-.5,m.width-.5,bw,bh);
 function tilePlan(project,module,bedWidth,bedHeight){
@@ -169,7 +171,7 @@ export async function preparePrintBatch(project,{moduleIds,signal,onProgress}={}
   progress({stage:'planning',progress:0,completed:0,total:0});await pause();
   const {plans,total,jointPlan}=planPrintBatch(source);
   if(total>MAX_PARTS)throw i18nError('Pro jeden export lze připravit nejvýše 400 tiskových dílů. Vyberte méně modulů nebo větší tiskovou plochu.');
-  const files=[],parts=[],splitSummary=[],slots=colors.enabled?materialSlots({...colors,floor:colors.floor&&source.tools.length>0,text:colors.text&&planSizeLabels(source).labels.length>0}):null,zoneColor={body:colors.bodyColor,floor:colors.floorColor,text:colors.textColor};let completed=0,bytes=0;
+  const allLabels=colors.enabled?planSizeLabels(source).labels:[],files=[],parts=[],splitSummary=[],slots=colors.enabled?materialSlots({...colors,floor:colors.floor&&source.tools.length>0,text:colors.text&&allLabels.length>0,labelColors:labelColors(allLabels)}):null;let completed=0,bytes=0;
   for(const [moduleIndex,{module,tiles}] of plans.entries()){
     const own=source.tools.filter(tool=>tool.moduleId===module.id).map(tool=>({...tool,poly:pocketOutline(tool,source)})),labelPlan=planSizeLabels(source,[module],own),moduleParts=[];
     for(const tile of tiles){
@@ -181,9 +183,9 @@ export async function preparePrintBatch(project,{moduleIds,signal,onProgress}={}
       let file=base+'.stl',data,colorFiles=null;
       if(zones){
         // The 3MF keeps the colours together; the STLs share its coordinates for slicers that ignore them.
-        file=base+'.3mf';data=encodeColor3MF(zones.map(zone=>({name:t(ZONE_NAMES[zone.zone]),color:zoneColor[zone.zone],filament:slots.zones[zone.zone],triangles:zone.mesh})),{title:module.name||module.id,position:{x:Math.max(0,(bedWidth-(rotation?box.height:box.width))/2),y:Math.max(0,(bedHeight-(rotation?box.width:box.height))/2)}});
+        file=base+'.3mf';data=encodeColor3MF(zones.map(zone=>({name:zoneName(zone.zone),color:zoneColor(zone.zone,colors),filament:slots.zones[zone.zone],triangles:zone.mesh})),{title:module.name||module.id,position:{x:Math.max(0,(bedWidth-(rotation?box.height:box.width))/2),y:Math.max(0,(bedHeight-(rotation?box.width:box.height))/2)}});
         colorFiles={};
-        for(const zone of zones){const name=`barvy/${base}-${ZONE_FILES[zone.zone]}.stl`,stl=encodeSTL(zone.mesh,'InsertCreator | mm | '+zone.zone+' '+module.id+' '+index);bytes+=stl.byteLength;files.push({name,data:stl});colorFiles[zone.zone]=name;}
+        for(const zone of zones){const name=`barvy/${base}-${zoneFile(zone.zone)}.stl`,stl=encodeSTL(zone.mesh,'InsertCreator | mm | '+zone.zone+' '+module.id+' '+index);bytes+=stl.byteLength;files.push({name,data:stl});colorFiles[zone.zone]=name;}
       }else data=encodeSTL(local,'InsertCreator | mm | cut '+module.id+' '+index);
       bytes+=data.byteLength;if(bytes>MAX_BYTES)throw i18nError('Tiskové díly přesahují limit 128 MB. Vyberte méně modulů a export zopakujte.');
       const part={moduleId:module.id,key:tile.key,file,index,count:0,row:tile.row,column:tile.column,offset,rotationForPrinting:rotation,assemblyTransform,layoutTransform,clip:tile.clip||{x:module.x,y:module.y,width:module.width,height:module.height},bounds:{width:rotation?box.height:box.width,height:rotation?box.width:box.height,heightMm:box.heightMm},sourceBounds:{width:box.width,height:box.height,heightMm:box.heightMm},triangles:zones?zones.reduce((sum,zone)=>sum+zone.mesh.length,0):local.length,volumeMm3:zones?zones.reduce((sum,zone)=>sum+trianglesVolume(zone.mesh),0):trianglesVolume(local),...(colorFiles?{colorFiles}:{})};

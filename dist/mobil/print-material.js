@@ -104,6 +104,11 @@ export function materialSlots(config){
   const slots=[],slot=color=>{const known=slots.indexOf(color);if(known>=0)return known+1;slots.push(color);return slots.length;};
   const zones={body:slot(config.bodyColor)};
   if(config.floor)zones.floor=slot(config.floorColor);
-  if(config.text)zones.text=slot(config.textColor);
+  if(config.text){zones.text=slot(config.textColor);for(const color of config.labelColors||[])if(color!==config.textColor)zones[textZone(color)]=slot(color);}
   return{zones,colors:slots};
 }
+
+/** A label with its own colour prints as an extra text zone: `text:#rrggbb`. */
+export const textZone=color=>'text:'+color;
+export const zoneColor=(zone,config)=>String(zone).startsWith('text:')?zone.slice(5):{body:config.bodyColor,floor:config.floorColor,text:config.textColor}[zone];
+export const labelColors=labels=>[...new Set(labels.map(label=>label.color).filter(Boolean))];

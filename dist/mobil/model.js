@@ -1,6 +1,7 @@
 import {materialConfig} from './print-material.js';
 import {validateFingerGrips} from './finger-grip.js';
 import {optionalPocketMargin} from './pocket-margin.js';
+import {normalizeLabelStyle} from './label-style.js';
 import {validatePocketMagnets} from './tool-magnet.js';
 import {validateToolSets} from './tool-sets.js';
 import {validateModuleFootprint} from './module-footprint.js';
@@ -30,6 +31,7 @@ export function validateProject(input){
   out.jointClearance=finite(p.jointClearance??.2,0,1,'vůle spojky');
   out.unit=['mm','in'].includes(p.unit)?p.unit:'';
   out.sizeLabels=p.sizeLabels===true;
+  const sizeLabelStyle=normalizeLabelStyle(p.sizeLabelStyle,{position:false});if(sizeLabelStyle)out.sizeLabelStyle=sizeLabelStyle;
   out.magnetDiameter=finite(p.magnetDiameter??6.2,3,20,'průměr kapsy pro magnet');
   out.magnetDepth=finite(p.magnetDepth??2.2,1,8,'hloubka kapsy pro magnet');
   const ids=new Set();
@@ -55,6 +57,7 @@ export function validateProject(input){
     const sizeFields={};
     const pocketMargin=optionalPocketMargin(t.pocketMargin);if(pocketMargin!==undefined)sizeFields.pocketMargin=pocketMargin;
     if(Object.hasOwn(t,'sizeLabel')){if(typeof t.sizeLabel!=='string')throw i18nError('Popisek velikosti musí být text.');sizeFields.sizeLabel=t.sizeLabel.replace(/[\u0000-\u001f]/g,'').trim().slice(0,24);}
+    const labelStyle=normalizeLabelStyle(t.labelStyle);if(labelStyle)sizeFields.labelStyle=labelStyle;
     if(Object.hasOwn(t,'nominalSize')){
       const size=t.nominalSize;
       if(!size||typeof size.value!=='number'||!Number.isFinite(size.value)||size.value<=0||size.value>3000||!['mm','in'].includes(size.unit))throw i18nError('Zadejte platnou jmenovitou velikost nástroje.');
