@@ -208,6 +208,7 @@ export default {
   'Sada z fotky':'Set from photo',
   'Upravuji fotku, aby byly nástroje čitelné…':'Adjusting the photo so the tools are readable…',
   'Měřím přesné hrany nástrojů na původní fotce…':'Measuring exact tool edges on the original photo…',
+  'Fotku jsme pro rozpoznání automaticky upravili: oddělili jsme světlé pozadí a potlačili vnitřní odlesky. Původní fotka, poloha a měřítko zůstávají zachované.':'We prepared the photo automatically for recognition: the light background was separated and internal glare reduced. The original photo, positions and scale are preserved.',
   'Fotku jsme pro rozpoznání automaticky upravili: světlé nástroje jsme oddělili od tmavé vložky. Poloha a rozměry obrysů se tím nezměnily.':'We adjusted the photo automatically for recognition: light tools were separated from the dark insert. The position and size of the outlines did not change.',
   'Zpřesňuji skutečné hrany a odstraňuji stíny…':'Refining real edges and removing shadows…',
   'Fotka potřebuje lepší podmínky.':'The photo needs better conditions.',

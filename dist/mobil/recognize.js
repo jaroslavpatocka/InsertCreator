@@ -42,10 +42,11 @@ export async function recognizeTools(image, { pxPerMm = 1, kind = 'paper', signa
   const readable = readableImage(image);
   if (readable) {
     progress({ stage: 'enhance', progress: .05, message: 'Upravuji fotku, aby byly nástroje čitelné…' });
-    const recovered = recoverDarkTools(image, readable.image);
-    const result = await classical(recovered, { pxPerMm, kind: 'tray', source: image, onProgress: progress }, signal);
+    const light = readable.name === 'light-background';
+    const recovered = light ? readable.image : recoverDarkTools(image, readable.image);
+    const result = await classical(recovered, { pxPerMm, kind: light ? 'light' : 'tray', source: image, onProgress: progress }, signal);
     if (signal?.aborted) throw aborted();
-    if (result.quality.status !== 'retake' && result.contours.length >= 2) {
+    if (result.quality.status !== 'retake' && result.contours.length >= (light ? 1 : 2)) {
       result.enhanced = readable.name; result.neuralModel = null;
       progress({ stage: 'done', progress: 1, message: result.quality.status === 'ready' ? 'Obrysy jsou připravené.' : 'Fotka potřebuje lepší podmínky.' });
       return result;

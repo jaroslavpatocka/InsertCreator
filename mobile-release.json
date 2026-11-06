@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "sourceCommit": "aa178609b3f92d58c8867d2489e975dd545cb390",
+  "sourceCommit": "67647a982b5099c1e194fca02ce5e4809ef89d55",
   "files": [
     {
       "path": "app.js",
@@ -9,8 +9,8 @@
     },
     {
       "path": "auto-trace.js",
-      "sha256": "45E1090684CF809F57626A2C279A32808A2762726AAD78E54E09729ACA6009A1",
-      "bytes": 36624
+      "sha256": "C821CEF13DDC22D9D20BD8087DE3E4F34E253BF43B1B1AE38679570464286D79",
+      "bytes": 37980
     },
     {
       "path": "bulk-edit.js",
@@ -49,8 +49,8 @@
     },
     {
       "path": "capture.js",
-      "sha256": "D9AAEF87C5AA88137A3FEFB920A2E6F919B5F3A208D92E407F81D89A6645AFCF",
-      "bytes": 53334
+      "sha256": "0FF6B8E49EE8715580609DC80227F485054EE4E128D858ACF644E6B486F0A344",
+      "bytes": 53555
     },
     {
       "path": "catalog-ui.js",
@@ -419,8 +419,8 @@
     },
     {
       "path": "locales/en-capture.js",
-      "sha256": "6AE6865E93AA8A1D3227D82822E8680FCC17248BD9FB5517560A89F45F65EFDA",
-      "bytes": 24874
+      "sha256": "0339088210E5E8B62DFAB33A0F6880FCABACA138A944D3C49755DAEBA58E321F",
+      "bytes": 25229
     },
     {
       "path": "locales/en-core.js",
@@ -559,13 +559,18 @@
     },
     {
       "path": "photo-enhance.js",
-      "sha256": "38BBAB47766F8038CF5B63F6A0B4E260773404DAE4DB946ECF6754B9D35112F8",
-      "bytes": 25849
+      "sha256": "04E1A165AEF4F24FDBA396E635602D26A1AFC0F285803655DE1B90F11D25B01D",
+      "bytes": 26038
     },
     {
       "path": "photo-layout.js",
       "sha256": "B1C1E28A089787223DC532B6EF23D30577F57AB2A5001BC325D32B01848875C9",
       "bytes": 2112
+    },
+    {
+      "path": "photo-light.js",
+      "sha256": "E735CE8C112DEA4442F110E6F8D6F082FCD86DA066332CAD7FA1196425BAEE50",
+      "bytes": 8492
     },
     {
       "path": "photo-module.js",
@@ -649,8 +654,8 @@
     },
     {
       "path": "recognize.js",
-      "sha256": "A983635617B14762B5737184DD5513A5009356051895436F2D12A586904EBCB1",
-      "bytes": 4669
+      "sha256": "86E71AF8C80DB0E2501A408BAE6F9C114CDA2C094C85CC1A34F34E5991D196C5",
+      "bytes": 4782
     },
     {
       "path": "ruler-calibration.js",
@@ -709,8 +714,8 @@
     },
     {
       "path": "sw.js",
-      "sha256": "DF23CC0C03A946FEF78410F2A682A550E42506E59A3851CC96F0C0580D33E3C7",
-      "bytes": 4650
+      "sha256": "070D15A0A65E57B45D9C60D18D64385CE6D6BBF69D089C246DF246410B38118F",
+      "bytes": 4673
     },
     {
       "path": "three-mf.js",

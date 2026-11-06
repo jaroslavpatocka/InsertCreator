@@ -207,6 +207,27 @@ function pointSegmentDistance(p, a, b) {
   return Math.hypot(p.x - a.x - t * dx, p.y - a.y - t * dy);
 }
 
+// A high-contrast light-background seed already follows observed material.
+// Refinement may settle its antialiased edge, but cannot cut off a small head
+// or replace an open jaw with a straight fitted shaft. Check entire segments
+// in both directions, since vertex-only checks miss shortcuts across a jaw.
+function closeOutlines(a, b, tolerance) {
+  const within = (from, to) => {
+    for (let i = 0; i < from.length; i++) {
+      const start = from[i], end = from[(i + 1) % from.length];
+      const steps = Math.max(1, Math.ceil(Math.hypot(end.x - start.x, end.y - start.y) / tolerance));
+      for (let step = 0; step < steps; step++) {
+        const p = { x: start.x + (end.x - start.x) * step / steps, y: start.y + (end.y - start.y) * step / steps };
+        let near = false;
+        for (let j = 0; j < to.length; j++) if (pointSegmentDistance(p, to[j], to[(j + 1) % to.length]) <= tolerance) { near = true; break; }
+        if (!near) return false;
+      }
+    }
+    return true;
+  };
+  return within(a, b) && within(b, a);
+}
+
 function hasWidthTransition(points, axis) {
   const along = projection(points, axis), normal = { x: -axis.y, y: axis.x }, widths = [];
   for (let sample = 1; sample < 20; sample++) {
@@ -427,7 +448,7 @@ export async function autoTraceImage(imageData, { pxPerMm = 1, kind = 'paper', p
   const candidates = [];
   for (let i = 0; i < definitions.length; i++) {
     progress('contours', .38 + i / definitions.length * .42, `Porovnávám automatické obrysy (${i + 1}/${definitions.length})…`); await pause();
-    const definition = definitions[i]; candidates.push(evaluateCandidate(definition.name, definition.mask, im, features, scale, kind === 'tray')); definition.mask = null;
+    const definition = definitions[i]; candidates.push(evaluateCandidate(definition.name, definition.mask, im, features, scale, kind === 'tray' || kind === 'light')); definition.mask = null;
   }
   progress('quality', .9, 'Ověřuji souvislost hran a shodu metod…'); await pause();
   for (let i = 0; i < candidates.length; i++) for (let j = i + 1; j < candidates.length; j++) { const agreement = overlap(candidates[i].mask, candidates[j].mask); candidates[i].agreement = Math.max(candidates[i].agreement, agreement); candidates[j].agreement = Math.max(candidates[j].agreement, agreement); }
@@ -439,9 +460,10 @@ export async function autoTraceImage(imageData, { pxPerMm = 1, kind = 'paper', p
   else {
     if (best.coverage < .74 || best.weakestCoverage < .58 || best.strength < .5) { status = 'review'; reasons.push('Část hrany je málo kontrastní nebo splývá se stínem. Přesnost této části nelze z fotografie spolehlivě ověřit.'); }
     if (best.agreement < .68 && !(best.coverage > .94 && best.strength > .78)) { status = 'review'; reasons.push('Nezávislé metody se neshodují na celém obrysu; fotografie obsahuje nejednoznačné odlesky či stíny.'); }
-    // Tools in a case insert are many and deliberately kept apart, so neighbours are not fragments of one tool.
-    if (kind !== 'tray' && (best.fragments > 0 || best.contours.length > 15)) { status = 'review'; reasons.push('Některé části mohou patřit ke stejnému nástroji. Ponechte mezi nástroji větší mezery a omezte odlesky.'); }
-    if (kind === 'paper' && clippedForeground > Math.max(16, (im.width + im.height) * .02)) { status = 'review'; reasons.push('Nástroj nebo tmavé pozadí zasahuje k okraji papíru. Celý nástroj musí být uvnitř a všechny rohy papíru viditelné.'); }
+    // A light-background toolkit can contain many separate tools. Aligned
+    // fragments still need review: an edge-erasing glare cannot justify a join.
+    if ((kind !== 'tray' && best.fragments > 0) || (kind !== 'tray' && kind !== 'light' && best.contours.length > 15)) { status = 'review'; reasons.push('Některé části mohou patřit ke stejnému nástroji. Ponechte mezi nástroji větší mezery a omezte odlesky.'); }
+    if ((kind === 'paper' || kind === 'light') && clippedForeground > Math.max(16, (im.width + im.height) * .02)) { status = 'review'; reasons.push('Nástroj nebo tmavé pozadí zasahuje k okraji papíru. Celý nástroj musí být uvnitř a všechny rohy papíru viditelné.'); }
     if (best.fill > .72) { status = 'review'; reasons.push('Nástroje zabírají téměř celou plochu. Nechte kolem nich více čistého papíru.'); }
     if (model.fitResidual > 10 || model.inlierFraction < .48) { status = 'review'; reasons.push('Pozadí se nepodobá rovnoměrně osvětlenému čistému papíru.'); }
     if (best.neuralAgreement !== null && best.neuralAgreement < .43) { status = 'review'; reasons.push('Obrazová hrana a rozpoznaný nástroj se neshodují. Zkuste fotografii bez stínů a dotýkajících se předmětů.'); }
@@ -458,7 +480,9 @@ export async function autoTraceImage(imageData, { pxPerMm = 1, kind = 'paper', p
     const size = { width: imageData.width, height: imageData.height };
     // Measuring only improves outlines that are already valid, so its failure must not lose them.
     try {
-      const measured = refineContours(source, restore(best, imageData, im).contours, kind === 'tray' ? {} : { search: .004 });
+      const seeds = restore(best, imageData, im).contours;
+      let measured = refineContours(source, seeds, kind === 'tray' ? {} : { search: .004 });
+      if (kind === 'light') measured = measured.map((contour, i) => closeOutlines(seeds[i].points, contour.points, 1.5) ? contour : { ...seeds[i], refined: false });
       restored = { ...regularizeCandidate({ contours: measured }, size, Number.isFinite(pxPerMm) && pxPerMm > 0 ? pxPerMm : 1), ...size };
     } catch { /* The enhanced outlines below remain usable. */ }
   }
