@@ -57,19 +57,19 @@ const analyzed=()=>until(()=>$('[data-export-analysis]')?.getAttribute('data-ana
 test('known inlay depth blocks ZIP immediately and after analysis, and stale clicks cannot start preparation',async()=>{
   const before=saved(),exportCount=exports().length;action('export');
   assert.equal($('[data-do-export]').disabled,true,'the known 20.6 mm height requirement blocks ZIP before asynchronous analysis');
-  assert.ok($('.modal [data-action="fit-pocket-height"]'));
-  assert.match($('.modal').textContent,/20[,.]6/);
+  assert.equal($('.modal [data-action="fit-pocket-height"]'),null);assert.ok($('.modal [data-model-settings]'));
+  assert.match($('#manufacturing-settings').textContent,/20[,.]6/);
   await analyzed();assert.equal($('[data-do-export]').disabled,true,'an analysis reply cannot re-enable the invalid export');
   const stale=$('[data-do-export]');stale.disabled=false;stale.click();await pause(120);
   assert.equal(exports().length,exportCount,'the export entry point independently checks the selected pocket depths');
   assert.equal(downloads.length,0);assert.deepEqual(stable(saved()),stable(before),'blocked exports cannot alter project geometry');
-  assert.ok($('.modal [data-action="fit-pocket-height"]'),'recovery stays available instead of a print-progress modal');
+  assert.equal($('.modal'),null,'a stale export click returns to the main model settings');assert.ok($('#manufacturing-settings [data-action="fit-pocket-height"]'),'main settings expose the height correction');
 });
 
 test('the explicit height repair enables an actual ZIP and remains a single undo step',async()=>{
-  const before=saved(),count=downloads.length;click('.modal [data-action="fit-pocket-height"]');
+  const before=saved(),count=downloads.length;click('#manufacturing-settings [data-action="fit-pocket-height"]');
   assert.equal(saved().insertHeight,20.6);assert.deepEqual(saved().tools,before.tools);assert.deepEqual(saved().modules,before.modules);assert.deepEqual(saved().multiMaterial,before.multiMaterial);
-  await analyzed();assert.equal($('[data-do-export]').disabled,false);click('[data-do-export]');
+  action('export');await analyzed();assert.equal($('[data-do-export]').disabled,false);click('[data-do-export]');
   await until(()=>downloads.length===count+1,'a repaired project should export a real ZIP');
   assert.ok(exports().some(request=>request.project.insertHeight===20.6));assert.match(downloads.at(-1),/-tiskove-dily\.zip$/);
   await until(()=>!$('[data-action="undo"]').disabled,'closing export must refresh history');action('undo');

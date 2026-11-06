@@ -65,7 +65,7 @@ after(()=>win.happyDOM.abort());
 
 test('module checkboxes offer all/none, do not edit the project and survive print-bottom and bed changes',async()=>{
   await open('selection');assert.deepEqual(selected(),['locked','pair','triple']);assert.match($('[data-do-export]').textContent,/Připravit.*stáhnout.*ZIP/);const before=store(),undo=history();click('[data-export-select="none"]');assert.deepEqual(selected(),[]);assert.ok($('[data-do-export]').disabled);assertReadOnly(before,undo);click('[data-export-select="all"]');assert.deepEqual(selected(),['locked','pair','triple']);choose(['pair','triple']);assertReadOnly(before,undo);
-  change('#print-bottom','grid');assert.deepEqual(selected(),['pair','triple']);assert.equal(saved().bottomMode,'grid');change('.modal [data-field="bedWidth"]',126);assert.deepEqual(selected(),['pair','triple']);change('.modal [data-field="bedHeight"]',126);assert.deepEqual(selected(),['pair','triple']);assert.deepEqual([saved().bedWidth,saved().bedHeight],[126,126]);close();
+  assert.equal($('.modal #print-bottom'),null);close();await tick();change('#print-bottom','grid');action('export');await analysisReady();assert.deepEqual(selected(),['pair','triple']);assert.equal(saved().bottomMode,'grid');change('.modal [data-field="bedWidth"]',126);assert.deepEqual(selected(),['pair','triple']);change('.modal [data-field="bedHeight"]',126);assert.deepEqual(selected(),['pair','triple']);assert.deepEqual([saved().bedWidth,saved().bedHeight],[126,126]);close();
 });
 
 test('one ZIP contains the clipped selected modules, conserves geometry and leaves the entire drawer bytewise untouched',async()=>{

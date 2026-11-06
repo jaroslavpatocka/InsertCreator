@@ -21,13 +21,14 @@ globalThis.setTimeout=(callback,delay,...args)=>{const timer=nativeSetTimeout(ca
 const workers=new Set(),created=[],realResults=[],held=[];let nextMode='normal';
 class BrowserWorker{
   constructor(url){
-    this.mode=nextMode;nextMode='normal';this.terminated=false;created.push(this);
+    const layout=String(url).endsWith('/smart-layout-worker.js');
+    this.mode=layout?nextMode:'normal';if(layout){nextMode='normal';created.push(this);}this.terminated=false;
     this.url=String(url);
     // A failed module load exercises the real Worker error path, not a fake result.
     const target=this.mode==='load-error'?new URL('./missing-smart-backend.mjs',import.meta.url):url;
     this.inner=new NodeWorker(new URL('./worker-adapter.mjs',import.meta.url),{workerData:{url:String(target)}});workers.add(this);
     this.inner.on('message',data=>{
-      if(data.type==='result')realResults.push(data.result);
+      if(layout&&data.type==='result')realResults.push(data.result);
       if(this.mode==='hold-result'&&data.type==='result'){
         // Preserve a real optimizer response already queued before cancellation.
         const handler=this.onmessage;held.push(()=>handler?.({data}));

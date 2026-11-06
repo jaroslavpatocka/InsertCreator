@@ -17,7 +17,7 @@ globalThis.requestAnimationFrame=callback=>setTimeout(()=>callback(performance.n
 const nativeTimeout=globalThis.setTimeout;globalThis.setTimeout=(callback,delay,...args)=>{const timer=nativeTimeout(callback,delay,...args);if(delay>=4000)timer.unref?.();return timer;};
 const workers=new Set(),created=[],held=[];let holdNext=false;
 class BrowserWorker{
-  constructor(url){this.hold=holdNext;holdNext=false;this.sent=[];created.push(this);this.inner=new NodeWorker(new URL('./worker-adapter.mjs',import.meta.url),{workerData:{url:String(url)}});workers.add(this);
+  constructor(url){const layout=String(url).endsWith('/smart-layout-worker.js');this.hold=layout&&holdNext;if(layout){holdNext=false;created.push(this);}this.sent=[];this.inner=new NodeWorker(new URL('./worker-adapter.mjs',import.meta.url),{workerData:{url:String(url)}});workers.add(this);
     this.inner.on('message',data=>{if(this.hold&&data.type==='result'){const handler=this.onmessage;held.push(()=>handler?.({data}));}else this.onmessage?.({data});});
     this.inner.on('error',error=>this.onerror?.({error,message:error.message,preventDefault(){}}));this.inner.on('messageerror',error=>this.onmessageerror?.({error}));this.inner.on('exit',()=>workers.delete(this));}
   postMessage(message){this.sent.push(message);this.inner.postMessage(message);}

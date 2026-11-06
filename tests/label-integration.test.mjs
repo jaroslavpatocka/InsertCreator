@@ -68,15 +68,20 @@ test('new catalogue PH0, PZ2 and Torx labels keep the same code labels',()=>{
   }
 });
 
-test('English selected-module export reports only its labels, while all-module and drawer views retain all warnings',async()=>{
-  const before=saved();click('[data-select="ta"]');action('export');await analysisReady();
-  assert.equal($('#export-scope').value,'all');assert.match($('.modal .label-warning').textContent,/Model labels: 1; skipped: 1\./);assert.match($('.modal .label-warning').textContent,/unsupported character/);
-  change('#export-scope','selected');await analysisReady();
-  assert.equal($('.modal .label-warning'),null,'An unrelated module cannot add a skipped-label warning to the selected export');
-  assert.match($('.modal-body').textContent,/Model labels: 1\./);assert.doesNotMatch($('.modal-body').textContent,/unsupported character/);assert.equal($('[data-do-export]').disabled,false);
-  change('#export-scope','all');await analysisReady();assert.match($('.modal .label-warning').textContent,/Model labels: 1; skipped: 1\./);
-  change('#export-scope','selected');await analysisReady();click('[data-modal-close]');click('[data-select="tb"]');action('export');await analysisReady();
-  assert.equal($('#export-scope').value,'selected');assert.match($('.modal .label-warning').textContent,/Model labels: 0; skipped: 1\./);assert.match($('.modal .label-warning').textContent,/unsupported character/);
-  click('[data-modal-close]');action('drawer-tab');assert.match($('#drawer-settings .label-warning').textContent,/Model labels: 1; skipped: 1\./,'The drawer view always summarizes the complete project');
+test('English selected export scopes its carousel warnings while main model settings retain the full label summary',async()=>{
+  const until=async(predicate,message)=>{const start=performance.now();while(!predicate()){if(performance.now()-start>5000)assert.fail(message);await new Promise(resolve=>nativeTimeout(resolve,5));}};
+  const previewReady=async()=>{await analysisReady();await until(()=>[...win.document.querySelectorAll('.modal [data-preview-image]')].every(slot=>slot.querySelector('svg')),'Static module previews should finish');};
+  const mainLabels=async()=>{await until(()=>!!$('#manufacturing-settings .label-warning'),'Main settings should summarize all model labels');return $('#manufacturing-settings .label-warning').textContent;};
+  const before=saved();click('[data-select="ta"]');assert.match(await mainLabels(),/Model labels: 1; skipped: 1\./);action('export');await previewReady();
+  assert.equal($('#export-scope').value,'all');assert.equal($('.modal .label-warning'),null,'the export keeps model settings and aggregate statistics in the main page');
+  assert.match($('.modal [data-preview-status="1"]').textContent,/unsupported character/);assert.doesNotMatch($('.modal [data-preview-status="0"]').textContent,/unsupported character/);
+  change('#export-scope','selected');await previewReady();
+  assert.equal(win.document.querySelectorAll('.modal [data-preview-slide]').length,1);assert.equal($('.modal [data-preview-counter]').textContent,'1 / 1');
+  assert.doesNotMatch($('.modal-body').textContent,/unsupported character/,'An unrelated module cannot add a skipped-label warning to the selected export');assert.equal($('[data-do-export]').disabled,false);
+  assert.match(await mainLabels(),/Model labels: 1; skipped: 1\./,'export selection does not narrow the main model summary');
+  change('#export-scope','all');await previewReady();assert.match($('.modal [data-preview-status="1"]').textContent,/unsupported character/);
+  change('#export-scope','selected');await previewReady();click('[data-modal-close]');click('[data-select="tb"]');action('export');await previewReady();
+  assert.equal($('#export-scope').value,'selected');assert.equal(win.document.querySelectorAll('.modal [data-preview-slide]').length,1);assert.match($('.modal [data-preview-status="0"]').textContent,/unsupported character/);assert.equal($('[data-do-export]').disabled,false,'unsupported lettering does not block the printable selected module');
+  click('[data-modal-close]');action('drawer-tab');assert.equal($('#drawer-settings .label-warning'),null,'drawer dimensions keep manufacturing feedback in the dedicated model panel');assert.match(await mainLabels(),/Model labels: 1; skipped: 1\./,'switching to drawer dimensions keeps the full model label summary');
   assert.deepEqual(saved(),before,'Viewing scoped warnings does not change labels, geometry or project data');
 });

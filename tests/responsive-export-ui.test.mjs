@@ -58,7 +58,7 @@ const $=selector=>document.querySelector(selector);
 const click=selector=>{const el=typeof selector==='string'?$(selector):selector;assert.ok(el,'Missing '+selector);el.click();};
 const action=name=>click(`#app [data-action="${name}"]`);
 const pause=ms=>new Promise(resolve=>nativeTimeout(resolve,ms));
-const analyses=()=>jobs.filter(job=>job.message.operation==='analyze');
+const analyses=()=>jobs.filter(job=>job.message.operation==='analyze'&&job.modalAtPost);
 const exports=()=>jobs.filter(job=>job.message.operation==='export');
 const store=()=>localStorage.getItem('suplik-studio-projects-v1');
 const saved=()=>JSON.parse(store()).find(project=>project.id===JSON.parse(localStorage.getItem('suplik-studio-current')));
@@ -100,7 +100,7 @@ test('a superseded worker is terminated and its late result cannot replace the n
   await waitFor(()=>analyses().length>count,'replacement analysis did not start');const latest=analyses().at(-1);
   assert.equal(old.worker.terminated,true,'cancel must stop CPU work rather than only hide a result');
   await finish(latest,analysis(321));old.reply(analysis(999));await pause(20);
-  assert.match($('.print-summary').textContent,/321/);assert.doesNotMatch($('.print-summary').textContent,/999/);
+  assert.equal($('[data-do-export]').disabled,false);assert.doesNotMatch($('.modal').textContent,/999/);assert.equal($('.modal .print-summary'),null,'statistics belong beside the main 3D preview');
   assert.equal(Number($('.modal [data-field="bedWidth"]').value),280);close();
 });
 
@@ -134,17 +134,17 @@ test('returning from the browser page cache can start a fresh calculation after 
   assert.equal(old.worker.terminated,true);close();
   const restored=new win.Event('pageshow');Object.defineProperty(restored,'persisted',{value:true});win.dispatchEvent(restored);
   const count=analyses().length;action('export');await waitFor(()=>analyses().length>count,'a restored page must not retain permanently disposed clients');
-  await finish(analyses().at(-1));old.reply(analysis(999));assert.doesNotMatch($('.print-summary').textContent,/999/);close();
+  await finish(analyses().at(-1));old.reply(analysis(999));assert.doesNotMatch($('.modal').textContent,/999/);close();
 });
 
-test('changing puzzle connectors cancels a queued analysis until the rearrangement has completed',async()=>{
-  const count=analyses().length,requests=jobs.length;open('connectors-race');change('#export-connectors',false);
+test('changing puzzle connectors in main settings prevents export until the rearrangement has completed',async()=>{
+  const count=analyses().length,requests=jobs.length;open('connectors-race');assert.equal($('.modal #export-connectors'),null);click('[data-model-settings]');change('#export-connectors',false);
   await waitFor(()=>jobs.slice(requests).some(job=>job.message.operation==='connectors'),'connector preparation must run in the background');
   const rearranging=jobs.slice(requests).find(job=>job.message.operation==='connectors');await pause(160);
   assert.equal(analyses().length,count,'the old 90 ms analysis timer must not run during connector preparation');
-  assert.equal($('[data-do-export]').disabled,true);assert.equal($('[data-export-analysis]').getAttribute('data-analysis-busy'),'true');
+  assert.equal($('.modal'),null);assert.equal($('#manufacturing-settings fieldset').disabled,true);action('export');assert.equal($('.modal'),null,'export cannot open while connector geometry is changing');
   const next=structuredClone(rearranging.message.project);next.connectors=false;rearranging.reply({fits:true,project:next});
-  await waitFor(()=>analyses().length>count,'the final geometry must receive a new analysis');const latest=analyses().at(-1);
+  await waitFor(()=>!$('#manufacturing-settings fieldset').disabled,'connector preparation should release main settings');action('export');await waitFor(()=>analyses().length>count,'the final geometry must receive a new analysis');const latest=analyses().at(-1);
   assert.equal(latest.message.project.connectors,false);await finish(latest,{...analysis(),joints:null});close();
 });
 

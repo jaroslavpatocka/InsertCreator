@@ -29,7 +29,7 @@ const fixture=(id,count)=>({...blankProject(),id,name:id,width:504,height:378,pr
 const project=fixture('five-modules',5),failedProject=fixture('failed-module',1);
 localStorage.setItem('suplik-studio-projects-v1',JSON.stringify([project,failedProject]));localStorage.setItem('suplik-studio-current',JSON.stringify(project.id));
 await import('../dist/app.js');
-after(()=>win.happyDOM.abort());
+after(()=>{win.dispatchEvent(new win.Event('pagehide'));win.happyDOM.abort();});
 
 const $=selector=>win.document.querySelector(selector);
 const action=name=>{const button=$(`#app [data-action="${name}"]`);assert.ok(button,`Missing ${name} action`);button.click();};

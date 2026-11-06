@@ -103,7 +103,7 @@ export async function executeManufacturingTask(operation,input={},options={},con
   try{validatePrintBed({...source,limitToBed:true},source.modules);}catch(error){bedError=errorText(error);}
   progress({stage:'planning',progress:.5});await pause();aborted(signal);
   const fitting=source.modules.every(module=>(module.width-.5<=source.bedWidth&&module.height-.5<=source.bedHeight)||(module.height-.5<=source.bedWidth&&module.width-.5<=source.bedHeight));
-  const canShowStats=!issues.length&&source.modules.length>0&&fitting,wantStats=options.stats!==false&&canShowStats;
+  const canShowStats=!issues.length&&source.modules.length>0&&(options.checkBedForStats===false||fitting),wantStats=options.stats!==false&&canShowStats;
   if(wantStats&&!cache.statsReady){try{cache.stats=mergePrintStats(source.modules.map(module=>printStats(source,{moduleId:module.id,checkBed:false})));}catch(error){cache.statsError=errorText(error);}cache.statsReady=true;}
   progress({stage:'complete',progress:1});
   return{issues,stats:canShowStats&&cache.statsReady?cache.stats:null,printError:wantStats?cache.statsError:'',bedError,labels,joints,jointError,...(options.includeLabelPlan?{labelPlan:cache.labels}:{})};

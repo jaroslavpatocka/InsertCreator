@@ -5,10 +5,11 @@ import {planPrintBatch,buildPrintPart} from './print-batch.js';
 import {planSizeLabels} from './size-labels.js';
 import {pocketOutline} from './finger-grip.js';
 import {encodeSTL} from './print-geometry.js';
+import {moduleJointProfiles,omitJointCutSegments} from './preview-joints.js';
 
 const drawerHeight=project=>{const value=Number(project.height);return Number.isFinite(value)&&value>0?Math.min(value,1000000):378;};
 
-export const usesPrintParts=project=>(project.connectors===true&&project.bottomMode!=='grid')||materialConfig(project).enabled;
+export const usesPrintParts=project=>(project.connectors===true&&project.bottomMode!=='grid')||materialConfig(project).enabled||project.previewCuts===true;
 
 /** STL bytes with the matrix that places them in the drawer. */
 export function moduleParts(project,module,tools,batch){
@@ -49,12 +50,46 @@ export function packParts(parts){
   return{vertices,ranges,facets:total};
 }
 
+/** Edges where the planned bed cuts meet the real exterior STL surfaces.
+ * Keeping these in physical space also puts cuts at the actual pocket floors and
+ * thin walls of a material-saving model, rather than at an invented flat top.
+ */
+export function moduleCutSegments(project,module,parts,batch){
+  if(project.previewCuts!==true)return[];
+  const tiles=batch?.plans.find(plan=>plan.module.id===module.id)?.tiles||[];
+  if(tiles.length<2)return[];
+  const planes=new Map(),height=drawerHeight(project),epsilon=.0002;
+  for(const tile of tiles){
+    const clip=tile.clip;if(!clip)continue;
+    if(clip.x>module.x+epsilon)planes.set('x'+clip.x,{axis:0,value:clip.x});
+    if(clip.y>module.y+epsilon)planes.set('y'+clip.y,{axis:1,value:height-clip.y});
+  }
+  const segments=[],seen=new Set();
+  for(const part of parts){
+    const view=new DataView(part.bytes.buffer,part.bytes.byteOffset,part.bytes.byteLength),m=part.matrix,count=view.getUint32(80,true);
+    const transform=(point,translate)=>[0,1,2].map(axis=>m[axis*4]*point[0]+m[axis*4+1]*point[1]+m[axis*4+2]*point[2]+(translate?m[axis*4+3]:0));
+    for(let i=0;i<count;i++){
+      const at=84+i*50,normal=transform([0,1,2].map(axis=>view.getFloat32(at+axis*4,true)),false);
+      const points=[0,1,2].map(j=>transform([0,1,2].map(axis=>view.getFloat32(at+12+j*12+axis*4,true)),true));
+      for(const {axis,value} of planes.values()){
+        // The newly created vertical cut cap is not an exterior surface.
+        if(Math.abs(normal[axis])>.999)continue;
+        const edge=points.filter(point=>Math.abs(point[axis]-value)<epsilon);
+        if(edge.length!==2||Math.hypot(...edge[0].map((value,c)=>value-edge[1][c]))<epsilon)continue;
+        const key=edge.map(point=>point.map(value=>Math.round(value*10000)).join(',')).sort().join('|')+'|'+normal.map(value=>Math.round(value*1000)).join(',');
+        if(seen.has(key))continue;seen.add(key);segments.push({points:edge,normal});
+      }
+    }
+  }
+  return omitJointCutSegments(segments,moduleJointProfiles(project,module.id,batch,new Set(parts.map(part=>part.partKey))));
+}
+
 export function moduleMesh(project,moduleId,batch){
   const tools=Array.isArray(project.tools)?project.tools:[],module=(project.modules||[]).find(item=>item.id===moduleId);
   if(!module)throw Error('Modul nemá platnou síť pro náhled.');
   const parts=moduleParts(project,module,tools,batch),mesh=packParts(parts);
   if(!mesh.facets)throw Error('Modul nemá platnou síť pro náhled.');
-  return{...mesh,parts:new Set(parts.map(part=>part.partKey)).size,skippedLabels:planSizeLabels(project,[module],tools).skipped};
+  return{...mesh,parts:new Set(parts.map(part=>part.partKey)).size,skippedLabels:planSizeLabels(project,[module],tools).skipped,cuts:moduleCutSegments(project,module,parts,batch),jointProfiles:moduleJointProfiles(project,module.id,batch,new Set(parts.map(part=>part.partKey)))};
 }
 
 export function previewBatch(project){

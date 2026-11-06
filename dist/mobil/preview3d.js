@@ -7,7 +7,8 @@ import {moduleOutline} from './module-footprint.js';
 import {gridfinityLayout,GRIDFINITY_BASEPLATE,BASEPLATE_SOCKET_LEVELS} from './gridfinity-baseplate.js';
 import earcut from './vendor/earcut.js';
 import {layoutMeshToPhysical} from './manufacturing-coordinates.js';
-import {moduleParts,previewBatch,usesPrintParts} from './preview-mesh.js';
+import {moduleParts,moduleCutSegments,previewBatch,usesPrintParts} from './preview-mesh.js';
+import {jointPreviewMarkup,jointPreviewLegend,moduleJointProfiles,NO_PREVIEW_JOINTS} from './preview-joints.js';
 
 const TAU=Math.PI*2,PITCH_LIMIT=Math.PI/2-.01;
 const shade=(hex,light)=>{const factor=light/62,[r,g,b]=[1,3,5].map(i=>Math.min(255,Math.round(parseInt(hex.slice(i,i+2),16)*factor)));return`rgb(${r} ${g} ${b})`;};
@@ -21,8 +22,8 @@ const previewBudgetMessage=()=>t('Sestava je pro přesný interaktivní náhled 
 const budgetError=()=>Object.assign(new Error(previewBudgetMessage()),{previewBudget:true});
 const pick=(object,keys)=>Object.fromEntries(keys.map(key=>[key,object?.[key]]));
 export function previewGeometryKey(project){
-  const material=materialConfig(project),parts=project.connectors===true&&project.bottomMode!=='grid'||material.enabled;
-  return JSON.stringify({lang:getLang(),unit:unit(),...pick(project,['width','height','grid','clearance','wall','base','insertHeight','printMode','bottomMode','sizeLabels','connectors','jointClearance','magnetDiameter','magnetDepth']),
+  const material=materialConfig(project),parts=usesPrintParts(project);
+  return JSON.stringify({lang:getLang(),unit:unit(),...pick(project,['width','height','grid','clearance','wall','base','insertHeight','printMode','bottomMode','sizeLabels','connectors','jointClearance','magnetDiameter','magnetDepth','previewCuts','previewModuleIds']),
     ...(parts?pick(project,['bedWidth','bedHeight']):{}),material:pick(material,['enabled','floor','text','floorThickness']),
     modules:(Array.isArray(project.modules)?project.modules:[]).map(module=>pick(module,['id','name','x','y','width','height','shape','cells','pocketMargin'])),
     tools:(Array.isArray(project.tools)?project.tools:[]).map(tool=>pick(tool,['id','name','x','y','rotation','depth','moduleId','points','fingerGrips','pocketMagnets','sizeLabel','nominalSize','pocketMargin']))});
@@ -186,10 +187,10 @@ export function modulePreviewWire(project,module){
 }
 /** Framing from the layout alone, so it stays still while the meshes arrive. */
 export function boundsFor(project){
-  const {width,height}=drawerSize(project),physical=([x,y,z])=>[x,height-y,z],reference=[[0,0,0],[width,0,0],[width,height,0],[0,height,0]].map(physical);
+  const {width,height}=drawerSize(project),physical=([x,y,z])=>[x,height-y,z],focused=Array.isArray(project.previewModuleIds),reference=focused?[]:[[0,0,0],[width,0,0],[width,height,0],[0,height,0]].map(physical);
   const points=[...reference],top=moduleTop(project);
-  for(const module of Array.isArray(project.modules)?project.modules:[])points.push(...modulePreviewWire(project,module).wire);
-  if(!project.modules?.length)points.push([0,0,top]);
+  for(const module of Array.isArray(project.modules)?project.modules:[])if(!focused||project.previewModuleIds.includes(module.id))points.push(...modulePreviewWire(project,module).wire);
+  if(!points.length)points.push([0,0,0],[0,0,top]);
   const min=[Infinity,Infinity,Infinity],max=[-Infinity,-Infinity,-Infinity];
   for(const point of points)for(let c=0;c<3;c++){min[c]=Math.min(min[c],point[c]);max[c]=Math.max(max[c],point[c]);}
   if(project.bottomMode==='grid')min[2]=Math.min(min[2],-4.75);
@@ -232,16 +233,17 @@ function sceneFor(project){
   // The editor keeps Y down. Every scene coordinate uses the physical STL frame:
   // X right, Y up and Z up, with the drawer's lower-left corner at (0,0).
   const physical=([x,y,z])=>[x,height-y,z];
-  const reference=[[0,0,0],[width,0,0],[width,height,0],[0,height,0]].map(physical),modules=[],warnings=[],allPoints=[...reference];
-  const sourceModules=Array.isArray(project.modules)?project.modules:[],tools=Array.isArray(project.tools)?project.tools:[];
-  const sourcePoints=tools.reduce((sum,tool)=>sum+(tool.points?.length||0),0),cellCount=sourceModules.reduce((sum,module)=>sum+(module.cells?.length||0),0);
-  let reducedDetail=tools.length>PREVIEW_BUDGET.tools||sourcePoints>PREVIEW_BUDGET.points||sourceModules.length>PREVIEW_BUDGET.modules||cellCount>16000;
+  const focused=Array.isArray(project.previewModuleIds),reference=focused?[]:[[0,0,0],[width,0,0],[width,height,0],[0,height,0]].map(physical),modules=[],warnings=[],allPoints=[...reference];
+  const sourceModules=(Array.isArray(project.modules)?project.modules:[]).filter(module=>!focused||project.previewModuleIds.includes(module.id)),tools=Array.isArray(project.tools)?project.tools:[],visibleTools=focused?tools.filter(tool=>sourceModules.some(module=>module.id===tool.moduleId)):tools;
+  const sourcePoints=visibleTools.reduce((sum,tool)=>sum+(tool.points?.length||0),0),cellCount=sourceModules.reduce((sum,module)=>sum+(module.cells?.length||0),0);
+  let reducedDetail=visibleTools.length>PREVIEW_BUDGET.tools||sourcePoints>PREVIEW_BUDGET.points||sourceModules.length>PREVIEW_BUDGET.modules||cellCount>16000;
   if(reducedDetail)warnings.push(previewBudgetMessage());
-  warnings.push(...sceneNotes(project,{labels:!reducedDetail}));
+  warnings.push(...sceneNotes(focused?{...project,modules:sourceModules,tools:visibleTools}:project,{labels:!reducedDetail}));
   let batch=null,batchError=null,printParts=0,generatedFacets=0;
   if(!reducedDetail&&usesPrintParts(project)){
     try{
       batch=previewBatch(project);
+      if(project.connectors&&project.bottomMode!=='grid'&&sourceModules.length&&!batch.jointPlan?.joints.length)warnings.push(t(NO_PREVIEW_JOINTS));
       if(batch.jointPlan?.unjoined.length)warnings.push(t('Na {n} vnitřních hranách mezi díly není bezpečné místo pro spojku. Podrobnosti jsou v assembly.json.',{n:batch.jointPlan.unjoined.length}));
     }catch(error){batchError=error;}
   }
@@ -276,6 +278,8 @@ function sceneFor(project){
       };
       const parts=moduleParts(project,module,tools,batch);
       for(const part of parts)append(part.bytes,part.matrix,part.partKey,part.zone);
+      entry.cuts=moduleCutSegments(project,module,parts,batch);
+      entry.jointProfiles=moduleJointProfiles(project,module.id,batch,new Set(parts.map(part=>part.partKey)));
       const partCount=new Set(parts.map(part=>part.partKey)).size;
       if(!entry.faces.length)throw Error('Modul nemá platnou síť pro náhled.');
       printParts+=partCount;generatedFacets+=entry.faces.length;
@@ -288,13 +292,14 @@ function sceneFor(project){
     }
     modules.push(entry);
   }
-  if(project.bottomMode==='grid'){
+  if(project.bottomMode==='grid'&&!focused){
     try{
       const {entry,warning}=baseplateEntry(project);if(warning)warnings.push(warning);
       if(entry.wire)for(const point of entry.wire)allPoints.push(point);else for(const face of entry.faces)for(const point of face.points)allPoints.push(point);modules.push(entry);
     }catch(error){warnings.push(t('Podkladovou mřížku nelze zobrazit: {error}',{error:error?.message||String(error)}));}
   }
   const min=[Infinity,Infinity,Infinity],max=[-Infinity,-Infinity,-Infinity];
+  if(!allPoints.length)allPoints.push([0,0,0],[0,0,moduleTop(project)]);
   for(const point of allPoints)for(let c=0;c<3;c++){min[c]=Math.min(min[c],point[c]);max[c]=Math.max(max[c],point[c]);}
   const center=min.map((value,c)=>(value+max[c])/2),radius=Math.hypot(...min.map((value,c)=>(max[c]-value)/2));
   let painter;
@@ -331,6 +336,19 @@ export function wirePath(module,projectPoint){
   const edges=module.wireEdges||[[0,1],[1,2],[2,3],[3,0],[4,5],[5,6],[6,7],[7,4],[0,4],[1,5],[2,6],[3,7]];
   return edges.map(([a,b])=>{const p=projectPoint(module.wire[a]),q=projectPoint(module.wire[b]);return`M${p.x.toFixed(3)} ${p.y.toFixed(3)}L${q.x.toFixed(3)} ${q.y.toFixed(3)}`;}).join('');
 }
+/** The same projected cut overlay is used over the WebGL canvas and SVG mesh. */
+export function cutPreviewMarkup(cuts,frame,center){
+  if(!cuts?.length)return'';
+  const projectPoint=frame.project(center),paths=[];
+  for(const cut of cuts){
+    if(dot3(cut.normal,frame.towards)<=.00001)continue;
+    const [a,b]=cut.points.map(projectPoint);paths.push(`M${a.x.toFixed(3)} ${a.y.toFixed(3)}L${b.x.toFixed(3)} ${b.y.toFixed(3)}`);
+  }
+  return paths.length?`<path data-preview-cuts="true" d="${paths.join('')}" fill="none" stroke="#c47724" stroke-width="1.6" stroke-dasharray="6 3" vector-effect="non-scaling-stroke" pointer-events="none"/>`:'';
+}
+export function selectionPreviewMarkup(wire,frame,center){
+  return `<path data-preview-selection="true" d="${wirePath(wire,frame.project(center))}" fill="none" stroke="#c89136" stroke-width="1.1" vector-effect="non-scaling-stroke" pointer-events="none"/>`;
+}
 export function previewHud(project,frame,warnings){
   const font=frame.height/70,x=frame.state.panX,y=frame.state.panY+frame.height/2-font;
   let html=`<text data-preview-hud="true" x="${x}" y="${y}" text-anchor="middle" font-size="${font}" fill="#6f805e">${esc(t('Skutečná geometrie STL · {mode}',{mode:t(project.printMode==='light'?'úsporný tisk':'plný blok')}))}</text>`;
@@ -352,7 +370,7 @@ export function printPreview(project,selected,selectedModule,camera={},viewport=
   else{
     let faces=painterFaces(scene.painter,towards);
     // Keep the drawer reference behind the mesh, including views from underneath.
-    html=`<polygon data-reference="drawer" points="${polygon(scene.reference)}" fill="#eef3e8" fill-opacity=".5" stroke="#b9c9a8" stroke-width="1" vector-effect="non-scaling-stroke"/>`;
+    html=scene.reference.length?`<polygon data-reference="drawer" points="${polygon(scene.reference)}" fill="#eef3e8" fill-opacity=".5" stroke="#b9c9a8" stroke-width="1" vector-effect="non-scaling-stroke"/>`:'';
     const wireLines=module=>wirePath(module,projectPoint);
     // A wire reference belongs below the opaque tool modules, so socket lines do not show through their tops.
     for(const module of scene.modules.filter(module=>module.wire&&module.baseplate))html+=`<g data-baseplate="true" aria-label="${esc(module.name)}"><path d="${wireLines(module)}" fill="none" stroke="#718d91" stroke-width="1.2" stroke-dasharray="5 3" vector-effect="non-scaling-stroke"/></g>`;
@@ -360,7 +378,7 @@ export function printPreview(project,selected,selectedModule,camera={},viewport=
     const referenceHTML=html;let overflow=faces.length>10000;
     // Same-color subpixel overlap seals antialias cracks between render fragments.
     for(const {face,module,facing,points} of overflow?[]:faces){
-      const light=clamp(42+Math.max(0,dot(face.normal,sun))*22+facing*15,40,82),zone=colors.enabled&&!module.baseplate?face.zone:null,color=module.baseplate?`hsl(185 13% ${light.toFixed(1)}%)`:zone&&(zone!=='body'||!activeIds.has(module.id))?shade(zoneColor[zone],light):activeIds.has(module.id)?`hsl(39 47% ${light.toFixed(1)}%)`:`hsl(88 23% ${light.toFixed(1)}%)`;
+      const light=clamp(42+Math.max(0,dot(face.normal,sun))*22+facing*15,40,82),zone=colors.enabled&&!module.baseplate?face.zone:null,color=module.baseplate?`hsl(185 13% ${light.toFixed(1)}%)`:zone?shade(zoneColor[zone],light):activeIds.has(module.id)?`hsl(39 47% ${light.toFixed(1)}%)`:`hsl(88 23% ${light.toFixed(1)}%)`;
       const attributes=module.baseplate?'data-baseplate="true"':`data-module="${esc(module.id)}"`;
       const partAttribute=face.partKey?` data-print-part="${esc(face.partKey)}"`:'';
       const markup=`<polygon ${attributes} data-face-index="${face.index}" points="${polygon(points)}" fill="${color}" stroke="${color}" stroke-width=".6" vector-effect="non-scaling-stroke" aria-label="${esc(module.name)}"${partAttribute}${module.baseplate?'':` data-module-selected="${activeIds.has(module.id)}"`}/>`;
@@ -381,10 +399,14 @@ export function printPreview(project,selected,selectedModule,camera={},viewport=
       const color=activeIds.has(module.id)?'#bf8d35':module.previewOnly?'#718565':'#b56c52';
       html+=`<g data-module="${esc(module.id)}" ${module.previewOnly?'data-simplified-module="true"':'data-invalid-module="true"'} role="button" tabindex="0" aria-label="${esc(module.name)}${module.previewOnly?'':' — neplatný modul'}" data-module-selected="${activeIds.has(module.id)}"><path d="${wireLines(module)}" fill="none" stroke="${color}" stroke-width="1.2" stroke-dasharray="5 3" vector-effect="non-scaling-stroke"/>${(module.toolWires||[]).map(points=>`<polygon data-preview-tool="true" points="${polygon(points)}" fill="none" stroke="${color}" stroke-width="1" vector-effect="non-scaling-stroke"/>`).join('')}</g>`;
     }
+    if(colors.enabled)for(const module of project.modules||[])if(activeIds.has(module.id)&&scene.modules.some(entry=>entry.id===module.id))html+=selectionPreviewMarkup(modulePreviewWire(project,module),frame,scene.center);
+    for(const module of scene.modules)html+=cutPreviewMarkup(module.cuts,frame,scene.center);
+    html+=jointPreviewMarkup(scene.modules.filter(module=>module.faces.length).flatMap(module=>module.jointProfiles||[]),frame,scene.center,{legend:false});
 
     visibleFaces=faces.length;projectionKey=key;projectionHTML=html;projectionFaces=visibleFaces;projectionReduced=viewReduced;projectionRevision++;
   }
   const font=height/70,hudX=state.panX,hudY=state.panY+height/2-font;
+  if(scene.modules.some(module=>module.faces.length&&module.jointProfiles?.length))html+=jointPreviewLegend(frame);
   html+=`<text data-preview-hud="true" x="${hudX}" y="${hudY}" text-anchor="middle" font-size="${font}" fill="#6f805e">${esc(viewReduced?t('Rychlý obrysový náhled · výrobní model se nemění'):t('Skutečná geometrie STL · {mode}',{mode:t(project.printMode==='light'?'úsporný tisk':'plný blok')}))}</text>`;
   const warnings=[...scene.warnings];if(viewReduced&&!warnings.includes(previewBudgetMessage()))warnings.push(previewBudgetMessage());
   if(warnings.length)html+=`<text data-preview-warning="true" x="${hudX}" y="${hudY-font*1.5}" text-anchor="middle" font-size="${font}" fill="#9c5f43">${esc(warnings[0])}${warnings.length>1?` (+${warnings.length-1})`:''}</text>`;

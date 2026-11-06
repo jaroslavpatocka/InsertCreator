@@ -60,8 +60,8 @@ test('empty drawer baseplate export creates four manifold STL tiles and assembly
   open('empty-grid');const before=state(),undo=history(),count=downloads.length;action('export-baseplate');assert.ok($('[data-baseplate-cancel]'));await waitFor(()=>downloads.length===count+1);await verifyDownload(downloads.at(-1));assert.deepEqual(state(),before);assert.deepEqual(history(),undo);
 });
 
-test('the STL dialog offers independent baseplate export when insert export is invalid or empty',async()=>{
-  for(const id of ['empty-grid','invalid-insert']){open(id);const before=state(),undo=history(),count=downloads.length;action('export');assert.ok($('[data-do-export]').disabled);const button=$('.modal [data-action="export-baseplate"]');assert.ok(button&&!button.disabled);click(button);await waitFor(()=>downloads.length===count+1);await verifyDownload(downloads.at(-1));assert.deepEqual(state(),before);assert.deepEqual(history(),undo);}
+test('the main model settings offer independent baseplate export when insert export is invalid or empty',async()=>{
+  for(const id of ['empty-grid','invalid-insert']){open(id);const before=state(),undo=history(),count=downloads.length;action('export');assert.ok($('[data-do-export]').disabled);assert.equal($('.modal [data-action="export-baseplate"]'),null,'baseplate actions belong beside the main 3D model');click('[data-model-settings]');assert.equal($('.modal'),null);const button=$('#manufacturing-settings [data-action="export-baseplate"]');assert.ok(button&&!button.disabled);click(button);await waitFor(()=>downloads.length===count+1);await verifyDownload(downloads.at(-1));assert.deepEqual(state(),before);assert.deepEqual(history(),undo);}
 });
 
 test('cancelling asynchronous baseplate preparation produces no file, project mutation or undo entry',async()=>{

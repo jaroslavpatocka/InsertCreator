@@ -2,10 +2,11 @@
 import {createGLPreview} from './webgl-preview.js';
 import {createMeshPool,meshKeys} from './mesh-client.js';
 import {usesPrintParts} from './preview-mesh.js';
-import {baseplateEntry,boundsFor,labelNotes,modulePreviewWire,previewFrame,previewHud,sceneNotes,wirePath} from './preview3d.js';
+import {baseplateEntry,boundsFor,cutPreviewMarkup,labelNotes,modulePreviewWire,previewFrame,previewHud,sceneNotes,selectionPreviewMarkup,wirePath} from './preview3d.js';
 import {materialConfig} from './print-material.js';
 import {esc} from './ui.js';
 import {t} from './i18n.js';
+import {jointPreviewMarkup,NO_PREVIEW_JOINTS} from './preview-joints.js';
 
 const BASEPLATE='__gridfinity-baseplate';
 const rgb=hex=>[1,3,5].map(i=>parseInt(hex.slice(i,i+2),16)/255);
@@ -37,10 +38,10 @@ export function createLivePreview({onChange,createCanvas=()=>document.createElem
     // Settle that module and repaint the status even when no buffer could be created.
     if(!error)try{renderer.setMesh(id,result);}catch(cause){error=cause;}
     scene.pending.delete(id);
-    if(error){scene.failed.set(id,localized(error));renderer.removeMesh(id);scene.shown.delete(id);scene.facets.delete(id);scene.parts.delete(id);scene.skipped.delete(id);}
+    if(error){scene.failed.set(id,localized(error));renderer.removeMesh(id);scene.shown.delete(id);scene.facets.delete(id);scene.parts.delete(id);scene.skipped.delete(id);scene.cuts.delete(id);scene.jointProfiles.delete(id);}
     else{
       scene.failed.delete(id);scene.shown.set(id,key);scene.facets.set(id,result.facets);
-      scene.parts.set(id,result.parts);scene.skipped.set(id,result.skippedLabels||[]);if(jointInfo.size>32)jointInfo.clear();jointInfo.set(scene.projectKey,{joints:result.joints,unjoined:result.unjoined});
+      scene.parts.set(id,result.parts);scene.skipped.set(id,result.skippedLabels||[]);scene.cuts.set(id,result.cuts||[]);scene.jointProfiles.set(id,result.jointProfiles||[]);if(jointInfo.size>32)jointInfo.clear();jointInfo.set(scene.projectKey,{joints:result.joints,unjoined:result.unjoined});
     }
     onChange?.();
   };
@@ -48,9 +49,9 @@ export function createLivePreview({onChange,createCanvas=()=>document.createElem
     const sharedLayout=usesPrintParts(project),{projectKey,modules:keys}=meshKeys(project,{sharedLayout});
     if(scene?.projectKey===projectKey)return;
     const snapshot=JSON.parse(JSON.stringify(project)),sourceModules=snapshot.modules||[],bounds=boundsFor(snapshot);
-    const next={projectKey,project:snapshot,keys,pending:new Set(),failed:new Map(),shown:scene?.shown||new Map(),facets:scene?.facets||new Map(),parts:scene?.parts||new Map(),skipped:scene?.skipped||new Map(),wires:new Map(),warnings:sceneNotes(snapshot,{labels:false}),...bounds};
+    const next={projectKey,project:snapshot,keys,pending:new Set(),failed:new Map(),shown:scene?.shown||new Map(),facets:scene?.facets||new Map(),parts:scene?.parts||new Map(),skipped:scene?.skipped||new Map(),cuts:scene?.cuts||new Map(),jointProfiles:scene?.jointProfiles||new Map(),wires:new Map(),warnings:sceneNotes(snapshot,{labels:false}),...bounds};
     next.reference=renderer.reference(bounds.reference);
-    for(const id of renderer.ids())if(id!==BASEPLATE&&!keys.has(id)){renderer.removeMesh(id);next.shown.delete(id);next.facets.delete(id);next.parts.delete(id);next.skipped.delete(id);}
+    for(const id of renderer.ids())if(id!==BASEPLATE&&!keys.has(id)){renderer.removeMesh(id);next.shown.delete(id);next.facets.delete(id);next.parts.delete(id);next.skipped.delete(id);next.cuts.delete(id);next.jointProfiles.delete(id);}
     for(const module of sourceModules)next.wires.set(module.id,modulePreviewWire(snapshot,module));
     renderer.removeMesh(BASEPLATE);
     if(snapshot.bottomMode==='grid'){
@@ -85,6 +86,7 @@ export function createLivePreview({onChange,createCanvas=()=>document.createElem
   const status=()=>{
     const total=scene.keys.size,ready=[...scene.keys].filter(([id,key])=>scene.shown.get(id)===key&&renderer.has(id)).length,warnings=[...scene.warnings,...labelNotes(scene.project,[...scene.skipped.values()].flat())],unjoined=jointInfo.get(scene.projectKey)?.unjoined||0;
     if(unjoined)warnings.unshift(t('Na {n} vnitřních hranách mezi díly není bezpečné místo pro spojku. Podrobnosti jsou v assembly.json.',{n:unjoined}));
+    if(scene.project.connectors&&scene.project.bottomMode!=='grid'&&total&&jointInfo.get(scene.projectKey)?.joints===0)warnings.unshift(t(NO_PREVIEW_JOINTS));
     // Put blocking errors first so label notes cannot hide why the mesh is missing.
     const errors=[...scene.failed].map(([id,message])=>`${scene.project.modules.find(item=>item.id===id)?.name||t('Modul')}: ${message}`);
     warnings.unshift(...errors);
@@ -100,7 +102,7 @@ export function createLivePreview({onChange,createCanvas=()=>document.createElem
       const color=(id,zone)=>{
         if(id===BASEPLATE)return zone==='wire'?COLORS.wire:COLORS.baseplate;
         const active=activeIds.has(id);
-        return colors.enabled&&(zone!=='body'||!active)?zones[zone]:active?COLORS.active:COLORS.idle;
+        return colors.enabled?zones[zone]:active?COLORS.active:COLORS.idle;
       };
       view={center:scene.center,right:frame.right,down:frame.down,towards:frame.towards,bounds:frame.viewBounds,fitSize:scene.fitSize,viewport:frame.size,reference:scene.reference,color};
       renderer.draw(view);
@@ -110,6 +112,9 @@ export function createLivePreview({onChange,createCanvas=()=>document.createElem
         const name=scene.project.modules.find(item=>item.id===id)?.name||t('Modul'),active=activeIds.has(id),stroke=failed?active?'#bf8d35':'#b56c52':'#8fa07d';
         html+=`<g data-module="${esc(id)}"${failed?' data-invalid-module="true"':' data-pending-module="true"'} role="button" tabindex="0" aria-label="${esc(name)}${failed?' — neplatný modul':''}" data-module-selected="${active}"><path d="${wirePath(wire,projectPoint)}" fill="none" stroke="${stroke}" stroke-width="1.2" stroke-dasharray="5 3" vector-effect="non-scaling-stroke"/></g>`;
       }
+      if(colors.enabled)for(const [id,wire] of scene.wires)if(activeIds.has(id)&&renderer.has(id))html+=selectionPreviewMarkup(wire,frame,scene.center);
+      if(project.previewCuts)for(const [id,cuts] of scene.cuts)if(scene.shown.get(id)===scene.keys.get(id))html+=cutPreviewMarkup(cuts,frame,scene.center);
+      html+=jointPreviewMarkup([...scene.jointProfiles].filter(([id])=>scene.shown.get(id)===scene.keys.get(id)).flatMap(([,profiles])=>profiles),frame,scene.center);
       const facets=[...scene.keys.keys()].reduce((sum,id)=>sum+(scene.facets.get(id)||0),0);
       html+=previewHud(scene.project,frame,[]);
       const busy=ready<total-scene.failed.size,notice=busy?t('Připravuji 3D model: {ready} z {total} modulů',{ready,total}):(errors.length?errors:warnings).join(' ');

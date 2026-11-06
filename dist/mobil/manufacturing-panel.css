@@ -1,0 +1,22 @@
+.manufacturing-panel .panel-header{gap:10px}
+.manufacturing-controls{margin:0;padding:0;min-width:0;border:0}
+.manufacturing-panel .print-toggle{margin:0 0 16px;padding:12px;gap:10px}
+.manufacturing-panel .print-toggle span{min-width:0}
+.manufacturing-panel .check-row{line-height:1.5;align-items:flex-start;margin:14px 0}
+.manufacturing-panel .check-row input{flex-shrink:0;margin-top:3px}
+.manufacturing-panel .field select{width:100%;min-width:0}
+.manufacturing-panel .color-zone{grid-template-columns:20px 30px minmax(0,1fr) auto;gap:6px}
+.manufacturing-panel .color-zone small{font-size:10px}
+.manufacturing-panel .print-summary{padding:12px;margin:14px 0}
+.manufacturing-panel .print-summary strong{display:flex;flex-wrap:wrap;gap:5px;font-size:15px}
+.manufacturing-panel .test-actions{display:flex;flex-wrap:wrap;gap:8px}
+.manufacturing-panel .test-actions .btn{white-space:normal;flex:1 1 130px}
+.model-preview-settings{display:flex;justify-content:flex-end;padding:8px 16px;border-bottom:1px solid var(--line,#dce1d7)}
+.model-preview-settings .btn{min-height:38px;font-size:12px}
+@media(max-width:1024px){
+  .manufacturing-panel .field input,.manufacturing-panel .field select{font-size:16px;min-height:44px}
+  .manufacturing-panel .check-row{min-height:44px;align-items:center}
+  .manufacturing-panel .check-row input{margin-top:0}
+  .model-preview-settings .btn{min-height:44px}
+  .app-shell[data-mobile-panel=tools] .manufacturing-panel{display:none}
+}

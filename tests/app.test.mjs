@@ -415,15 +415,17 @@ test('editor workflows and actual photo pipeline integrate with persistent proje
   assert.ok(saved().tools.at(-1).points.length>10);
   assert.ok(saved().tools.at(-1).points.every(p=>Number.isFinite(p.x)&&p.x>=0));
   assert.equal(win.document.querySelectorAll('.tool-row').length,9);
-  action('export');assert.ok($('[data-do-export]'));assert.ok($('#print-light'));
+  action('export');assert.ok($('[data-do-export]'));assert.ok(!$('.modal #print-light'));click('[data-model-settings]');assert.ok($('#print-light'));
   change('#print-light',true);assert.equal(saved().printMode,'light');assert.equal($('#print-light').checked,true);
   change('#print-bottom','adhesive');assert.equal(saved().bottomMode,'adhesive');assert.ok($('#print-bottom option[value=adhesive][selected]'),'The saved bottom must be marked in the re-rendered select');
+  action('export');
   const bedWidth=saved().bedWidth;change('.modal [data-field=bedWidth]',49);assert.equal(saved().bedWidth,bedWidth,'Invalid printer width must not persist');
   change('.modal [data-field=bedWidth]',50);change('.modal [data-field=bedHeight]',50);await exportReady();assert.equal($('[data-do-export]').disabled,false,'Valid oversized models export as automatically cut mesh parts');
   assert.ok(!$('#limit-bed'),'The print batch always fits its printer without a legacy-limit bypass');assert.equal(saved().limitToBed,true,'The stored legacy flag is retained');
   change('.modal [data-field=bedWidth]',180);change('.modal [data-field=bedHeight]',256);
   await exportReady();assert.equal(saved().bedWidth,180);assert.equal(saved().bedHeight,256);assert.equal(saved().limitToBed,true);assert.equal($('[data-do-export]').disabled,false);
 
+  click('[data-model-settings]');
   const pdf=await downloadFrom('[data-fit-pdf]'),pdfText=await pdf.blob.text();
   assert.match(pdf.name,/-meritko-1-1\.pdf$/);assert.equal(pdf.blob.type,'application/pdf');assert.match(pdfText,/^%PDF-1\.4/);assert.match(pdfText,/\/PrintScaling \/None/);assert.match(pdfText,/presne 100 mm/);assert.match(pdfText,/%%EOF/);
   action('export');await exportReady();
@@ -450,7 +452,7 @@ test('editor workflows and actual photo pipeline integrate with persistent proje
   action('export');click('[data-format=svg]');assert.match($('.modal-body').textContent,/Černá/);const svg=await downloadFrom('[data-do-export]');await waitFor(()=>!$('#modal-root').children.length);assert.match(svg.name,/\.svg$/);assert.equal(svg.blob.type,'image/svg+xml');assert.match(await svg.blob.text(),/<svg[^>]*width="[\d.]+mm"/);
   action('export');click('[data-format=dxf]');const dxf=await downloadFrom('[data-do-export]');await waitFor(()=>!$('#modal-root').children.length);assert.match(dxf.name,/\.dxf$/);assert.equal(dxf.blob.type,'application/dxf');assert.match(await dxf.blob.text(),/\$INSUNITS\r\n70\r\n4/);
   action('export');click('[data-format=json]');const json=await downloadFrom('[data-do-export]');await waitFor(()=>!$('#modal-root').children.length);assert.match(json.name,/\.json$/);assert.equal(json.blob.type,'application/json');assert.equal(JSON.parse(await json.blob.text()).project.bottomMode,'adhesive');
-  createDrawerFromUI('Nový prázdný šuplík',504,378);assert.equal(saved().tools.length,0);assert.match($('#board-area').textContent,/Začněte/);
+  createDrawerFromUI('Nový prázdný šuplík',504,378);action('2d');assert.equal(saved().tools.length,0);assert.match($('#board-area').textContent,/Začněte/);
   action('library');assert.ok(win.document.querySelectorAll('.library-item').length>=8);click('[data-modal-close]');
   action('help');assert.ok(win.document.querySelectorAll('.modal-body a[target=_blank]').length>=4);click('[data-modal-close-extra]');
   await win.happyDOM.close();

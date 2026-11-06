@@ -32,11 +32,11 @@ const store=()=>localStorage.getItem('suplik-studio-projects-v1');
 const saved=()=>JSON.parse(store()).find(project=>project.id===JSON.parse(localStorage.getItem('suplik-studio-current')));
 const history=()=>[$('#app [data-action="undo"]').disabled,$('#app [data-action="redo"]').disabled];
 const pause=ms=>new Promise(resolve=>nativeTimeout(resolve,ms));
-async function waitFor(predicate){const started=performance.now();while(!predicate()){if(performance.now()-started>10000)assert.fail('UI did not finish: '+$('#modal-root').textContent+' '+$('#toast').textContent);await pause(2);}}
+async function waitFor(predicate){const started=performance.now();while(!predicate()){if(performance.now()-started>10000)assert.fail('UI did not finish: '+$('#modal-root').textContent+' '+$('#toast').textContent+' main='+$('#manufacturing-settings').textContent);await pause(2);}}
 function change(selector,value){const element=$(selector);assert.ok(element,'Missing '+selector);element.value=String(value);element.dispatchEvent(new win.Event('change',{bubbles:true}));}
 function close(){if($('[data-modal-close]'))click('[data-modal-close]');}
-const analysisReady=()=>waitFor(()=>$('[data-export-analysis]')?.getAttribute('data-analysis-busy')!=='true');
-async function open(id){close();action('projects');click(`[data-open="${id}"]`);action('export');click('[data-format="stl"]');await analysisReady();}
+const analysisReady=()=>$('.modal')?waitFor(()=>$('[data-export-analysis]')?.getAttribute('data-analysis-busy')!=='true'):waitFor(()=>!$('#manufacturing-settings [data-joint-status] [data-loading-ui]'));
+async function open(id){close();action('projects');click(`[data-open="${id}"]`);await analysisReady();assert.ok($('#manufacturing-settings'));}
 async function downloadedFrom(selector){await analysisReady();const count=downloads.length;click(selector);await waitFor(()=>downloads.length===count+1);assert.ok(downloads.at(-1).blob);return downloads.at(-1);}
 function assertReadOnly(before,undo){assert.equal(store(),before,'this action must preserve the whole persisted project, including updatedAt');assert.deepEqual(history(),undo,'this action must not add undo history');}
 async function unzip(blob){
@@ -72,19 +72,19 @@ test('Czech decimal input remains millimetres in an inch drawer and persists whe
   assert.match($('#export-joint-clearance').closest('label').textContent,/mm/);
   change('#export-joint-clearance','0,35');assert.equal(saved().jointClearance,.35);
   assert.deepEqual(saved().modules,original.modules);assert.deepEqual(saved().tools,original.tools);
-  const before=store(),undo=history();close();action('export');assert.equal(Number($('#export-joint-clearance').value),.35);assertReadOnly(before,undo);
+  const before=store(),undo=history();action('export');assert.equal($('.modal #export-joint-clearance'),null);click('[data-model-settings]');assert.equal(Number($('#export-joint-clearance').value),.35);assertReadOnly(before,undo);
   await open('inch');assert.equal(Number($('#export-joint-clearance').value),.35);assert.equal(saved().unit,'in');
 });
 
 test('downloaded project JSON carries the chosen clearance without converting it to the drawer display unit',async()=>{
   await open('roundtrip');change('#export-joint-clearance','0,375');
-  const before=store(),undo=history(),source=saved();click('[data-format="json"]');
+  const before=store(),undo=history(),source=saved();action('export');click('[data-format="json"]');
   const download=await downloadedFrom('[data-do-export]');assert.match(download.name,/\.json$/);
   const backup=JSON.parse(await download.blob.text());assert.equal(backup.app,'InsertCreator');assert.equal(backup.project.jointClearance,.375);assert.equal(backup.project.unit,'in');
   assert.deepEqual(backup.project,source);assert.equal(validateProject(backup).jointClearance,.375);assertReadOnly(before,undo);
 });
 
-test('export status counts joints between bed-cut pieces even when the drawer has only one original module',async()=>{
+test('main model status counts joints between bed-cut pieces even when the drawer has only one original module',async()=>{
   await open('cut-status');const before=store(),undo=history(),status=$('[data-joint-status]').textContent;
   assert.match(status,/1/);assert.match(status,/propojuje díly rozdělené podle podložky/);
   assert.doesNotMatch(status,/nemají společnou hranu/);assertReadOnly(before,undo);
@@ -92,9 +92,7 @@ test('export status counts joints between bed-cut pieces even when the drawer ha
 
 test('the joint fit-test button downloads a small two-piece STL ZIP without editing the user drawer',async()=>{
   await open('coupon');change('#export-joint-clearance','0,35');await analysisReady();
-  // The editor is deliberately not redrawn behind an open manufacturing form.
-  // Reopen once so the undo controls reflect the preceding preference change.
-  close();await waitFor(()=>history()[0]===false);action('export');await analysisReady();const before=store(),undo=history();
+  await waitFor(()=>history()[0]===false);const before=store(),undo=history();
   assert.equal($('#export-joint-fit').disabled,false);const download=await downloadedFrom('#export-joint-fit');assert.match(download.name,/\.zip$/);
   const files=await unzip(download.blob),models=[...files.keys()].filter(name=>name.endsWith('.stl'));assert.equal(models.length,2);
   const assembly=JSON.parse(new TextDecoder().decode(files.get('assembly.json')));assert.equal(assembly.joints.clearance,.35,'the actual downloaded coupon uses the chosen millimetre clearance');
@@ -114,7 +112,7 @@ test('magnet bottoms allow puzzle joints, clearance settings and an actual joine
   await open('magnet');const before=store(),undo=history();
   assert.equal($('#export-connectors').disabled,false);assert.equal($('#export-connectors').checked,true);
   assert.ok($('#export-joint-clearance'));assert.equal($('#export-joint-fit').disabled,false);
-  const download=await downloadedFrom('[data-do-export]'),files=await unzip(download.blob);
+  action('export');click('[data-format="stl"]');const download=await downloadedFrom('[data-do-export]'),files=await unzip(download.blob);
   const assembly=JSON.parse(new TextDecoder().decode(files.get('assembly.json')));
   assert.ok(assembly.joints.count>0,'the downloaded magnet model must contain real puzzle connections');
   assert.ok(assembly.joints.cutCount>0);assert.equal(assembly.schemaVersion,2);assertReadOnly(before,undo);

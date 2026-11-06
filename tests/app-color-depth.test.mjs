@@ -79,13 +79,13 @@ test('an existing too-deep coloured pocket has an explicit one-undo height fix a
   action('2d');
 });
 
-test('the export colour controls offer the same explicit correction without changing the project on open',async()=>{
-  const before=saved();action('export');
-  assert.deepEqual(stable(saved()),stable(before),'opening manufacturing settings is read-only');
-  const fix=$('.modal [data-action="fit-pocket-height"]');assert.ok(fix,'the floor settings expose the required height');
+test('the main colour controls offer the same explicit correction without changing the project on open',async()=>{
+  const before=saved();action('export');assert.equal($('.modal #print-colors'),null);click('[data-model-settings]');
+  assert.equal($('.modal'),null);assert.deepEqual(stable(saved()),stable(before),'opening manufacturing settings is read-only');
+  const fix=$('#manufacturing-settings [data-action="fit-pocket-height"]');assert.ok(fix,'the floor settings expose the required height');
   fix.click();
   assert.equal(saved().insertHeight,20.6);assert.deepEqual(saved().tools,before.tools);assert.deepEqual(saved().modules,before.modules);assert.deepEqual(saved().multiMaterial,before.multiMaterial);
-  click('[data-modal-close]');await until(()=>!$('[data-action="undo"]').disabled,'closing export should refresh the editor history controls');action('undo');
+  await until(()=>!$('[data-action="undo"]').disabled,'repair should refresh the editor history controls');action('undo');
   assert.deepEqual(stable(saved()),stable(before));assert.equal($('[data-action="undo"]').disabled,true);
 });
 
