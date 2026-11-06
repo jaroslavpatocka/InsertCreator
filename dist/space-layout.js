@@ -27,7 +27,9 @@ function rules(project,state){
   const rigid=m=>m.sizeMode==='manual'||m.pocketMargin!=null||uniform(m);
   // A plain module holding several tools was arranged by hand; only its grouped or single-tool neighbours are rebuilt.
   const open=m=>!fixed(m)&&!rigid(m)&&(m.grouped===true||m.setLayout==='auto'||members(state,m.id).length===1);
-  return{fixed,rigid,open};
+  // A cut moves no tool, so a module's own pocket margin is no reason to keep its empty cells.
+  const cuttable=m=>!fixed(m)&&m.sizeMode!=='manual'&&!uniform(m);
+  return{fixed,rigid,open,cuttable};
 }
 
 /** Same tools turned with their module by a multiple of 90 degrees. Module sizes stay whole raster cells. */
@@ -65,10 +67,10 @@ function atomsOf(project,state,{turn=()=>false,redo=()=>false,alternate=true}={}
 }
 
 function cutInPlace(project,state){
-  const next={tools:state.tools,modules:state.modules.map(copy)},{fixed,rigid}=rules(project,next),grid=number(project.grid,42);
+  const next={tools:state.tools,modules:state.modules.map(copy)},{cuttable}=rules(project,next),grid=number(project.grid,42);
   for(let i=0;i<next.modules.length;i++){
-    const module=next.modules[i];if(fixed(module)||rigid(module))continue;
-    const cut=steppedModuleFootprint({...project,tools:members(next,module.id)},module);
+    const module=next.modules[i];if(!cuttable(module))continue;
+    const cut=steppedModuleFootprint({...project,modules:next.modules,tools:members(next,module.id)},module);
     if(!cut.cells)continue;
     // A rectangle returned for an awkward shape must not grow back over a neighbour.
     if(next.modules.some((other,j)=>j!==i&&moduleIntersects(cut,other,grid)))continue;
@@ -77,7 +79,7 @@ function cutInPlace(project,state){
   return next;
 }
 
-/** Runs last: a notch must stay open while packing, but no neighbour in it means no reason to keep the step. */
+/** Rectangular modules only: a step left by an earlier layout goes back to plain module wherever no neighbour stands in it. */
 function fillUnusedSteps(project,state){
   const next={tools:state.tools,modules:state.modules.map(copy)},{fixed,rigid}=rules(project,next),grid=number(project.grid,42);
   for(let i=0;i<next.modules.length;i++){
@@ -85,6 +87,12 @@ function fillUnusedSteps(project,state){
     next.modules[i]=fillFreeCells(module,next.modules.filter((other,j)=>j!==i),grid);
   }
   return next;
+}
+
+/** Applies the chosen shape where the modules stand. Nothing moves, so switching the option never rearranges a drawer. */
+export function reshapeModules(project,moduleShape){
+  const state={tools:project.tools,modules:project.modules},next=moduleShape==='stepped'?cutInPlace(project,state):fillUnusedSteps(project,state),result={...project,modules:next.modules};
+  return validateLayout(result).length>validateLayout(project).length?project:result;
 }
 
 // Raster of one module: 1 = taken. It only proposes a position, the exact contours decide afterwards.
@@ -241,7 +249,9 @@ export async function tightenLayout(project,result,{moduleShape='rectangular',mo
     await repack({turn:()=>true,redo:module=>!inDrawer(module,project)});
     if(outside())consider(singles(project,best,pack,moduleShape));
   }
-  const filled=fillUnusedSteps(project,best);if(valid(filled))best=filled;
+  // Stepped means the module follows its tools on the raster, whether or not anything stands in the notch.
+  // Free cells are closed by 1x1 plugs, so this last cut does not have to beat the metric.
+  const finished=moduleShape==='stepped'?cutInPlace(project,best):fillUnusedSteps(project,best);if(valid(finished))best=finished;
   // Automatic grips belong to shared modules; a tool left alone goes back to what the customer had.
   const original=new Map(project.tools.map(tool=>[tool.id,tool])),count=id=>best.tools.filter(tool=>tool.moduleId===id).length,grouped=new Set(best.modules.filter(module=>module.grouped).map(module=>module.id));
   const tools=best.tools.map(tool=>{if(!Object.hasOwn(tool,'fingerGrips')||Object.hasOwn(original.get(tool.id)||{},'fingerGrips')||grouped.has(tool.moduleId)&&count(tool.moduleId)>1)return tool;const {fingerGrips,...plain}=tool;return plain;});

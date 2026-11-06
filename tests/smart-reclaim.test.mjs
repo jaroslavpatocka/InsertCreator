@@ -77,15 +77,16 @@ test('stepped Smart candidates remove only whole empty cells, retain walls and k
   for(const module of stepped.modules)for(const key of ['x','y','width','height'])assert.equal(module[key]%project.grid,0);
 });
 
-test('a step no other module uses goes back to a plain rectangle',async()=>{
-  const project={...blankProject(),width:252,height:252,modules:[ellModule()],tools:[ellTool()]},result=await smartArrange(project,{moduleShape:'stepped'});
+test('a step no other module uses goes back to a plain rectangle only for rectangular modules',async()=>{
+  const project={...blankProject(),width:252,height:252,modules:[ellModule()],tools:[ellTool()]},result=await smartArrange(project,{moduleShape:'rectangular'});
   assert.deepEqual(result.unplaced,[]);assert.deepEqual(validateLayout({...project,...result}),[]);assertToolsUnchanged(project,result);
   for(const module of result.modules){assert.equal(Object.hasOwn(module,'cells'),false);assert.equal(Object.hasOwn(module,'shape'),false);}
+  const stepped=await smartArrange(project,{moduleShape:'stepped'});assert.ok(stepped.modules.every(module=>Array.isArray(module.cells)),'stepped modules keep following the tool');assertToolsUnchanged(project,stepped);
 });
 
-test('rearranging drops a step left empty by an earlier layout, but never on a locked or manual module',()=>{
+test('rearranging drops an empty step only when rectangular modules are chosen, and never on a locked or manual module',()=>{
   const cells=[{x:0,y:0},{x:1,y:0},{x:2,y:0},{x:0,y:1},{x:0,y:2}],base={...ellModule(),shape:'stepped',cells},project=extra=>({...blankProject(),width:252,height:252,modules:[{...base,...extra}],tools:[ellTool()]});
-  const free=autoArrange(project({})).modules[0];assert.equal(Object.hasOwn(free,'cells'),false);assert.equal(Object.hasOwn(free,'shape'),false);
-  assert.equal(autoArrange(project({locked:true})).modules[0].cells.length,cells.length);
-  assert.equal(autoArrange(project({sizeMode:'manual'})).modules[0].cells.length,cells.length);
+  const rectangular={moduleShape:'rectangular'},free=autoArrange(project({}),rectangular).modules[0];assert.equal(autoArrange(project({})).modules[0].cells.length,cells.length,'without a chosen shape the step stays');assert.equal(Object.hasOwn(free,'cells'),false);assert.equal(Object.hasOwn(free,'shape'),false);
+  assert.equal(autoArrange(project({locked:true}),rectangular).modules[0].cells.length,cells.length);
+  assert.equal(autoArrange(project({sizeMode:'manual'}),rectangular).modules[0].cells.length,cells.length);
 });

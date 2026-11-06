@@ -9,6 +9,7 @@ import {FLOOR_RESERVE,materialConfig,materialSlots} from './print-material.js';
 import {encodeColor3MF} from './three-mf.js';
 import {i18nError,t} from './i18n.js';
 import {layoutMeshToPhysical} from './manufacturing-coordinates.js';
+import {exportBaseplateSTL,gridfinityFreeCells,planBaseplateTiles} from './gridfinity-baseplate.js';
 
 const EPS=1e-6,MAX_PARTS=400,MAX_BYTES=128*1024*1024;
 const clonePlain=value=>Array.isArray(value)?value.map(clonePlain):value&&typeof value==='object'?Object.fromEntries(Object.entries(value).map(([key,item])=>[key,clonePlain(item)])):value;
@@ -98,6 +99,45 @@ export function buildPrintPart(project,module,tools,tile,{labelPlan=null,jointPl
   const assemblyTransform=rotation?[0,1,0,offset.x,-1,0,0,round(project.height-offset.y),0,0,1,0,0,0,0,1]:[1,0,0,offset.x,0,1,0,round(project.height-offset.y-box.height),0,0,1,0,0,0,0,1];
   const layoutTransform=rotation?[0,1,0,offset.x,1,0,0,offset.y,0,0,1,0,0,0,0,1]:[1,0,0,offset.x,0,-1,0,round(offset.y+box.height),0,0,1,0,0,0,0,1];
   return{mesh:local,...(zones?{zones}:{}),box,rotation,offset,assemblyTransform,layoutTransform};
+}
+
+/** Baseplate STL tiles and their assembly data, shared by the standalone export and the main one. */
+export async function prepareBaseplateFiles(project,{fileName=(tile,index)=>`gridfinity-${String(index+1).padStart(3,'0')}-${tile.columns}x${tile.rows}.stl`,bytes=0,signal,onProgress}={}){
+  const abort=()=>{if(signal?.aborted)throw new DOMException('Příprava tiskových dílů byla zrušena.','AbortError');};
+  const plan=planBaseplateTiles(project),files=[];
+  for(const [index,tile] of plan.tiles.entries()){
+    onProgress?.({stage:'cutting',progress:index/plan.tiles.length,completed:index,total:plan.tiles.length});await new Promise(resolve=>setTimeout(resolve,0));abort();
+    const data=exportBaseplateSTL(project,{tile});bytes+=data.byteLength;
+    if(bytes>MAX_BYTES)throw i18nError('Tiskové díly přesahují limit 128 MB. Vyberte méně modulů a export zopakujte.');
+    files.push({name:fileName(tile,index),data});
+  }
+  const tiles=plan.tiles.map((tile,i)=>{
+    const width=round(tile.columns*42+tile.extendRight),height=round(tile.rows*42+tile.extendBottom);
+    return{...tile,file:files[i].name,xMm:tile.x*42,yMm:tile.y*42,sizeMm:{width,height},assemblyTransform:[1,0,0,tile.x*42,0,1,0,round(project.height-tile.y*42-height),0,0,1,0,0,0,0,1]};
+  });
+  const manifest={schemaVersion:2,units:'mm',pitch:42,layout:plan.layout,expansion:plan.layout.expansion,layoutSize:{width:project.width,height:project.height},coordinates:'physical-world',layoutAxes:'X right, Y down',assemblyAxes:'X right, Y up, Z up',rotateForPrinting:plan.rotated,tiles};
+  return{plan,files,manifest,bytes};
+}
+
+/** One free raster cell, built as an ordinary empty module so that its foot, floor and height match the rest. */
+export function gridfinityPlugSTL(project){
+  const module={id:'__gridfinity-plug',name:'Gridfinity 1x1',x:0,y:0,width:42,height:42,sizeMode:'manual',locked:false};
+  // A plug has no pockets or text to colour, and nothing to join: it sits alone in its socket.
+  const source={...project,modules:[module],tools:[],toolSets:[],connectors:false,multiMaterial:{...project.multiMaterial,enabled:false}};
+  const {mesh}=buildPrintPart(source,module,[],{row:0,column:0,clip:null,key:module.id});
+  return encodeSTL(mesh,'InsertCreator | mm | Gridfinity plug 1x1');
+}
+
+/** A Gridfinity export is complete only with its raster and the plug. Free cells count the whole drawer, not the selection. */
+export async function appendGridfinityExport(result,project,{signal,onProgress}={}){
+  const size=file=>typeof file.data==='string'?new TextEncoder().encode(file.data).byteLength:file.data?.byteLength||0;
+  const fileName=(tile,index)=>`gridfinity/zakladna-${String(index+1).padStart(3,'0')}-${tile.columns}x${tile.rows}.stl`;
+  const base=await prepareBaseplateFiles(project,{fileName,bytes:result.files.reduce((sum,file)=>sum+size(file),0),signal,onProgress});
+  const plug={name:'gridfinity/zatka-1x1.stl',data:gridfinityPlugSTL(project)},{expansion,tiles,rotateForPrinting}=base.manifest;
+  const manifest={...result.manifest,gridfinity:{plug:{file:plug.name,freeCells:gridfinityFreeCells(project)},baseplate:{expansion,rotateForPrinting,tiles}}},assembly=JSON.stringify(manifest,null,2);
+  const files=[...result.files.map(file=>file.name==='assembly.json'?{...file,data:assembly}:file),...base.files,plug];
+  if(files.reduce((sum,file)=>sum+size(file),0)>MAX_BYTES)throw i18nError('Tiskové díly přesahují limit 128 MB. Vyberte méně modulů a export zopakujte.');
+  return{...result,files,manifest};
 }
 
 /** files contain STL plus assembly.json. Part offsets and inverse transforms use world millimetres. */

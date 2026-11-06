@@ -155,7 +155,7 @@ function toolReference(tool,maxPoints){
 function baseplateReference(layout){
   const rounded=(x,y,w,h,r,z)=>[[x+w-r,y,z],[x+w,y+r,z],[x+w,y+h-r,z],[x+w-r,y+h,z],[x+r,y+h,z],[x,y+h-r,z],[x,y+r,z],[x+r,y,z]];
   const bottom=-layout.footOffsetZ,top=layout.heightMm-layout.footOffsetZ;
-  const outerBottom=rounded(0,0,layout.width,layout.height,4,bottom),outerTop=rounded(0,0,layout.width,layout.height,4,top),sockets=[];
+  const outerWidth=layout.width+layout.expansion.right,outerHeight=layout.height+layout.expansion.bottom,outerBottom=rounded(0,0,outerWidth,outerHeight,4,bottom),outerTop=rounded(0,0,outerWidth,outerHeight,4,top),sockets=[];
   const [,,bottomRadius]=BASEPLATE_SOCKET_LEVELS[0],bottomSize=BASEPLATE_SOCKET_LEVELS[0][1],topSize=BASEPLATE_SOCKET_LEVELS.at(-1)[1],topRadius=BASEPLATE_SOCKET_LEVELS.at(-1)[2];
   for(let y=0;y<layout.rows;y++)for(let x=0;x<layout.columns;x++)sockets.push({bottom:rounded(x*42+(42-bottomSize)/2,y*42+(42-bottomSize)/2,bottomSize,bottomSize,bottomRadius,bottom),top:rounded(x*42+(42-topSize)/2,y*42+(42-topSize)/2,topSize,topSize,topRadius,top)});
   if(layout.columns*layout.rows>64){
@@ -210,10 +210,10 @@ export function sceneNotes(project,{labels=true}={}){
   return warnings;
 }
 export function baseplateEntry(project){
-  const {height}=drawerSize(project),physical=([x,y,z])=>[x,height-y,z],layout=gridfinityLayout(project),entry={id:'__gridfinity-baseplate',name:t('Podkladová mřížka'),baseplate:true,faces:[],wire:null,source:{x:0,y:0,width:layout.width,height:layout.height}};
+  const {height}=drawerSize(project),physical=([x,y,z])=>[x,height-y,z],layout=gridfinityLayout(project),entry={id:'__gridfinity-baseplate',name:t('Podkladová mřížka'),baseplate:true,faces:[],wire:null,source:{x:0,y:0,width:layout.width+layout.expansion.right,height:layout.height+layout.expansion.bottom}};
   let warning=null;
   if(layout.columns*layout.rows>GRIDFINITY_BASEPLATE.maxCells){
-    entry.wire=boxCorners(0,0,layout.width,layout.height,-layout.footOffsetZ,layout.heightMm-layout.footOffsetZ).map(physical);
+    entry.wire=boxCorners(0,0,layout.width+layout.expansion.right,layout.height+layout.expansion.bottom,-layout.footOffsetZ,layout.heightMm-layout.footOffsetZ).map(physical);
     warning=t('Podkladová mřížka má více než 400 polí. Náhled ukazuje její obrys; STL exportujte po dílech.');
   }else{
     const reference=baseplateReference(layout);

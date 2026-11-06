@@ -83,3 +83,24 @@ test('progress keeps moving through the last stage and ends at one',async()=>{
   const seen=[],p=workshop(IDS.slice(2,5),{width:840,height:630});await smartArrange(p,{mode:'compact',moduleShape:'stepped',merge:true,onProgress:event=>seen.push(event)});
   const last=seen.filter(event=>event.stage==='tighten');assert.ok(last.length>1);assert.ok(last[0].progress<1);assert.equal(seen.at(-1).progress,1);
 });
+
+// A tool alone in a drawer has no neighbour to justify a step, the module must still follow it.
+const diagonal=extra=>({...validateProject({...blankProject(),id:'d',name:'d',width:504,height:378,grid:42,bottomMode:'grid',bedWidth:600,bedHeight:600}),tools:[{id:'w',name:'w',points:[{x:-60,y:-20},{x:510,y:-20},{x:510,y:20},{x:-60,y:20}],x:0,y:0,rotation:36,depth:8,moduleId:null,fingerGrips:[],locked:false,...extra}]});
+test('stepped layout follows a lone diagonal tool although no neighbour stands in the notches',async()=>{
+  const p=diagonal(),a=autoArrange(p),b={...p,tools:a.tools,modules:a.modules},r=await smartArrange(b,{mode:'compact',moduleShape:'stepped'}),[module]=r.modules;
+  assert.ok(module.cells?.length<module.width/42*(module.height/42)/2,'most of the empty raster is gone');
+  assert.equal(validateLayout({...b,...r}).length,0);
+  const square=await smartArrange(b,{mode:'compact',moduleShape:'rectangular'});assert.equal(square.modules[0].cells,undefined);
+});
+test('arranging keeps existing steps, and applies or removes them only when a shape is requested',()=>{
+  const p=diagonal(),first=autoArrange(p),placed={...p,tools:first.tools,modules:first.modules};
+  assert.equal(first.modules[0].cells,undefined,'no requested shape leaves plain modules alone');
+  const stepped=autoArrange(placed,{moduleShape:'stepped'}),cut={...p,tools:stepped.tools,modules:stepped.modules};assert.ok(stepped.modules[0].cells?.length>0);
+  assert.equal(autoArrange(cut).modules[0].cells?.length,stepped.modules[0].cells.length,'adding a tool elsewhere does not erase steps');
+  assert.equal(autoArrange(cut,{moduleShape:'rectangular'}).modules[0].cells,undefined);
+  const manual={...placed,modules:placed.modules.map(m=>({...m,sizeMode:'manual'}))};assert.equal(autoArrange(manual,{moduleShape:'stepped'}).modules[0].cells,undefined,'a hand-sized module is not cut');
+});
+test('a module with its own pocket margin is cut too and keeps every pocket in material',async()=>{
+  const p=diagonal({pocketMargin:.8}),a=autoArrange(p),b={...p,tools:a.tools,modules:a.modules.map(m=>({...m,pocketMargin:.8}))},r=await smartArrange(b,{mode:'compact',moduleShape:'stepped'});
+  assert.ok(r.modules[0].cells?.length>0);assert.equal(validateLayout({...b,...r}).length,0);
+});

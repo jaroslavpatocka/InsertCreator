@@ -11,7 +11,7 @@ function polygon({size,radius}){const low=(42-size)/2,high=42-low,out=[];for(con
 function verticalIntersections(triangles,x,y){const found=[];for(const [a,b,c] of triangles){const denominator=(b[1]-c[1])*(a[0]-c[0])+(c[0]-b[0])*(a[1]-c[1]);if(Math.abs(denominator)<1e-10)continue;const u=((b[1]-c[1])*(x-c[0])+(c[0]-b[0])*(y-c[1]))/denominator,v=((c[1]-a[1])*(x-c[0])+(a[0]-c[0])*(y-c[1]))/denominator,w=1-u-v;if(Math.min(u,v,w)>=-1e-8)found.push(u*a[2]+v*b[2]+w*c[2]);}return [...new Set(found.map(z=>Math.round(z*1e6)/1e6))].sort((a,b)=>a-b);}
 
 test('baseplate follows the drawer 42mm grid with explicit unused edge strips and ignores the printer during editing',()=>{
-  assert.deepEqual(gridfinityLayout(project(1000,750)),{columns:23,rows:17,width:966,height:714,pitch:42,heightMm:5,footOffsetZ:.25,x:0,y:0,remainder:{right:34,bottom:36}});
+  assert.deepEqual(gridfinityLayout(project(1000,750)),{columns:23,rows:17,width:966,height:714,pitch:42,heightMm:5,footOffsetZ:.25,x:0,y:0,remainder:{right:34,bottom:36},expansion:{right:33.75,bottom:35.75}});
   assert.deepEqual(bounds(baseplateTriangles(project(84,42))),{min:[0,0,0],max:[84,42,5]},'one-millimetre printer settings do not restrict the model');
   assert.throws(()=>gridfinityLayout(project(41,84)),/42 do 3000/);assert.throws(()=>gridfinityLayout({...project(),grid:50}),/rastr/);
 });
