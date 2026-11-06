@@ -28,6 +28,7 @@ import {sizeText} from './tool-size.js';
 import {SIZE_LABEL_REASONS} from './size-labels.js';
 import * as bulk from './bulk-edit.js';
 import * as moduleEdit from './module-edit.js';
+import {mergeOverlappingModules} from './module-merge.js';
 import {esc,icon,openModal,closeModal,toast,download} from './ui.js';
 import {openPocketMagnetDialog,planPocketMagnets,pocketMagnetEffect,pocketMagnetMarks,pocketMagnetPanel} from './tool-magnet-ui.js';
 import {hasPocketMagnets} from './tool-magnet.js';
@@ -82,8 +83,20 @@ let smartShape=readLocal('suplik-studio-module-shape','stepped');if(!['rectangul
 const tool=()=>project.tools.find(t=>t.id===selected);
 const moduleFor=(t=tool())=>project.modules.find(m=>m.id===(t?.moduleId||selectedModule));
 const geometryCache=createEditorGeometryCache({validateLayout,pocketOutline:calculatePocketOutline,findToolSets:calculateToolSets});
+// Preview geometry is read-only; keep warmed outline identities. Drop clones before history is saved.
+const dragPreview=next=>({...next,tools:next.tools.map(tool=>({...tool,points:drag.pointSources.get(tool.id)||tool.points}))});
 const errors=()=>{
   if(!drag)return geometryCache.validate(project,getLang()+':'+unit());
+  if(drag.merged){
+    const locale=getLang()+':'+unit();if(drag.validation?.project===project&&drag.validation.locale===locale)return drag.validation.issues;
+    const sourceIds=new Set(drag.toolIds?drag.snapshot.tools.filter(tool=>drag.toolIds.includes(tool.id)).map(tool=>tool.moduleId):[drag.id]);
+    const movedTools=new Set(drag.snapshot.tools.filter(tool=>sourceIds.has(tool.moduleId)).map(tool=>tool.id));
+    const moduleIds=new Set([...sourceIds,...project.tools.filter(tool=>movedTools.has(tool.id)).map(tool=>tool.moduleId)]);
+    const memberIds=new Set(project.tools.filter(tool=>moduleIds.has(tool.moduleId)).map(tool=>tool.id));
+    const originalIds=new Set([...sourceIds,...memberIds,...drag.snapshot.tools.filter(tool=>memberIds.has(tool.id)).map(tool=>tool.moduleId)]);
+    const unchanged=geometryCache.validate(drag.snapshot,locale).filter(issue=>issue.ids.length&&!issue.ids.some(id=>originalIds.has(id)));
+    const issues=[...unchanged,...validateLayout(project,{affectedIds:moduleIds})];drag.validation={project,locale,issues};return issues;
+  }
   // A rigid move cannot change internal pocket walls. During the gesture check only moving module bounds and neighbours.
   const ids=new Set(drag.toolIds?drag.snapshot.tools.filter(t=>drag.toolIds.includes(t.id)).map(t=>t.moduleId):[drag.id]);
   const base=geometryCache.validate(drag.snapshot,getLang()+':'+unit()),moduleIds=new Set(project.modules.map(m=>m.id));
@@ -1638,7 +1651,7 @@ $('#app').addEventListener('pointerdown',e=>{
   }
   if(m.locked&&!movingSelection){selectBoardTarget(m,t);render();toast(tr('Poloha modulu je zamčená. Odemkněte ji ve vlastnostech.'));return;}
   e.preventDefault();const point=svg.createSVGPoint();point.x=e.clientX;point.y=e.clientY;const p=point.matrixTransform(svg.getScreenCTM().inverse());
-  drag={pointer:e.pointerId,id:m.id,selectionToolId:t?.id||null,start:p,x:m.x,y:m.y,snapshot:clone(project),moved:false,...(movingSelection?{toolIds:chosen}:{}),...(blocked?{blocked:true,error:tr('Nejprve odemkněte polohu modulu.')}:{})};svg.setPointerCapture(e.pointerId);renderBoard();
+  drag={pointer:e.pointerId,id:m.id,selectionToolId:t?.id||null,start:p,x:m.x,y:m.y,snapshot:clone(project),pointSources:new Map(project.tools.map(tool=>[tool.id,tool.points])),moved:false,...(movingSelection?{toolIds:chosen}:{}),...(blocked?{blocked:true,error:tr('Nejprve odemkněte polohu modulu.')}:{})};svg.setPointerCapture(e.pointerId);renderBoard();
   if(blocked)toast(drag.error);
 });
 $('#app').addEventListener('pointermove',e=>{
@@ -1651,17 +1664,26 @@ $('#app').addEventListener('pointermove',e=>{
     if(c.project)project=c.project;
     resizeDrag.label=resizeLabel(project.modules.find(x=>x.id===resizeDrag.id),c);resizeDrag.limited=!!(c.error||c.limit);renderBoard();return;
   }
-  if(view==='3d'||!drag||e.pointerId!==drag.pointer)return;const svg=$('#board-svg'),p=svg.createSVGPoint();p.x=e.clientX;p.y=e.clientY;const q=p.matrixTransform(svg.getScreenCTM().inverse());const m=project.modules.find(m=>m.id===drag.id);if(!m)return;
+  if(view==='3d'||!drag||e.pointerId!==drag.pointer)return;const svg=$('#board-svg'),p=svg.createSVGPoint();p.x=e.clientX;p.y=e.clientY;const q=p.matrixTransform(svg.getScreenCTM().inverse());const m=drag.snapshot.modules.find(m=>m.id===drag.id);if(!m)return;
   const dx=q.x-drag.start.x,dy=q.y-drag.start.y;if(Math.hypot(dx,dy)<2&&!drag.moved)return;drag.moved=true;
   if(drag.blocked)return;
   if(drag.toolIds){
     const grid=drag.snapshot.grid,x=snap?Math.round(dx/grid)*grid:dx,y=snap?Math.round(dy/grid)*grid:dy;
     try{project=bulk.bulkMove(drag.snapshot,drag.toolIds,{dx:x,dy:y});drag.error=null;}
     catch(error){project=clone(drag.snapshot);drag.error=errorText(error);}
-    renderBoard();return;
+    project=dragPreview(project);drag.merged=project.modules.length<drag.snapshot.modules.length;renderBoard();return;
   }
-  let x=drag.x+dx,y=drag.y+dy;if(snap){x=Math.round(x/project.grid)*project.grid;y=Math.round(y/project.grid)*project.grid;}x=Math.max(0,Math.min(project.width-m.width,x));y=Math.max(0,Math.min(project.height-m.height,y));
-  const sx=x-m.x,sy=y-m.y;m.x=x;m.y=y;project.tools.filter(t=>t.moduleId===m.id).forEach(t=>{t.x+=sx;t.y+=sy;});renderBoard();
+  let x=drag.x+dx,y=drag.y+dy;if(snap){x=Math.round(x/drag.snapshot.grid)*drag.snapshot.grid;y=Math.round(y/drag.snapshot.grid)*drag.snapshot.grid;}x=Math.max(0,Math.min(drag.snapshot.width-m.width,x));y=Math.max(0,Math.min(drag.snapshot.height-m.height,y));
+  const sx=x-drag.x,sy=y-drag.y;
+  // Every preview starts from the original gesture, so leaving a neighbour releases it again.
+  const candidate={...drag.snapshot,modules:drag.snapshot.modules.map(module=>module.id===m.id?{...module,x,y}:module),tools:drag.snapshot.tools.map(tool=>tool.moduleId===m.id?{...tool,x:tool.x+sx,y:tool.y+sy}:tool)};
+  try{project=mergeOverlappingModules(candidate,[m.id]);drag.error=null;}
+  catch(error){
+    try{moduleOutline(candidate.modules.find(module=>module.id===m.id),candidate.grid);project=candidate;}
+    catch{project=clone(drag.snapshot);}
+    drag.error=errorText(error);
+  }
+  project=dragPreview(project);drag.merged=project.modules.length<drag.snapshot.modules.length;renderBoard();
 });
 function endResize(){
   const r=resizeDrag;resizeDrag=null;
@@ -1684,14 +1706,20 @@ function endDrag(e){
     if(module)selectBoardTarget(module,tool);
     render();return;
   }
-  if(drag.toolIds){
-    const finished=drag;drag=null;
-    if(finished.error){project=finished.snapshot;render();toast(finished.error);return;}
-    if(finished.moved&&(same(project.modules)!==same(finished.snapshot.modules)||same(project.tools)!==same(finished.snapshot.tools))){undoStack.push(finished.snapshot);if(undoStack.length>40)undoStack.shift();redoStack=[];persist();}
-    else project=finished.snapshot;
-    render();return;
-  }
-  if(drag.moved){const invalid=errors().some(i=>i.ids.includes(drag.id)&&i.type==='overlap');if(invalid){project=drag.snapshot;toast(tr('Tady už je jiný modul. Zkuste volné místo.'));}else{undoStack.push(drag.snapshot);redoStack=[];persist();}}drag=null;render();
+  const finished=drag;drag=null;
+  if(finished.error){project=finished.snapshot;render();toast(finished.error);return;}
+  const changed=same(project.modules)!==same(finished.snapshot.modules)||same(project.tools)!==same(finished.snapshot.tools);
+  if(!changed){project=finished.snapshot;render();return;}
+  const sourceIds=new Set(finished.toolIds?finished.snapshot.tools.filter(tool=>finished.toolIds.includes(tool.id)).map(tool=>tool.moduleId):[finished.id]);
+  const movedTools=new Set(finished.snapshot.tools.filter(tool=>sourceIds.has(tool.moduleId)).map(tool=>tool.id));
+  const moduleIds=new Set([...sourceIds,...project.tools.filter(tool=>movedTools.has(tool.id)).map(tool=>tool.moduleId)]);
+  const affected=new Set([...moduleIds,...project.tools.filter(tool=>moduleIds.has(tool.moduleId)).map(tool=>tool.id)]);
+  // A merged shell adds internal walls: validate all its pockets after clearing the rigid-drag shortcut.
+  const invalid=errors().find(issue=>issue.type!=='depth'&&(!issue.ids.length||issue.ids.some(id=>affected.has(id))));
+  if(invalid){project=finished.snapshot;render();toast(invalid.message);return;}
+  project=clone(project);undoStack.push(finished.snapshot);if(undoStack.length>40)undoStack.shift();redoStack=[];
+  if(selectedModule&&!project.modules.some(module=>module.id===selectedModule))selectedModule=project.tools.find(tool=>tool.id===finished.selectionToolId)?.moduleId||null;
+  persist();render();if(finished.merged)toast(tr('Moduly byly sloučeny.'));
 }
 // Unfinished edits are previews only. Losing capture/focus restores them without saving or adding history.
 function cancelEditGesture(e){

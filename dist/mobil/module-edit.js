@@ -2,6 +2,7 @@
 import {clone,uid,validateProject} from './model.js';
 import {bounds,validateLayout} from './geometry.js';
 import {moduleIntersects} from './module-footprint.js';
+import {mergeOverlappingModules} from './module-merge.js';
 import {i18nError,t} from './i18n.js';
 
 const EPS=.001;
@@ -39,7 +40,8 @@ export function moveModule(project,moduleId,{x,y}={}){
   unlocked(module,tools);
   const dx=left-module.x,dy=top-module.y;module.x=left;module.y=top;
   for(const tool of tools){tool.x+=dx;tool.y+=dy;}
-  return checked(next,module,tools);
+  const merged=mergeOverlappingModules(next,[moduleId]),survivor=merged.modules.find(item=>item.id===moduleId);
+  return checked(merged,survivor,merged.tools.filter(tool=>tool.moduleId===survivor.id));
 }
 
 /** Rotate the complete module by quarter turns, keeping its top-left and every local tool contour. */

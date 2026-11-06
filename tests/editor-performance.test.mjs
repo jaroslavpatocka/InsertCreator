@@ -44,10 +44,10 @@ test('2D wheel zoom and right-button pan preserve the existing model DOM and onl
   const zoomed=svg.getAttribute('viewBox');pointer('pointerdown',svg,400,250,{button:2,buttons:2});pointer('pointermove',svg,460,280,{button:-1,buttons:2});await settle();pointer('pointerup',svg,460,280,{button:2,buttons:0});assert.notEqual(svg.getAttribute('viewBox'),zoomed);assert.equal($('#board-svg'),svg);assert.equal($('#board-svg .tool-outline'),outline);assert.deepEqual(counts(),start);assert.deepEqual(state(),before);assert.ok($('#app [data-action="undo"]').disabled);
 });
 
-test('drag preview is immediate without polygon work, marks outer module collision and rejects it on release',async()=>{
+test('drag preview marks real pocket collision and rejects it on release after precise merge checks',async()=>{
   action('projects');click('[data-open="performance-drag"]');action('2d');await settle();click(moduleRect('first'));const before=state(),start=counts();
-  pointer('pointerdown',moduleRect('first'),20,20);pointer('pointermove',$('#board-svg'),146,20);assert.equal(Number(moduleRect('first').getAttribute('x')),126.9,'preview moves immediately to the snapped collision position');assert.equal(moduleRect('first').getAttribute('stroke'),'#cb7d60','outer collision is visible during the fast preview');assert.deepEqual(counts(),start);assert.deepEqual(state(),before,'preview is not persisted');
-  pointer('pointerup',$('#board-svg'),146,20);assert.deepEqual(state(),before,'release cannot commit overlapping modules');assert.equal(Number(moduleRect('first').getAttribute('x')),.9);assert.ok($('#app [data-action="undo"]').disabled);assert.match($('#toast').textContent,/jiný modul/);
+  pointer('pointerdown',moduleRect('first'),20,20);pointer('pointermove',$('#board-svg'),146,20);assert.equal(Number(moduleRect('first').getAttribute('x')),126.9,'preview follows the pointer at the snapped collision position');assert.equal(moduleRect('first').getAttribute('stroke'),'#cb7d60','invalid collision remains visible until release');assert.ok(operations.boolean>start.boolean||operations.offset>start.offset,'a proposed merge checks the actual pockets and walls');assert.deepEqual(state(),before,'preview is not persisted');
+  pointer('pointerup',$('#board-svg'),146,20);assert.deepEqual(state(),before,'release cannot commit colliding pockets');assert.equal(Number(moduleRect('first').getAttribute('x')),.9);assert.ok($('#app [data-action="undo"]').disabled);assert.match($('#toast').textContent,/Kapsy|překrý|dotýk/);
 });
 
 test('a valid drag remains responsive, then persists one reversible change with final geometry validation',()=>{

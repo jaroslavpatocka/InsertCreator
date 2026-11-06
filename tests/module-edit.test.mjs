@@ -37,9 +37,12 @@ test('whole-module quarter turns preserve its top-left, real local geometry, mem
 });
 
 test('module errors, collisions, invalid angles and locked members reject atomically',()=>{
-  for(const command of [project=>moveModule(project,'source',{x:420,y:0}),project=>moveModule(project,'source',{x:800,y:0}),project=>moveModule(project,'source',{x:NaN,y:0}),project=>rotateModule(project,'source',45)]){
+  for(const command of [project=>moveModule(project,'source',{x:800,y:0}),project=>moveModule(project,'source',{x:NaN,y:0}),project=>rotateModule(project,'source',45)]){
     const project=fixture(),before=clone(project);assert.throws(()=>command(project));immutable(project,before);
   }
+  const collision=fixture();collision.tools.push({...clone(collision.tools[0]),id:'blocker',name:'Blocker',moduleId:'filler',x:453,y:20,points:[{x:0,y:0},{x:20,y:0},{x:20,y:30},{x:0,y:30}],fingerGrips:[]});
+  valid(collision);const collisionBefore=clone(collision);
+  assert.throws(()=>moveModule(collision,'source',{x:420,y:0}),/překrývají|stěnu/);immutable(collision,collisionBefore);
   for(const lock of ['module','tool']){
     const project=fixture();if(lock==='module')project.modules[0].locked=true;else project.tools[0].locked=true;
     const before=clone(project);assert.throws(()=>moveModule(project,'source',{x:84,y:42}),/odemkněte/);assert.throws(()=>rotateModule(project,'source'),/odemkněte/);immutable(project,before);

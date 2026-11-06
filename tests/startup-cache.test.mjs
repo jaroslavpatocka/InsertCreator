@@ -90,7 +90,8 @@ test('worker cannot intercept the other application or a foreign origin',async()
 test('activation removes only obsolete caches belonging to this application',async()=>{
   const instance=worker();
   await instance.dispatch('app.js');
-  const current=instance.opened[0],old=mobile?current.replace(/v\d+-startup-cache$/,'old-release'):'insertcreator-v0-release';
+  const current=instance.opened[0],old=mobile?current.replace(/[^:]+$/,'old-release'):'insertcreator-v0-release';
+  assert.notEqual(old,current,'the obsolete fixture must use a distinct version in the same namespace');
   const foreign=mobile?'insertcreator-v999-desktop':'insertcreator-mobile:'+encodeURIComponent(origin+'/mobil/')+':old';
   instance.stores.set(old,new Map());instance.stores.set(foreign,new Map());instance.stores.set('unrelated-app',new Map());
   await instance.activate();

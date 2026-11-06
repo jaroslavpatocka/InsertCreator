@@ -6,6 +6,7 @@ import {setCoherence} from './tool-sets.js';
 import {i18nError,t} from './i18n.js';
 import {fmtLen} from './units.js';
 import {maxPocketDepth} from './print-material.js';
+import {mergeOverlappingModules} from './module-merge.js';
 
 const issueError=issue=>Object.assign(Error(issue.message),{i18n:issue.i18n});
 const issueKey=issue=>JSON.stringify([issue.type,[...issue.ids].sort(),issue.i18n?.cs||issue.message]);
@@ -44,8 +45,8 @@ function affected(next,ids,modules){return new Set([...ids,...modules,...next.to
 // Geometry edits must leave the edited group safe. Existing unrelated errors and unchanged depth issues stay editable.
 function checked(before,next,ids,modules,{geometry=false,depth=false}={}){
   validateProject(next);
-  const touched=affected(next,ids,modules),old=new Set(validateLayout(before).map(issueKey));
-  for(const issue of validateLayout(next)){
+  const touched=affected(next,ids,modules),old=new Set(validateLayout(before,{affectedIds:touched}).map(issueKey));
+  for(const issue of validateLayout(next,{affectedIds:touched})){
     if(!issue.ids.some(id=>touched.has(id)))continue;
     if((geometry&&issue.type!=='depth')||(depth&&issue.type==='depth'&&issue.ids.some(id=>ids.has(id)))||!old.has(issueKey(issue)))throw issueError(issue);
   }
@@ -105,7 +106,9 @@ export function bulkMove(project,toolIds,{dx,dy}={}){
   if(tools.some(t=>!t.moduleId||!next.modules.some(m=>m.id===t.moduleId)))throw i18nError('Nejprve umístěte alespoň jeden modul.');
   for(const module of next.modules)if(modules.has(module.id)){module.x+=x;module.y+=y;}
   for(const tool of next.tools)if(modules.has(tool.moduleId)){tool.x+=x;tool.y+=y;}
-  return checked(project,next,ids,modules,{geometry:true});
+  const merged=mergeOverlappingModules(next,[...modules]);
+  const affectedModules=new Set([...modules,...merged.tools.filter(tool=>ids.has(tool.id)).map(tool=>tool.moduleId)]);
+  return checked(project,merged,ids,affectedModules,{geometry:true});
 }
 
 /** Move only the selected pockets; every module and unselected sibling stays fixed. */

@@ -1,11 +1,11 @@
 {
   "version": 1,
-  "sourceCommit": "c26127830d1a46ae204d0d015cf30dd3b941571a",
+  "sourceCommit": "d425d5cb32cafbb6b6e20c867c8eb1f7f5b9fd3f",
   "files": [
     {
       "path": "app.js",
-      "sha256": "8A8938BCDABF56DE3ACEB74FE9DD4BCEA4D9DA025D42949BD94900824E07FB0B",
-      "bytes": 227903
+      "sha256": "EF195A7622CB432BFD2442955D6532A4669CE66D42790DB21E3B389B1B1EF2BC",
+      "bytes": 230856
     },
     {
       "path": "auto-trace.js",
@@ -14,8 +14,8 @@
     },
     {
       "path": "bulk-edit.js",
-      "sha256": "DAB67BA6A7ECCDBCD01DB7362FEFAB40DE6B98FD7047374ABD170F96DEB1F5FB",
-      "bytes": 11594
+      "sha256": "B9CAC044E764247D5458308015D757C86112ABD76A3EC5767C79ADC578DD5B06",
+      "bytes": 11885
     },
     {
       "path": "capture-context-menu.js",
@@ -339,8 +339,8 @@
     },
     {
       "path": "geometry.js",
-      "sha256": "226D6F74A2AFA0E92F910AC4B4044743D3A4141E93E090759DA72122B2D6BBBF",
-      "bytes": 36660
+      "sha256": "E9A59D8AE14370C8F2B311F656C4E6BD7A0355AE93FC9B8B7D865BC016DCD069",
+      "bytes": 37817
     },
     {
       "path": "gridfinity-baseplate.js",
@@ -409,8 +409,8 @@
     },
     {
       "path": "locales/en-app.js",
-      "sha256": "C7A92A67366B554784CF6450F41B0C4D3393EAECDB55A92BEE53AB6AC0DF9263",
-      "bytes": 89383
+      "sha256": "BBFEEA0A45A67997F43C5167EB3CCABF9236CA38C484C8A09DC78D472F0F7B56",
+      "bytes": 90013
     },
     {
       "path": "locales/en-capture.js",
@@ -509,8 +509,8 @@
     },
     {
       "path": "module-edit.js",
-      "sha256": "2DE6E2AB4AF44BDDBA5C96E51189FA867564CE8785C4F224FE0960C9FF546F2D",
-      "bytes": 5676
+      "sha256": "E8ECAA0E31760B2101B8A8143BA148F87FD593C2E73901B6DD41C626DF710CA3",
+      "bytes": 5900
     },
     {
       "path": "module-footprint.js",
@@ -526,6 +526,11 @@
       "path": "module-margin.js",
       "sha256": "5E377938586A7CA3386429E14DE08F2F0F7FAB83E42EB55225B418554661E180",
       "bytes": 4155
+    },
+    {
+      "path": "module-merge.js",
+      "sha256": "257B24FDE70F5ABB4774C296617C434C58333D0EC30BFE1F6947739C727DF819",
+      "bytes": 7047
     },
     {
       "path": "neural-core.js",
@@ -689,8 +694,8 @@
     },
     {
       "path": "sw.js",
-      "sha256": "F72011EF82BBD691E416D1C1239524E07D2871124E55DAE7583AF2DB427F5949",
-      "bytes": 4560
+      "sha256": "D5C39A9471930C411669D4375A9C5A8CAA93AF465C081C600C12DC1AD79CB8E4",
+      "bytes": 4579
     },
     {
       "path": "three-mf.js",

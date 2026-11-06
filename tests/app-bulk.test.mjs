@@ -72,7 +72,7 @@ test('partial shared selection moves its whole module, invalid movement is atomi
   assert.equal($('.modal'),null);const moved=state();assert.equal(moved.modules.find(m=>m.id==='mc').y,252);
   for(const id of ['three','four'])assert.equal(moved.tools.find(t=>t.id===id).y,before.tools.find(t=>t.id===id).y+84);
   assert.deepEqual(moved.tools.filter(t=>['one','two'].includes(t.id)),before.tools.filter(t=>['one','two'].includes(t.id)));assert.deepEqual(validateLayout(moved),[]);sameAfterUndo(before);
-  select('three');action('bulk-move');change('[data-field="bulkDx"]',336);change('[data-field="bulkDy"]',0);click('[data-apply-bulk-move]');
+  select('three');action('bulk-move');change('[data-field="bulkDx"]',168);change('[data-field="bulkDy"]',-168);click('[data-apply-bulk-move]');
   assert.ok($('.modal'),'failed operation stays reviewable');assert.deepEqual(state(),before);assert.match($('#toast').textContent,/překrýv/);click('[data-modal-close]');
   assert.equal($('#app [data-action="undo"]').disabled,true,'failed movement adds no undo entry');
 });
@@ -126,7 +126,7 @@ test('dragging one selected module moves the full bulk selection and shared sibl
 
 test('bulk drag collision or outside target rolls every selected module back atomically',()=>{
   const before=state();select('one','three');
-  for(const delta of [{x:346,y:10},{x:10,y:-74}]){
+  for(const delta of [{x:178,y:10},{x:10,y:-74}]){
     startDrag('mc');pointer('pointermove',board(),{x:10,y:52});pointer('pointermove',board(),delta);pointer('pointerup',board(),delta);
     assert.deepEqual(state(),before);assert.deepEqual(checked(),['one','three']);assert.equal($('#app [data-action="undo"]').disabled,true,'failed drag leaves no history');
     assert.match($('#toast').textContent,/překrýv|pozice Y|přesahuje/);

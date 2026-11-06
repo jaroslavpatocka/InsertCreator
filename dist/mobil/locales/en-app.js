@@ -1,6 +1,11 @@
 // English translations for the app area. Key = exact Czech source text passed to t()/plural()/i18nError().
 // Keep {placeholders} identical in both languages.
 export default {
+  "Spojení modulů by změnilo nastavené uspořádání sady „{name}“.":"Merging the modules would change the configured layout of set “{name}”.",
+  "Sloučený modul je příliš velký pro bezpečné zpracování rastru.":"The merged module is too large to process its grid safely.",
+  "Moduly lze bezpečně sloučit jen v rastru šuplíku.":"These modules can only be safely merged on the drawer grid.",
+  "Překrývající se moduly nelze sloučit, protože je modul nebo nástroj zamčený.":"Overlapping modules cannot be merged because a module or tool is locked.",
+  "Moduly byly sloučeny.":"Modules merged.",
   "Pro tuto sestavu nevznikla žádná puzzle spojka. Zkontrolujte společné hrany, místo kolem kapes a tiskovou podložku.":"No puzzle joints were generated for this assembly. Check shared edges, space around pockets, and the print bed.",
   "Průhledové zvýraznění spojek ve vrstvě dna":"X-ray highlights of joints in the base layer",
   "Náhled nelze zobrazit.":"Preview unavailable.",

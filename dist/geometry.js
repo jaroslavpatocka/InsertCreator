@@ -290,20 +290,33 @@ function packModules(project,{preserveLocked=true,moduleShape}={}) {
   return {tools,modules,unplaced};
 }
 
-export function validateLayout(project) {
+/** Optional affectedIds scopes diagnostics and pair generation, not collision partners.
+ * A module includes its tools; unplaced/unaffected pockets still participate in cross collisions. */
+export function validateLayout(project,{affectedIds}={}) {
   const issues=[],modules=project.modules||[],tools=project.tools||[],height=n(project.insertHeight,20),base=n(project.base,2.4),wall=n(project.wall,2.4);
+  const scoped=affectedIds!=null,affected=scoped?new Set(affectedIds):null;
+  if(scoped)for(const tool of tools)if(affected.has(tool.moduleId))affected.add(tool.id);
+  const moduleIndices=scoped?modules.flatMap((module,index)=>affected.has(module.id)?[index]:[]):[];
+  const toolIndices=scoped?tools.flatMap((tool,index)=>affected.has(tool.id)?[index]:[]):[];
   if(!(n(project.width)>0&&n(project.height)>0&&height>base&&base>0&&wall>0))issues.push(issue('depth',[],'Zkontrolujte rozměry šuplíku, výšku inzertu a tloušťku dna i stěny.'));
   for(let i=0;i<modules.length;i++){
-    const m=modules[i];
-    try{validateModuleFootprint(m,n(project.grid,42));}catch(error){issues.push({type:'outside',ids:[m.id],message:error.message,...(error.i18n?{i18n:error.i18n}:{})});continue;}
-    if(m.width<=0||m.height<=0||m.x<-.001||m.y<-.001||m.x+m.width>n(project.width)+.001||m.y+m.height>n(project.height)+.001)issues.push(issue('outside',[m.id],'Modul „{name}“ přesahuje šuplík.',{name:m.name||m.id}));
-    for(let j=i+1;j<modules.length;j++){let overlaps=false;try{overlaps=intersectsModules(m,modules[j],n(project.grid,42));}catch{continue;}if(overlaps)issues.push(issue('overlap',[m.id,modules[j].id],'Moduly „{a}“ a „{b}“ se překrývají.',{a:m.name||m.id,b:modules[j].name||modules[j].id}));}
+    const m=modules[i],self=!scoped||affected.has(m.id);
+    if(!self&&!(i<moduleIndices.at(-1)))continue;
+    try{validateModuleFootprint(m,n(project.grid,42));}catch(error){if(self)issues.push({type:'outside',ids:[m.id],message:error.message,...(error.i18n?{i18n:error.i18n}:{})});continue;}
+    if(self&&(m.width<=0||m.height<=0||m.x<-.001||m.y<-.001||m.x+m.width>n(project.width)+.001||m.y+m.height>n(project.height)+.001))issues.push(issue('outside',[m.id],'Modul „{name}“ přesahuje šuplík.',{name:m.name||m.id}));
+    for(let cursor=self?i+1:0,length=self?modules.length:moduleIndices.length;cursor<length;cursor++){
+      const j=self?cursor:moduleIndices[cursor];if(j<=i)continue;
+      let overlaps=false;try{overlaps=intersectsModules(m,modules[j],n(project.grid,42));}catch{continue;}if(overlaps)issues.push(issue('overlap',[m.id,modules[j].id],'Moduly „{a}“ a „{b}“ se překrývají.',{a:m.name||m.id,b:modules[j].name||modules[j].id}));
+    }
   }
   const polygons=new Map(),limits=tools.some(hasPocketMagnets)?pocketHeightLimits(project):null;
   for(const t of tools){
+    if(scoped&&!toolIndices.length)break;
+    const self=!scoped||affected.has(t.id);
     let poly=[],pocketError=null;
-    try{poly=pocketOutline(t,project);}catch(error){pocketError=error;issues.push(issue('overlap',[t.id],t.fingerGrips?.length?'Výřezy pro prsty nástroje „{name}“ nejsou platné: {error}':'Kontura „{name}“ není platná: {error}',{name:t.name,error:error.message}));}
-    const m=modules.find(m=>m.id===t.moduleId);polygons.set(t.id,poly);
+    try{poly=pocketOutline(t,project);}catch(error){pocketError=error;if(self)issues.push(issue('overlap',[t.id],t.fingerGrips?.length?'Výřezy pro prsty nástroje „{name}“ nejsou platné: {error}':'Kontura „{name}“ není platná: {error}',{name:t.name,error:error.message}));}
+    polygons.set(t.id,poly);if(!self)continue;
+    const m=modules.find(m=>m.id===t.moduleId);
     const raw=transformedPoints(t);
     if(!pocketError&&(poly.length<3||Math.abs(area(poly))<EPS||selfIntersects(raw)||selfIntersects(poly)))issues.push(issue('overlap',[t.id],'Kontura „{name}“ se kříží nebo není platná. Upravte konturu či zmenšete vůli.',{name:t.name}));
     if(!m)issues.push(issue('outside',[t.id],'Nástroj „{name}“ zatím nemá umístěný modul.',{name:t.name}));
@@ -316,10 +329,15 @@ export function validateLayout(project) {
       if(problem==='spacing')issues.push(issue('overlap',[t.id],'Magnety v kapse „{name}“ jsou příliš blízko sebe.',{name:t.name}));
     }
   }
-  for(let i=0;i<tools.length;i++)for(let j=i+1;j<tools.length;j++){
+  for(let i=0;i<tools.length;i++){
+    const self=!scoped||affected.has(tools[i].id);
+    if(!self&&!(i<toolIndices.at(-1)))continue;
+    for(let cursor=self?i+1:0,length=self?tools.length:toolIndices.length;cursor<length;cursor++){
+    const j=self?cursor:toolIndices[cursor];if(j<=i)continue;
     const a=tools[i],b=tools[j],pa=polygons.get(a.id),pb=polygons.get(b.id);
     if(polygonsOverlap(pa,pb))issues.push(issue('overlap',[a.id,b.id],'Kapsy „{a}“ a „{b}“ se překrývají nebo dotýkají.',{a:a.name,b:b.name}));
     else if(a.moduleId&&a.moduleId===b.moduleId&&polygonsTooClose(pa,pb,wall-.001))issues.push(issue('overlap',[a.id,b.id],'Mezi kapsami „{a}“ a „{b}“ není dost místa na stěnu {wall}.',{a:a.name,b:b.name,wall:fmtLen(wall)}));
+    }
   }
   return issues;
 }
