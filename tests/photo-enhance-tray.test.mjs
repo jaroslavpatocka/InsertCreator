@@ -1,9 +1,15 @@
 // Known synthetic tool silhouettes on coloured cut foam; no product-photo pixels.
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {createCanvas} from '@napi-rs/canvas';
+import {createCanvas,loadImage} from '@napi-rs/canvas';
+import {fileURLToPath} from 'node:url';
 import {recognizeTools} from '../dist/recognize.js';
 
+// Snapshot the original Windows canvas labels (bold 10px sans-serif) instead
+// of relying on a different system font on Linux. The 40x16 opaque cells retain
+// every original label/background pixel; three cells read 12mm, 13mm and 14mm.
+// Each cell was verified byte-for-byte against the original direct text render.
+const printedLabels=await loadImage(fileURLToPath(new URL('./fixtures/tray-labels.png',import.meta.url)));
 const WIDTH=600,HEIGHT=420;
 function trayFixture({foamColor='#008fca',gripColor='#d65d35',recesses=true,colouredShafts=false,smallHeads=false,smallBars=false,edgeTool=false,insetTools=false}={}){
   const photo=createCanvas(WIDTH,HEIGHT),ctx=photo.getContext('2d');
@@ -33,7 +39,7 @@ function trayFixture({foamColor='#008fca',gripColor='#d65d35',recesses=true,colo
     if(colouredShafts){ctx.fillStyle=gripColor;ctx.fillRect(170,y-11,55,22);}
     record(`socket ${i+1}`,shape);
     // Small, separate printed size glyphs, not raised objects or loose tools.
-    ctx.fillStyle='#e9ecee';ctx.font='bold 10px sans-serif';ctx.fillText(`${12+i}mm`,245,y+3);
+    ctx.drawImage(printedLabels,0,i*16,40,16,245,y-9,40,16);
   }
   // A real coloured grip has its own clear outline and joins a neutral metal head.
   const grip=target=>{target.fillRect(355,312,26,36);target.beginPath();target.roundRect(378,317,103,26,6);target.fill();};

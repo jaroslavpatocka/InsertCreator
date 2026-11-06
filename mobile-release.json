@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "sourceCommit": "437438a614ea70fce8dbef72d99176a54336ac86",
+  "sourceCommit": "569a52d6060d943d34eab86b35d00db4a1fdd717",
   "files": [
     {
       "path": "app.js",
@@ -283,6 +283,16 @@
       "bytes": 2027
     },
     {
+      "path": "favicon-96.png",
+      "sha256": "E9F203F9FCD694494CB210B9CFDEB412155389B39B29D5EA436CE92821754798",
+      "bytes": 1816
+    },
+    {
+      "path": "favicon.ico",
+      "sha256": "D8A32A733FD9905CA4DB471AB7DBB14AD1EEA754219958F09BF83688D715AA07",
+      "bytes": 4106
+    },
+    {
       "path": "finger-grip.js",
       "sha256": "A27184E05BBF0EB3C70C95A2D313C563D5355E166F00723F35A93E2F4AF6DC8E",
       "bytes": 11257
@@ -354,8 +364,8 @@
     },
     {
       "path": "index.html",
-      "sha256": "BBBBC1BFC8EECB62C8B811CA93994CA5CED7AA965441F6D7977ED9444E768EB6",
-      "bytes": 2735
+      "sha256": "910137C055042E9023516E74193DC37C165861A1C9F162D9C85C990DF1A54664",
+      "bytes": 7704
     },
     {
       "path": "joint-fit.js",
@@ -608,6 +618,11 @@
       "bytes": 4571
     },
     {
+      "path": "seo.css",
+      "sha256": "F48604165292C022508972349E0728FBB9E675CBF03009269443D907FB66408D",
+      "bytes": 885
+    },
+    {
       "path": "set-layout.js",
       "sha256": "63AE49E3CD58235095E3DC367A56A541EE50FE4ACE7D787100AC01E2C8FB6CA4",
       "bytes": 19285
@@ -649,8 +664,8 @@
     },
     {
       "path": "sw.js",
-      "sha256": "4E08D657381C35DEF546A517298C871232081586D5CCB7843091512DE5456FAA",
-      "bytes": 4038
+      "sha256": "8B7E23BC280E82098BF9423472BE01FBF9D0F98B61AE0276A2A66A8F1FA9F3F6",
+      "bytes": 4071
     },
     {
       "path": "three-mf.js",

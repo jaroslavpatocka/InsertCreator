@@ -16,10 +16,14 @@ function start({saved,shell=true}={}){
   return {window,$,gaScript:()=>[...window.document.querySelectorAll('script')].find(script=>/googletagmanager/.test(script.src))};
 }
 
-test('the page itself contains no analytics and no inline script',()=>{
+test('the page contains no analytics or executable inline scripts',()=>{
   const html=read('index.html');
   assert.doesNotMatch(html,/googletagmanager|gtag|G-6CMM/);
-  assert.doesNotMatch(html,/<script(?![^>]*\bsrc=)[^>]*>/);
+  const page=new Window();page.document.write(html);
+  for(const script of page.document.querySelectorAll('script:not([src])')){
+    assert.equal(script.type,'application/ld+json','only inert structured data may be inline');
+    assert.doesNotThrow(()=>JSON.parse(script.textContent));
+  }
   assert.match(html,/<script src="\.\/consent\.js"/);
 });
 
