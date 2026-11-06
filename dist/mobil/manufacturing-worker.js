@@ -1,12 +1,11 @@
 import {autoArrange,exportFitSTL,exportSVG,exportDXF,printStats,validateLayout,zipFiles} from './geometry.js';
-import {planPrintBatch,preparePrintBatch} from './print-batch.js';
+import {appendGridfinityExport,planPrintBatch,prepareBaseplateFiles,preparePrintBatch} from './print-batch.js';
 import {prepareJointFitTest} from './joint-fit.js';
 import {planSizeLabels} from './size-labels.js';
 import {printPreview} from './preview3d.js';
 import {mergePrintStats} from './preview-mesh.js';
 import {validatePrintBed} from './print-geometry.js';
 import {exportFitPDF} from './fit-sheet.js';
-import {planBaseplateTiles,exportBaseplateSTL} from './gridfinity-baseplate.js';
 import {validateProject} from './model.js';
 import {setLang,errorText,t} from './i18n.js';
 import {setAppUnit,setProjectUnit} from './units.js';
@@ -51,11 +50,13 @@ export async function executeManufacturingTask(operation,input={},options={},con
   if(operation==='preview')return printPreview(input,options.selected??null,options.selectedModule??null,options.camera||{},options.viewport||{width:1000,height:600},options.selectedToolIds||[]);
   if(operation==='joint-fit')return packageResult(await prepareJointFitTest(input,{signal,onProgress:progress}),options,progress);
   if(operation==='export'){
-    const result=await preparePrintBatch(input,{moduleIds:options.moduleIds,signal,onProgress:progress});
+    let result=await preparePrintBatch(input,{moduleIds:options.moduleIds,signal,onProgress:progress});
+    if(input.bottomMode==='grid')result=await appendGridfinityExport(result,input,{signal,onProgress:progress});
     if(!options.bundle)return packageResult(result,options,progress);
     const colorNote=result.manifest?.colors?'\n\n'+t('Vícebarevný tisk: otevřete soubory 3MF a nastavte filamenty podle čísel:')+'\n'+result.manifest.colors.filaments.map((color,index)=>`${index+1}: ${color} (${Object.entries({body:'Tělo',floor:'Dno kapes',text:'Text'}).filter(([zone])=>result.manifest.colors.zones[zone]===index+1).map(([,label])=>t(label)).join(', ')})`).join('\n'):'';
+    const gridfinity=result.manifest?.gridfinity,gridNote=gridfinity?'\n\n'+t('Gridfinity: složka gridfinity obsahuje základnu podle rozměru šuplíku včetně dilatačního kusu a zátku 1×1. Zátku vytiskněte {n}×, tolik polí zůstalo volných.',{n:gridfinity.plug.freeCells}):'';
     const jointNote=result.joints&&options.jointNote?'\n\n'+options.jointNote:'',unjoined=result.manifest?.joints?.unjoined?.length||0;
-    const readme=(options.readme??'InsertCreator\n\n'+t('Tiskové díly sestavte podle assembly.json. Souřadnice jsou v mm. Dělení je pouze pro tisk; rozvržení šuplíku zůstává původní.'))+colorNote+jointNote+(unjoined?'\n'+t('Na {n} vnitřních hranách mezi díly není bezpečné místo pro spojku. Podrobnosti jsou v assembly.json.',{n:unjoined}):'');
+    const readme=(options.readme??'InsertCreator\n\n'+t('Tiskové díly sestavte podle assembly.json. Souřadnice jsou v mm. Dělení je pouze pro tisk; rozvržení šuplíku zůstává původní.'))+gridNote+colorNote+jointNote+(unjoined?'\n'+t('Na {n} vnitřních hranách mezi díly není bezpečné místo pro spojku. Podrobnosti jsou v assembly.json.',{n:unjoined}):'');
     return packageResult(result,{...options,package:true,extraFiles:[...(options.extraFiles||[]),{name:'projekt.json',data:JSON.stringify({schemaVersion:1,app:'InsertCreator',project:input},null,2)},{name:'README.txt',data:readme}]},progress);
   }
   if(operation==='connectors'){
@@ -65,14 +66,7 @@ export async function executeManufacturingTask(operation,input={},options={},con
     return{project:{...input,connectors:enabled,...(fits?{tools:on.tools,modules:on.modules}:{})},fits};
   }
   if(operation==='baseplate'){
-    const plan=planBaseplateTiles(input),files=[];let bytes=0;
-    for(const [index,tile] of plan.tiles.entries()){
-      progress({stage:'cutting',progress:index/plan.tiles.length,completed:index,total:plan.tiles.length});await pause();aborted(signal);
-      const data=exportBaseplateSTL(input,{tile});bytes+=data.byteLength;
-      if(bytes>MAX_BYTES)throw new Error('Tiskové díly přesahují limit 128 MB. Vyberte méně modulů a export zopakujte.');
-      files.push({name:`gridfinity-${String(index+1).padStart(3,'0')}-${tile.columns}x${tile.rows}.stl`,data});
-    }
-    const manifest={schemaVersion:2,units:'mm',pitch:42,layout:plan.layout,layoutSize:{width:input.width,height:input.height},coordinates:'physical-world',layoutAxes:'X right, Y down',assemblyAxes:'X right, Y up, Z up',rotateForPrinting:plan.rotated,tiles:plan.tiles.map((tile,i)=>({...tile,file:files[i].name,xMm:tile.x*42,yMm:tile.y*42,assemblyTransform:[1,0,0,tile.x*42,0,1,0,input.height-(tile.y+tile.rows)*42,0,0,1,0,0,0,0,1]}))};
+    const {plan,files,manifest}=await prepareBaseplateFiles(input,{signal,onProgress:progress});
     files.push({name:'assembly.json',data:JSON.stringify(manifest,null,2)});progress({stage:'complete',progress:1});return packageResult({files,manifest,plan},options,progress);
   }
   const source=validateProject(selected(input,options.moduleIds));

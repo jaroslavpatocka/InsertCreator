@@ -4,6 +4,7 @@ import {spawnSync} from 'node:child_process';
 import {createHash} from 'node:crypto';
 import {fileURLToPath,pathToFileURL} from 'node:url';
 import vm from 'node:vm';
+import {validateSEO} from './scripts/check-seo.mjs';
 
 const fail=message=>{throw Error(message);};
 const within=(root,file)=>{const relative=path.relative(root,file);return relative===''||(!path.isAbsolute(relative)&&relative!=='..'&&!relative.startsWith('..'+path.sep));};
@@ -120,5 +121,5 @@ export async function runChecks(projectRoot=process.cwd()){
 }
 const entry=process.argv[1]?path.resolve(process.argv[1]):'',self=fileURLToPath(import.meta.url);
 if((process.platform==='win32'?entry.toLowerCase()===self.toLowerCase():entry===self)){
-  try{const result=await runChecks();console.log(`Ověřeno ${result.scripts} skriptů, lokální importy obou aplikací, ${result.offlineAssets} offline odkazů a ${result.mobileFiles} mobilních souborů podle SHA-256.`);}catch(error){console.error(error.message);process.exitCode=1;}
+  try{const result=await runChecks();const seo=validateSEO();console.log(`Ověřeno ${result.scripts} skriptů, lokální importy obou aplikací, ${result.offlineAssets} offline odkazů a ${result.mobileFiles} mobilních souborů podle SHA-256. SEO: ${seo.canonicalPages} kanonických stránek.`);}catch(error){console.error(error.message);process.exitCode=1;}
 }

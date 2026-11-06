@@ -9,6 +9,8 @@ import earcut from './vendor/earcut.js';
 import {layoutMeshToPhysical} from './manufacturing-coordinates.js';
 import {moduleParts,moduleCutSegments,previewBatch,usesPrintParts} from './preview-mesh.js';
 import {jointPreviewMarkup,jointPreviewLegend,moduleJointProfiles,NO_PREVIEW_JOINTS} from './preview-joints.js';
+import {wirePath,cutPreviewMarkup,selectionPreviewMarkup} from './preview-overlays.js';
+export {wirePath,cutPreviewMarkup,selectionPreviewMarkup} from './preview-overlays.js';
 
 const TAU=Math.PI*2,PITCH_LIMIT=Math.PI/2-.01;
 const shade=(hex,light)=>{const factor=light/62,[r,g,b]=[1,3,5].map(i=>Math.min(255,Math.round(parseInt(hex.slice(i,i+2),16)*factor)));return`rgb(${r} ${g} ${b})`;};
@@ -155,7 +157,7 @@ function toolReference(tool,maxPoints){
 function baseplateReference(layout){
   const rounded=(x,y,w,h,r,z)=>[[x+w-r,y,z],[x+w,y+r,z],[x+w,y+h-r,z],[x+w-r,y+h,z],[x+r,y+h,z],[x,y+h-r,z],[x,y+r,z],[x+r,y,z]];
   const bottom=-layout.footOffsetZ,top=layout.heightMm-layout.footOffsetZ;
-  const outerBottom=rounded(0,0,layout.width,layout.height,4,bottom),outerTop=rounded(0,0,layout.width,layout.height,4,top),sockets=[];
+  const outerWidth=layout.width+layout.expansion.right,outerHeight=layout.height+layout.expansion.bottom,outerBottom=rounded(0,0,outerWidth,outerHeight,4,bottom),outerTop=rounded(0,0,outerWidth,outerHeight,4,top),sockets=[];
   const [,,bottomRadius]=BASEPLATE_SOCKET_LEVELS[0],bottomSize=BASEPLATE_SOCKET_LEVELS[0][1],topSize=BASEPLATE_SOCKET_LEVELS.at(-1)[1],topRadius=BASEPLATE_SOCKET_LEVELS.at(-1)[2];
   for(let y=0;y<layout.rows;y++)for(let x=0;x<layout.columns;x++)sockets.push({bottom:rounded(x*42+(42-bottomSize)/2,y*42+(42-bottomSize)/2,bottomSize,bottomSize,bottomRadius,bottom),top:rounded(x*42+(42-topSize)/2,y*42+(42-topSize)/2,topSize,topSize,topRadius,top)});
   if(layout.columns*layout.rows>64){
@@ -210,10 +212,10 @@ export function sceneNotes(project,{labels=true}={}){
   return warnings;
 }
 export function baseplateEntry(project){
-  const {height}=drawerSize(project),physical=([x,y,z])=>[x,height-y,z],layout=gridfinityLayout(project),entry={id:'__gridfinity-baseplate',name:t('Podkladová mřížka'),baseplate:true,faces:[],wire:null,source:{x:0,y:0,width:layout.width,height:layout.height}};
+  const {height}=drawerSize(project),physical=([x,y,z])=>[x,height-y,z],layout=gridfinityLayout(project),entry={id:'__gridfinity-baseplate',name:t('Podkladová mřížka'),baseplate:true,faces:[],wire:null,source:{x:0,y:0,width:layout.width+layout.expansion.right,height:layout.height+layout.expansion.bottom}};
   let warning=null;
   if(layout.columns*layout.rows>GRIDFINITY_BASEPLATE.maxCells){
-    entry.wire=boxCorners(0,0,layout.width,layout.height,-layout.footOffsetZ,layout.heightMm-layout.footOffsetZ).map(physical);
+    entry.wire=boxCorners(0,0,layout.width+layout.expansion.right,layout.height+layout.expansion.bottom,-layout.footOffsetZ,layout.heightMm-layout.footOffsetZ).map(physical);
     warning=t('Podkladová mřížka má více než 400 polí. Náhled ukazuje její obrys; STL exportujte po dílech.');
   }else{
     const reference=baseplateReference(layout);
@@ -331,23 +333,6 @@ export function previewFrame(fitSize,camera,viewport){
   const towards=[-sy*cp,-cy*cp,sp],right=[cy,-sy,0],down=[-sy*sp,-cy*sp,-cp];
   const project=center=>point=>{const p=point.map((value,c)=>value-center[c]);return{x:dot3(p,right),y:dot3(p,down)};};
   return{state,size,width,height,viewBounds,towards,right,down,project,viewBox:`${viewBounds.x} ${viewBounds.y} ${width} ${height}`};
-}
-export function wirePath(module,projectPoint){
-  const edges=module.wireEdges||[[0,1],[1,2],[2,3],[3,0],[4,5],[5,6],[6,7],[7,4],[0,4],[1,5],[2,6],[3,7]];
-  return edges.map(([a,b])=>{const p=projectPoint(module.wire[a]),q=projectPoint(module.wire[b]);return`M${p.x.toFixed(3)} ${p.y.toFixed(3)}L${q.x.toFixed(3)} ${q.y.toFixed(3)}`;}).join('');
-}
-/** The same projected cut overlay is used over the WebGL canvas and SVG mesh. */
-export function cutPreviewMarkup(cuts,frame,center){
-  if(!cuts?.length)return'';
-  const projectPoint=frame.project(center),paths=[];
-  for(const cut of cuts){
-    if(dot3(cut.normal,frame.towards)<=.00001)continue;
-    const [a,b]=cut.points.map(projectPoint);paths.push(`M${a.x.toFixed(3)} ${a.y.toFixed(3)}L${b.x.toFixed(3)} ${b.y.toFixed(3)}`);
-  }
-  return paths.length?`<path data-preview-cuts="true" d="${paths.join('')}" fill="none" stroke="#c47724" stroke-width="1.6" stroke-dasharray="6 3" vector-effect="non-scaling-stroke" pointer-events="none"/>`:'';
-}
-export function selectionPreviewMarkup(wire,frame,center){
-  return `<path data-preview-selection="true" d="${wirePath(wire,frame.project(center))}" fill="none" stroke="#c89136" stroke-width="1.1" vector-effect="non-scaling-stroke" pointer-events="none"/>`;
 }
 export function previewHud(project,frame,warnings){
   const font=frame.height/70,x=frame.state.panX,y=frame.state.panY+frame.height/2-font;

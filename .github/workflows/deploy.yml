@@ -6,6 +6,12 @@ on:
   pull_request:
     branches: [main]
   workflow_dispatch:
+    inputs:
+      publish:
+        description: 'Publish the tested current main revision to insertcreator.com'
+        type: boolean
+        required: false
+        default: false
 
 permissions:
   contents: read
@@ -48,7 +54,7 @@ jobs:
     if: >-
       github.ref == 'refs/heads/main' &&
       github.event_name != 'pull_request' &&
-      vars.DEPLOY_ENABLED == 'true'
+      (vars.DEPLOY_ENABLED == 'true' || (github.event_name == 'workflow_dispatch' && inputs.publish))
     runs-on: ubuntu-latest
     environment: ftp
     timeout-minutes: 20

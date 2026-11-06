@@ -22,7 +22,8 @@ import {functionalToolPocket,toolPocketPreview} from './tool-functional-pocket.j
 import {openContextMenu,closeContextMenu} from './context-menu.js';
 import {createEditorGeometryCache} from './editor-cache.js';
 import {moduleOutline,moduleArea,moduleIntersects,modulePadding} from './module-footprint.js';
-import {gridfinityLayout,planBaseplateTiles} from './gridfinity-baseplate.js';
+import {gridfinityFreeCells,gridfinityLayout,planBaseplateTiles} from './gridfinity-baseplate.js';
+import {reshapeModules} from './space-layout.js';
 import {sizeText} from './tool-size.js';
 import {SIZE_LABEL_REASONS} from './size-labels.js';
 import * as bulk from './bulk-edit.js';
@@ -213,7 +214,7 @@ async function runSmartArrange(mode,merge){
     const metric=p=>({...layoutMetric(p),setScore:mode==='sets'?setCoherence(p,definitions).score:0});
     // Run the two existing operations in order, without committing their intermediate state.
     let baseline=before;
-    try{baseline=checkedSmartResult(before,autoArrange(before),'compact');}catch{}
+    try{baseline=checkedSmartResult(before,autoArrange(before,smartShape==='rectangular'?{moduleShape:'rectangular'}:undefined),'compact');}catch{}
     let result,optimizerError=null;
     try{result=await runSmartLayout(baseline,{mode,moduleShape:smartShape,merge,signal:controller.signal,onProgress:event=>{
       if(smartLayoutRun!==job||controller.signal.aborted||!modal.el.isConnected)return;
@@ -317,7 +318,7 @@ function toolSetResultSummary(definitions,before,next,result){
 const toolUnit=t=>unitFor(t?.unit),moduleUnit=m=>unitFor(m?.unit);
 const unitBadge=u=>u?`<span class="unit-badge" title="${tr('Vlastní jednotky: {unit}',{unit:u})}">${u}</span>`:'';
 function unitSelect(label,value,scope){return `<label class="field unit-field"><span>${label}</span><select data-field="unit" data-scope="${scope}" aria-label="${label}"><option value="" ${value?'':'selected'}>${tr('Podle šuplíku ({unit})',{unit:unit()})}</option>${UNITS.map(u=>`<option value="${u}" ${value===u?'selected':''}>${u}</option>`).join('')}</select></label>`;}
-function arrange(message=true){const result=autoArrange(project);project.tools=result.tools;project.modules=result.modules;if(message)toast(result.unplaced.length?plural(result.unplaced.length,['{n} nástroj se nevešel. Zkontrolujte rozměry šuplíku nebo odemkněte moduly.','{n} nástroje se nevešly. Zkontrolujte rozměry šuplíku nebo odemkněte moduly.','{n} nástrojů se nevešlo. Zkontrolujte rozměry šuplíku nebo odemkněte moduly.']):tr('Rozložení hotové. Zamčené moduly zůstaly na svém místě.'));return result;}
+function arrange(message=true){const result=autoArrange(project,{moduleShape:smartShape});project.tools=result.tools;project.modules=result.modules;if(message)toast(result.unplaced.length?plural(result.unplaced.length,['{n} nástroj se nevešel. Zkontrolujte rozměry šuplíku nebo odemkněte moduly.','{n} nástroje se nevešly. Zkontrolujte rozměry šuplíku nebo odemkněte moduly.','{n} nástrojů se nevešlo. Zkontrolujte rozměry šuplíku nebo odemkněte moduly.']):tr('Rozložení hotové. Zamčené moduly zůstaly na svém místě.'));return result;}
 function isToolSelected(id){return bulkSelection.size?bulkSelection.has(id):selected===id;}
 function thumb(t){const b=bounds({...t,x:0,y:0,rotation:0});return `<svg viewBox="${-3} ${-3} ${b.width+6} ${b.height+6}" aria-hidden="true"><path d="${paths(transformedPoints({...t,x:0,y:0,rotation:0}))}" fill="${isToolSelected(t.id)?'#c79c53':'#9fae90'}" stroke="none"/></svg>`;}
 // Lengths follow display units; angle fields always use degrees.
@@ -332,7 +333,7 @@ function drawerPanel(){return `<div class="panel-header"><h2 class="panel-title"
 function safePocket(tool,context=project){try{return pocketOutline(tool,context);}catch{return transformedPoints(tool,typeof context==='object'?effectivePocketMargin(tool,context):context);}}
 function gridfinitySummary(){
   if(project.bottomMode!=='grid')return '';
-  try{const layout=gridfinityLayout(project);return `<p class='muted-note'>${tr('Základna Gridfinity: {cols} × {rows} polí, rozteč 42 mm.',{cols:layout.columns,rows:layout.rows})} ${tr('Volný okraj vpravo {right}, dole {bottom}.',{right:fmtLen(layout.remainder.right),bottom:fmtLen(layout.remainder.bottom)})}</p><button class='btn btn-light' data-action='export-baseplate'>${icon('download')}${tr('Exportovat základnu Gridfinity')}</button>`;}catch(error){return `<p class='form-error'>${esc(errorText(error))}</p>`;}
+  try{const layout=gridfinityLayout(project);return `<p class='muted-note'>${tr('Základna Gridfinity: {cols} × {rows} polí, rozteč 42 mm.',{cols:layout.columns,rows:layout.rows})} ${layout.expansion.right||layout.expansion.bottom?tr('Dilatační kus vpravo {right}, dole {bottom}.',{right:fmtLen(layout.expansion.right),bottom:fmtLen(layout.expansion.bottom)}):''} ${tr('Volná pole pro zátku 1×1: {n}.',{n:gridfinityFreeCells(project)})}</p><button class='btn btn-light' data-action='export-baseplate'>${icon('download')}${tr('Exportovat základnu Gridfinity')}</button>`;}catch(error){return `<p class='form-error'>${esc(errorText(error))}</p>`;}
 }
 function fingerGripPreview(t,grips=t.fingerGrips??[],showCircles=false){
   const local={...t,x:0,y:0,rotation:0,fingerGrips:grips},raw=transformedPoints(local),outline=safePocket(local);
@@ -823,7 +824,7 @@ function renderBoard(){
   let html=`<defs><pattern id="module-grid" width="${project.grid}" height="${project.grid}" patternUnits="userSpaceOnUse"><path d="M ${project.grid} 0 L 0 0 0 ${project.grid}" fill="none" stroke="#dce4d2" stroke-width=".65"/></pattern><pattern id="empty-hatch" width="5" height="5" patternUnits="userSpaceOnUse"><path d="M0 5L5 0" stroke="#e4e9dc" stroke-width=".45"/></pattern><filter id="softshadow" x="-10%" y="-10%" width="125%" height="125%"><feDropShadow dx="0" dy="2" stdDeviation="2" flood-color="#5b6846" flood-opacity=".08"/></filter></defs><rect x="-2" y="-2" width="${project.width+4}" height="${project.height+4}" rx="5" fill="#eff2e9" stroke="#c5cfb9" stroke-width="1.1"/><rect x="0" y="0" width="${project.width}" height="${project.height}" rx="3" fill="${showGrid?'url(#module-grid)':'#f4f7ee'}"/>`;
   html+=`<g stroke="#a4af97" stroke-width=".6"><path d="M0 -17H${project.width} M0 -21v8 M${project.width} -21v8"/><path d="M-17 0V${project.height} M-21 0h8 M-21 ${project.height}h8"/></g><rect x="${project.width/2-29}" y="-24" width="58" height="14" fill="#fbfcf9"/><text x="${project.width/2}" y="-14" text-anchor="middle" fill="#93a083" font-size="8.5">${fmtLen(project.width)}</text><text transform="translate(-23 ${project.height/2}) rotate(-90)" text-anchor="middle" fill="#93a083" font-size="8.5">${fmtLen(project.height)}</text>`;
   if(project.bottomMode==='grid'){
-    try{const layout=gridfinityLayout(project);html+=`<g class='gridfinity-baseplate' data-baseplate='true' pointer-events='none' aria-label='${tr('Základna Gridfinity')}'><defs><pattern id='gridfinity-sockets' width='42' height='42' patternUnits='userSpaceOnUse'><rect x='.1' y='.1' width='41.8' height='41.8' rx='3.9' fill='none' stroke='#6b9294' stroke-width='.6'/><rect x='2.15' y='2.15' width='37.7' height='37.7' rx='1.85' fill='none' stroke='#8ba8a8' stroke-width='.4'/></pattern></defs><rect x='0' y='0' width='${layout.width}' height='${layout.height}' fill='url(#gridfinity-sockets)' stroke='#6b9294' stroke-width='.7'/></g>`;}catch{}
+    try{const layout=gridfinityLayout(project);html+=`<g class='gridfinity-baseplate' data-baseplate='true' pointer-events='none' aria-label='${tr('Základna Gridfinity')}'><defs><pattern id='gridfinity-sockets' width='42' height='42' patternUnits='userSpaceOnUse'><rect x='.1' y='.1' width='41.8' height='41.8' rx='3.9' fill='none' stroke='#6b9294' stroke-width='.6'/><rect x='2.15' y='2.15' width='37.7' height='37.7' rx='1.85' fill='none' stroke='#8ba8a8' stroke-width='.4'/></pattern></defs><rect x='0' y='0' width='${layout.width}' height='${layout.height}' fill='url(#gridfinity-sockets)' stroke='#6b9294' stroke-width='.7'/>${layout.expansion.right?`<rect data-baseplate-expansion='right' x='${layout.width}' y='0' width='${layout.expansion.right}' height='${layout.height+layout.expansion.bottom}' fill='#6b9294' fill-opacity='.2'/>`:''}${layout.expansion.bottom?`<rect data-baseplate-expansion='bottom' x='0' y='${layout.height}' width='${layout.width}' height='${layout.expansion.bottom}' fill='#6b9294' fill-opacity='.2'/>`:''}</g>`;}catch{}
   }
   for(const [i,m] of project.modules.entries()){
     const ts=project.tools.filter(t=>t.moduleId===m.id),sel=ts.some(t=>isToolSelected(t.id))||(!bulkSelection.size&&selectedModule===m.id),isBad=bad.has(m.id)||ts.some(t=>bad.has(t.id));
@@ -1332,7 +1333,7 @@ function exportPrintBatch(ids){
 }
 function exportGridfinityBaseplate(){
   const snapshot=clone(project);let plan;try{plan=planBaseplateTiles(snapshot);}catch(error){toast(errorText(error));return;}
-  const readme='InsertCreator\n\n'+tr('Základna Gridfinity: díly sestavte podle assembly.json. Polohy buněk x/y a xMm/yMm popisují layout od levého horního rohu šuplíku. assemblyTransform umístí STL do fyzické sestavy s X doprava, Y nahoru a Z nahoru. STL jsou v mm; mezi díly nepřidávejte mezeru. Volný okraj šuplíku zůstává bez základny.')+(plan.rotated?'\n'+tr('Díly při tisku otočte o 90° podle podložky tiskárny.'):'');
+  const readme='InsertCreator\n\n'+tr('Základna Gridfinity: díly sestavte podle assembly.json. Polohy buněk x/y a xMm/yMm popisují layout od levého horního rohu šuplíku. assemblyTransform umístí STL do fyzické sestavy s X doprava, Y nahoru a Z nahoru. STL jsou v mm; mezi díly nepřidávejte mezeru. Okraj šuplíku vyplňuje dilatační kus.')+(plan.rotated?'\n'+tr('Díly při tisku otočte o 90° podle podložky tiskárny.'):'');
   return runFileTask('baseplate',snapshot,{package:true,extraFiles:[{name:'README.txt',data:readme}]},tr('Základna Gridfinity'),result=>({name:slug(snapshot.name)+'-gridfinity-baseplate.zip',data:result.zip,type:'application/zip'}),tr('Základna Gridfinity exportována.'));
 }
 
@@ -1557,7 +1558,7 @@ $('#app').addEventListener('click',e=>{
   const a=e.target.closest('[data-action]');if(a){e.preventDefault();try{actions[a.dataset.action]?.(a.dataset.value);}catch(error){toast(errorText(error));}}
 });
 $('#app').addEventListener('change',e=>{
-  if(e.target.matches('[data-smart-shape]')){if(['rectangular','stepped'].includes(e.target.value)){smartShape=e.target.value;writeLocal('suplik-studio-module-shape',smartShape);}return;}
+  if(e.target.matches('[data-smart-shape]')){if(['rectangular','stepped'].includes(e.target.value)){smartShape=e.target.value;writeLocal('suplik-studio-module-shape',smartShape);const next=reshapeModules(project,smartShape);if(JSON.stringify(next.modules)!==JSON.stringify(project.modules))commit(()=>{project.modules=next.modules;});}return;}
   const check=e.target.closest('[data-tool-check]');if(check){toggleToolSelection(check.dataset.toolCheck);return;}
   const el=e.target.closest('[data-field]');if(!el)return;const field=el.dataset.field,scope=el.dataset.scope;let value=el.value.trim();
   if(field==='pocketMargin'&&['tool','module'].includes(scope)){try{editPocketMargin(scope,el);}catch(error){toast(errorText(error));render();}return;}

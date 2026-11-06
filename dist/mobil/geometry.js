@@ -11,7 +11,7 @@ export {pocketOutline} from './finger-grip.js';
 import {t as tr,i18nError} from './i18n.js';
 import {fmtLen} from './units.js';
 import {orderTools} from './tool-size.js';
-import {moduleIntersects,containsPocketWalls,validateModuleFootprint,fillFreeCells} from './module-footprint.js';
+import {moduleIntersects,containsPocketWalls,validateModuleFootprint,fillFreeCells,steppedModuleFootprint} from './module-footprint.js';
 
 const EPS = 1e-7;
 const copy = value => JSON.parse(JSON.stringify(value));
@@ -177,7 +177,7 @@ export function autoArrange(project,options) {
   return restoreSoloMargins(packModules(source,options),released);
 }
 
-function packModules(project,{preserveLocked=true}={}) {
+function packModules(project,{preserveLocked=true,moduleShape}={}) {
   const minimized=minimizeAutoModules(project).project;
   const tools=copy(minimized.tools||[]),oldModules=copy(minimized.modules||[]),grid=Math.max(1,n(project.grid,42));
   // Rebuilt modules keep their own display unit (module.unit) by id.
@@ -278,9 +278,15 @@ function packModules(project,{preserveLocked=true}={}) {
     tool.moduleId=id;tool.rotation=((chosen.rotation%360)+360)%360;
     tool.x=module.x+(module.width-chosen.b.width)/2-chosen.b.x;tool.y=module.y+(module.height-chosen.b.height)/2-chosen.b.y;
   }
-  // A step left by an earlier layout or a neighbour that moved away has no reason to stay. Module-by-module, so two steps cannot both claim one cell.
+  // The shape is the customer's choice, so without one every existing step stays as it is. Module-by-module, so two steps cannot both claim one cell.
   const keepsShape=m=>m.locked||lockedIds.has(m.id)||m.sizeMode==='manual'||m.pocketMargin!=null||(project.toolSets||[]).some(set=>set.layout==='uniform'&&(set.id===m.setId||tools.some(t=>t.moduleId===m.id&&set.toolIds.includes(t.id))));
-  modules.forEach((module,i)=>{if(module.cells&&!keepsShape(module))modules[i]=fillFreeCells(module,modules.filter(other=>other!==module),grid);});
+  const fixedShape=m=>m.locked||lockedIds.has(m.id)||m.sizeMode==='manual'||(project.toolSets||[]).some(set=>set.layout==='uniform'&&(set.id===m.setId||tools.some(t=>t.moduleId===m.id&&set.toolIds.includes(t.id))));
+  if(moduleShape==='rectangular')modules.forEach((module,i)=>{if(module.cells&&!keepsShape(module))modules[i]=fillFreeCells(module,modules.filter(other=>other!==module),grid);});
+  if(moduleShape==='stepped')modules.forEach((module,i)=>{
+    if(fixedShape(module))return;
+    const cut=steppedModuleFootprint({...project,modules,tools:tools.filter(tool=>tool.moduleId===module.id)},module);
+    if(cut.cells&&!modules.some(other=>other!==module&&moduleIntersects(cut,other,grid)))modules[i]=cut;
+  });
   return {tools,modules,unplaced};
 }
 

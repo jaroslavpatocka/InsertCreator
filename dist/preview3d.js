@@ -9,6 +9,8 @@ import earcut from './vendor/earcut.js';
 import {layoutMeshToPhysical} from './manufacturing-coordinates.js';
 import {moduleParts,moduleCutSegments,previewBatch,usesPrintParts} from './preview-mesh.js';
 import {jointPreviewMarkup,jointPreviewLegend,moduleJointProfiles,NO_PREVIEW_JOINTS} from './preview-joints.js';
+import {wirePath,cutPreviewMarkup,selectionPreviewMarkup} from './preview-overlays.js';
+export {wirePath,cutPreviewMarkup,selectionPreviewMarkup} from './preview-overlays.js';
 
 const TAU=Math.PI*2,PITCH_LIMIT=Math.PI/2-.01;
 const shade=(hex,light)=>{const factor=light/62,[r,g,b]=[1,3,5].map(i=>Math.min(255,Math.round(parseInt(hex.slice(i,i+2),16)*factor)));return`rgb(${r} ${g} ${b})`;};
@@ -331,23 +333,6 @@ export function previewFrame(fitSize,camera,viewport){
   const towards=[-sy*cp,-cy*cp,sp],right=[cy,-sy,0],down=[-sy*sp,-cy*sp,-cp];
   const project=center=>point=>{const p=point.map((value,c)=>value-center[c]);return{x:dot3(p,right),y:dot3(p,down)};};
   return{state,size,width,height,viewBounds,towards,right,down,project,viewBox:`${viewBounds.x} ${viewBounds.y} ${width} ${height}`};
-}
-export function wirePath(module,projectPoint){
-  const edges=module.wireEdges||[[0,1],[1,2],[2,3],[3,0],[4,5],[5,6],[6,7],[7,4],[0,4],[1,5],[2,6],[3,7]];
-  return edges.map(([a,b])=>{const p=projectPoint(module.wire[a]),q=projectPoint(module.wire[b]);return`M${p.x.toFixed(3)} ${p.y.toFixed(3)}L${q.x.toFixed(3)} ${q.y.toFixed(3)}`;}).join('');
-}
-/** The same projected cut overlay is used over the WebGL canvas and SVG mesh. */
-export function cutPreviewMarkup(cuts,frame,center){
-  if(!cuts?.length)return'';
-  const projectPoint=frame.project(center),paths=[];
-  for(const cut of cuts){
-    if(dot3(cut.normal,frame.towards)<=.00001)continue;
-    const [a,b]=cut.points.map(projectPoint);paths.push(`M${a.x.toFixed(3)} ${a.y.toFixed(3)}L${b.x.toFixed(3)} ${b.y.toFixed(3)}`);
-  }
-  return paths.length?`<path data-preview-cuts="true" d="${paths.join('')}" fill="none" stroke="#c47724" stroke-width="1.6" stroke-dasharray="6 3" vector-effect="non-scaling-stroke" pointer-events="none"/>`:'';
-}
-export function selectionPreviewMarkup(wire,frame,center){
-  return `<path data-preview-selection="true" d="${wirePath(wire,frame.project(center))}" fill="none" stroke="#c89136" stroke-width="1.1" vector-effect="non-scaling-stroke" pointer-events="none"/>`;
 }
 export function previewHud(project,frame,warnings){
   const font=frame.height/70,x=frame.state.panX,y=frame.state.panY+frame.height/2-font;

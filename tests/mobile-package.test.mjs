@@ -23,6 +23,9 @@ function snapshot(project){
 }
 function fixture(){
   const project=fs.mkdtempSync(path.join(os.tmpdir(),'insertcreator-mobile-package-'));temporary.push(project);
+  // Match the published repository's explicit module format. Node 22's syntax
+  // detection can otherwise accept an invalid ambiguous .js file with --check.
+  write(path.join(project,'package.json'),JSON.stringify({type:'module'}));
   const dist=path.join(project,'dist'),mobile=path.join(dist,'mobil');
   write(path.join(project,'serve.mjs'),'export {};');
   for(const [dir,prefix] of [[dist,''],[mobile,'insertcreator-mobile:']]){
