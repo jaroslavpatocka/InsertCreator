@@ -8,7 +8,7 @@ const inDrawer = (project, tool) => project.modules.some(m => m.id === tool.modu
 /** The arrangement that puts all tools into the drawer as ONE module, or null. A tidy order is preferred to a compact one. */
 export function sharedArrangement(project, tools, info = {}) {
   for (const arrangement of ['ordered', 'compact']) {
-    try { if (addToolGroup(copy(project), copy(tools), { ...info, arrangement, toolSet: { name: info.name, layout: 'shared' } }).placed) return arrangement; }
+    try { if (addToolGroup(copy(project), copy(tools), { ...info, preserveOrientation:true, arrangement, toolSet: { name: info.name, layout: 'shared' } }).placed) return arrangement; }
     catch { /* A module over the size limit is simply not an option here. */ }
   }
   return null;
@@ -18,7 +18,7 @@ export function sharedArrangement(project, tools, info = {}) {
 export function separateModulesFit(project, tools) {
   const next = copy(project), ids = new Set(tools.map(tool => tool.id));
   next.tools.push(...copy(tools));
-  const arranged = autoArrange(next);
+  const arranged = autoArrange(next,{preserveOrientationIds:[...ids]});
   return arranged.tools.filter(tool => ids.has(tool.id)).every(tool => inDrawer({ ...next, modules: arranged.modules }, tool));
 }
 

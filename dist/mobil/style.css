@@ -406,3 +406,13 @@
 
 .board-svg .tool-magnet{fill:#2f3a4522;stroke:#2f3a45;stroke-width:.8;stroke-dasharray:2 1.4;pointer-events:none}.magnet-preview{cursor:crosshair;touch-action:none}.magnet-mark circle{fill:#2f3a4522;stroke:#2f3a45;stroke-width:.45}.magnet-mark.is-active circle{fill:#b17f2844;stroke:#b17f28;stroke-width:.7}.magnet-row{display:grid;grid-template-columns:auto 1fr 1fr;gap:8px;align-items:end;margin-top:8px}.magnet-row.is-active .icon-btn{border-color:#b17f28;color:#775625}.pocket-magnet-panel .selected-actions{flex-wrap:wrap}
 .consent-bar{position:fixed;left:16px;right:16px;bottom:16px;z-index:40;display:flex;flex-wrap:wrap;align-items:center;gap:12px 20px;max-width:760px;margin:0 auto;padding:16px 18px;background:var(--paper);border:1px solid var(--line);border-radius:14px;box-shadow:0 12px 34px #242c2726}.consent-bar p{flex:1 1 320px;margin:0;font-size:14px;line-height:1.5;color:var(--ink)}.consent-bar a{color:inherit}.consent-actions{display:flex;gap:10px;flex:0 0 auto}.consent-actions .btn{min-width:110px;min-height:44px}
+
+/* Corner rotation of a complete module. Edge handles retain size editing. */
+.rotation-handle{cursor:grab;touch-action:none;outline:none}.rotation-handle:active{cursor:grabbing}
+.rotation-hit{fill:transparent;stroke:none;pointer-events:all;touch-action:none}
+.rotation-link{stroke:#c99a4e;stroke-width:1;stroke-dasharray:2 2;vector-effect:non-scaling-stroke;pointer-events:none}
+.rotation-grip{pointer-events:none}.rotation-grip circle{fill:#fff8e9;stroke:#bd8b35;stroke-width:1.1}
+.rotation-grip path{fill:none;stroke:#95651c;stroke-width:1.35;stroke-linecap:round;stroke-linejoin:round}
+.rotation-handle:hover circle,.rotation-handle:focus-visible circle{fill:#f3dba5;stroke:#8a5a14;stroke-width:2}
+.rotation-handle.disabled{cursor:not-allowed;opacity:.55}
+.rotation-label{pointer-events:none}.rotation-label rect{fill:#2f3833;opacity:.94}.rotation-label text{fill:#fff;font-weight:600}.rotation-label.limited rect{fill:#a4553f}

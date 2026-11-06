@@ -171,15 +171,16 @@ export function refitModules(project,{includeManual=false,moduleIds=null}={}) {
 
 export function minimizeAutoModules(project){return refitModules(project);}
 
-/** Deterministic grid packing. Locked modules and every tool inside them stay in place. */
+/** Deterministic grid packing. Locked modules and every tool inside them stay in place.
+ * preserveOrientationIds keeps incoming source angles without disabling the explicit Auto optimizer. */
 export function autoArrange(project,options) {
   const {project:source,released}=releaseSoloMargins(project);
   return restoreSoloMargins(packModules(source,options),released);
 }
 
-function packModules(project,{preserveLocked=true,moduleShape}={}) {
+function packModules(project,{preserveLocked=true,moduleShape,preserveOrientationIds=[]}={}) {
   const minimized=minimizeAutoModules(project).project;
-  const tools=copy(minimized.tools||[]),oldModules=copy(minimized.modules||[]),grid=Math.max(1,n(project.grid,42));
+  const tools=copy(minimized.tools||[]),oldModules=copy(minimized.modules||[]),grid=Math.max(1,n(project.grid,42)),fixedOrientations=new Set(preserveOrientationIds);
   // Rebuilt modules keep their own display unit (module.unit) by id.
   const unitOf=id=>{const u=oldModules.find(m=>m.id===id)?.unit;return u?{unit:u}:{};};
   const marginOf=id=>{const value=oldModules.find(m=>m.id===id)?.pocketMargin;return value==null?{}:{pocketMargin:value};};
@@ -252,7 +253,8 @@ function packModules(project,{preserveLocked=true,moduleShape}={}) {
   });
   for(const tool of pending){
     const candidates=[];
-    for(const rotation of [n(tool.rotation),n(tool.rotation)+90]){
+    // Insertion can request the source angle while an explicit Auto action still considers quarter turns.
+    for(const rotation of fixedOrientations.has(tool.id)?[n(tool.rotation)]:[n(tool.rotation),n(tool.rotation)+90]){
       let b;try{b=box(pocketOutline({...tool,x:0,y:0,rotation},minimized));}catch{continue;}
       const width=Math.ceil((b.width+2*padding)/grid)*grid,height=Math.ceil((b.height+2*padding)/grid)*grid;
       if(width>n(project.width)||height>n(project.height))continue;

@@ -1,7 +1,7 @@
 // Atomic whole-module edits. Printer dimensions are checked only by final STL export.
 import {clone,uid,validateProject} from './model.js';
-import {bounds,validateLayout} from './geometry.js';
-import {moduleIntersects} from './module-footprint.js';
+import {bounds,validateLayout,transformedPoints,pocketOutline} from './geometry.js';
+import {moduleIntersects,moduleOutline,modulePadding,steppedModuleFootprint} from './module-footprint.js';
 import {mergeOverlappingModules} from './module-merge.js';
 import {i18nError,t} from './i18n.js';
 
@@ -67,6 +67,55 @@ export function rotateModule(project,moduleId,degrees=90){
     tool.y=ny+dx*sine+dy*cosine-rotated.height/2;
   }
   return checked(next,module,tools);
+}
+
+/** Rotate a complete group about its original module centre, then rebuild its raster envelope.
+ * Degrees are relative to the supplied snapshot; previews must always use that same snapshot.
+ * Local contours, grips and magnets remain untouched. The existing module model has raster-aligned
+ * shells, so only the enclosing footprint is refitted, never the relative pocket positions.
+ * keepInside minimally translates the complete result by raster steps when the new shell fits
+ * the drawer; it never moves neighbours or accepts overlaps. validate:false is reserved for a
+ * transient invalid preview; accepted edits use the default. */
+export function rotateModuleFree(project,moduleId,degrees,{validate=true,keepInside=false}={}){
+  const {next,module,tools}=select(project,moduleId),turn=angle(finite(degrees,'otočení'));
+  if(!turn)return next;
+  unlocked(module,tools);
+  const cx=module.x+module.width/2,cy=module.y+module.height/2,rad=turn*Math.PI/180;
+  const cosine=turn===90||turn===270?0:turn===180?-1:Math.cos(rad),sine=turn===90?1:turn===270?-1:turn===180?0:Math.sin(rad);
+  const rotate=point=>({x:cx+(point.x-cx)*cosine-(point.y-cy)*sine,y:cy+(point.x-cx)*sine+(point.y-cy)*cosine});
+  const envelope=polygons=>{
+    let minX=Infinity,minY=Infinity,maxX=-Infinity,maxY=-Infinity;
+    for(const polygon of polygons)for(const point of polygon){minX=Math.min(minX,point.x);minY=Math.min(minY,point.y);maxX=Math.max(maxX,point.x);maxY=Math.max(maxY,point.y);}
+    return{minX,minY,maxX,maxY};
+  };
+  let padding=modulePadding(next),extent;
+  if(tools.length){
+    // Derive the perimeter from manufacturing requirements, never from the rounded old envelope:
+    // raster slack is not a new user margin and must not compound across separate gestures.
+    for(const tool of tools){
+      const rotated=envelope([transformedPoints(tool).map(rotate)]);
+      tool.rotation=angle((tool.rotation||0)+turn);
+      tool.x=rotated.minX;tool.y=rotated.minY;
+    }
+    extent=envelope(tools.map(tool=>pocketOutline(tool,next)));
+    extent.minX-=padding;extent.minY-=padding;extent.maxX+=padding;extent.maxY+=padding;
+  }else{
+    extent=envelope([moduleOutline(module,next.grid).map(rotate)]);
+  }
+  const grid=Number(next.grid),tolerance=1e-7,stepped=!!module.cells;
+  module.x=Math.floor((extent.minX+tolerance)/grid)*grid;
+  module.y=Math.floor((extent.minY+tolerance)/grid)*grid;
+  module.width=Math.ceil((extent.maxX-tolerance)/grid)*grid-module.x;
+  module.height=Math.ceil((extent.maxY-tolerance)/grid)*grid-module.y;
+  delete module.shape;delete module.cells;
+  if(stepped)Object.assign(module,steppedModuleFootprint(next,module));
+  if(keepInside&&module.width<=next.width+tolerance&&module.height<=next.height+tolerance){
+    const maxX=Math.floor((next.width-module.width+tolerance)/grid)*grid,maxY=Math.floor((next.height-module.height+tolerance)/grid)*grid;
+    const x=Math.max(0,Math.min(maxX,module.x)),y=Math.max(0,Math.min(maxY,module.y)),dx=x-module.x,dy=y-module.y;
+    module.x=x;module.y=y;
+    for(const tool of tools){tool.x+=dx;tool.y+=dy;}
+  }
+  return validate?checked(next,module,tools):next;
 }
 
 /** Copy a complete module into the first free grid location, without moving any existing record. */

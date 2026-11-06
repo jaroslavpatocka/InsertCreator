@@ -992,4 +992,7 @@ export default {
   'Margin kapsy upraven.':'Pocket margin updated.',
   'Nástroje se s tímto přídavkem nevejdou. Zvětšete šuplík nebo uvolněte místo kolem modulu.':'The tools do not fit with this margin. Enlarge the drawer or free up space around the module.',
   'Přídavek kapsy musí být číslo od {min} do {max} mm.':'Pocket margin must be a number from {min} to {max} mm.',
+  'Táhněte pro otočení modulu · Shift: po 15°':'Drag to rotate the module · Shift: 15° steps',
+  'Otočení modulu: {angle}°':'Module rotation: {angle}°',
+  'Nelze umístit':'Cannot place',
 };

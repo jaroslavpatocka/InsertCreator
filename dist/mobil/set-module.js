@@ -221,7 +221,7 @@ function begin(project,tools,opts,{forceLayout=null,maxModules=1}={}){
   // Drawer arrangement is independent of printer settings, including settings saved by older versions.
   const tryArrange=own=>{
     const before=placedTools(next),wanted=own.map(t=>t.id),ownModules=new Set(own.map(t=>t.moduleId));
-    const arranged=autoArrange(next),candidate={...next,tools:arranged.tools,modules:arranged.modules},after=placedTools(candidate);
+    const arranged=autoArrange(next,opts.preserveOrientation?{preserveOrientationIds:wanted}:undefined),candidate={...next,tools:arranged.tools,modules:arranged.modules},after=placedTools(candidate);
     if(![...before].every(id=>after.has(id))||!wanted.every(id=>after.has(id)))return null;
     if(checkManufacturing&&[...ownModules].some(id=>{const module=candidate.modules.find(m=>m.id===id);return !module||!candidateOk(module,candidate.tools.filter(t=>t.moduleId===id));}))return null;
     return candidate;
@@ -305,7 +305,9 @@ function choose(candidates,ctx,makeModule,accept=null){
  *          'drawer' — no room in the drawer (module parked to the right of / below the drawer).
  *  Printer dimensions never affect editing; bed size is checked only by an explicit print export.
  *  opts: {name, unit, moduleId, alternate (default: true without toolSet) — allow 180° turned neighbours so heads interleave,
- *         arrangement:'ordered'|'compact', order:'asc'|'desc', toolSet:{name?, id?, layout:'shared'|'uniform'|'auto'}}.
+ *         arrangement:'ordered'|'compact', order:'asc'|'desc', preserveOrientation (default false),
+ *         toolSet:{name?, id?, layout:'shared'|'uniform'|'auto'}}.
+ *  preserveOrientation packs each source angle as supplied, without straightening or turning neighbours.
  *  Explicit arrangement/order sort nominal sizes (mm/in) into monotonic row segments. 'ordered' uses common-heading
  *  bottom-aligned shelf rows; 'compact' may turn opposite rows by 180° when that saves actual module area.
  *  toolSet registers project.toolSets (see tool-sets.js): 'shared'/'auto' → one module {grouped, setId, setLayout:'shared', sizeMode:'auto'}
@@ -319,8 +321,8 @@ export function addToolGroup(project,tools,opts={}){
 
   if(['auto','uniform'].includes(toolSet?.layout)){
     // Equal footprints for every member and one common heading; the smaller cell fitting the drawer wins.
-    const cells=[90,0].map(heading=>{
-      const items=source.map((tool,index)=>prepareOne(tool,index,ctx,{heading}));
+    const cells=(opts.preserveOrientation?[null]:[90,0]).map(heading=>{
+      const items=source.map((tool,index)=>prepareOne(tool,index,ctx,opts.preserveOrientation?{rotation:num(tool.rotation)}:{heading}));
       const width=Math.ceil((Math.max(...items.map(i=>i.bounds.width))+2*ctx.padding-EPS)/grid)*grid,height=Math.ceil((Math.max(...items.map(i=>i.bounds.height))+2*ctx.padding-EPS)/grid)*grid;
       const sizes=items.map(item=>toolSet.layout==='uniform'?{width,height}:{width:Math.ceil((item.bounds.width+2*ctx.padding-EPS)/grid)*grid,height:Math.ceil((item.bounds.height+2*ctx.padding-EPS)/grid)*grid});
       return{items,width,height,sizes,area:sizes.reduce((sum,size)=>sum+size.width*size.height,0),inDrawer:sizes.every(size=>inDrawer(size.width,size.height))};
@@ -347,8 +349,8 @@ export function addToolGroup(project,tools,opts={}){
 
   // One shared module. A registered set uses one common heading (coherent for set-layout.js); a plain group may turn
   // every other row or tool by 180° so heads interleave with shanks.
-  const lists=toolSet||ctx.logicalOrder?[90,0].map(heading=>source.map((tool,index)=>prepareOne(tool,index,ctx,{heading}))):[source.map((tool,index)=>prepareOne(tool,index,ctx))];
-  const flips=ctx.regular?['none']:ctx.arrangement==='compact'?FLIPS:(opts.alternate??!toolSet)?FLIPS:['none'];
+  const lists=opts.preserveOrientation?[source.map((tool,index)=>prepareOne(tool,index,ctx,{rotation:num(tool.rotation)}))]:toolSet||ctx.logicalOrder?[90,0].map(heading=>source.map((tool,index)=>prepareOne(tool,index,ctx,{heading}))):[source.map((tool,index)=>prepareOne(tool,index,ctx))];
+  const flips=opts.preserveOrientation||ctx.regular?['none']:ctx.arrangement==='compact'?FLIPS:(opts.alternate??!toolSet)?FLIPS:['none'];
   const candidates=candidatesFor(lists,ctx,{limits:[ctx.W-2*ctx.padding],flips});
   if(!candidates.length)throw i18nError('Sada je pro jeden modul příliš velká (nejvýše {max} v každém směru).',{max:fmtLen(MAX_SIZE)});
   for(const c of candidates)c.inDrawer=inDrawer(c.width,c.height);
@@ -377,7 +379,8 @@ function bedLimits(project,grid){
  *  are returned in `oversize`: with opts.oversize 'module' (default) they share one extra (over-bed) module,
  *  with 'skip' they are not added to the project at all.
  *  opts: {name, unit, moduleId, arrangement:'ordered'|'compact', order:'asc'|'desc', alternate (default true),
- *         diagonal (default true), oversize:'module'|'skip', toolSet:{name?, id?}}.
+ *         diagonal (default true), preserveOrientation (default false; also disables diagonal turns),
+ *         oversize:'module'|'skip', toolSet:{name?, id?}}.
  *  toolSet registers ONE project.toolSets entry {layout:'shared'} with every added tool. Modules are rigid groups
  *  {grouped:true, sizeMode:'manual'} named "name k/n", without setId/setLayout (those describe one complete shared module).
  *  Returns {project, moduleIds, moduleId (= moduleIds[0] or null), placed (every new module in the drawer),
@@ -386,8 +389,8 @@ function bedLimits(project,grid){
 export function splitForBed(project,tools,opts={}){
   const ctx=begin(project,tools,opts,{forceLayout:'shared'}),{next,name,grid,padding,allocate,unit,inDrawer,freeSpot,park,tryArrange,extra}=ctx;
   const {a:maxA,b:maxB}=bedLimits(next,grid),onBed=d=>(d.width<=maxA+EPS&&d.height<=maxB+EPS)||(d.width<=maxB+EPS&&d.height<=maxA+EPS);
-  const limits=[maxA-2*padding,maxB-2*padding],source=ctx.logicalOrder?orderTools(copy(tools),ctx.order):copy(tools),flips=ctx.regular?['none']:ctx.arrangement==='compact'?FLIPS:(opts.alternate??true)?FLIPS:['none'];
-  const heads=new Map(source.map((tool,index)=>{let list;try{list=[0,90].map(heading=>prepareOne(tool,index,ctx,{heading}));}catch{list=[prepareOne(tool,index,ctx)];}return[tool.id,list];}));
+  const limits=[maxA-2*padding,maxB-2*padding],source=ctx.logicalOrder?orderTools(copy(tools),ctx.order):copy(tools),flips=opts.preserveOrientation||ctx.regular?['none']:ctx.arrangement==='compact'?FLIPS:(opts.alternate??true)?FLIPS:['none'];
+  const heads=new Map(source.map((tool,index)=>{let list;if(opts.preserveOrientation)list=[prepareOne(tool,index,ctx,{rotation:num(tool.rotation)})];else try{list=[0,90].map(heading=>prepareOne(tool,index,ctx,{heading}));}catch{list=[prepareOne(tool,index,ctx)];}return[tool.id,list];}));
   const pack=(members,accept=onBed)=>{
     const count=Math.max(...members.map(t=>heads.get(t.id).length));
     const lists=Array.from({length:count},(_,h)=>members.map(t=>{const list=heads.get(t.id);return list[Math.min(h,list.length-1)];}));
@@ -399,7 +402,7 @@ export function splitForBed(project,tools,opts={}){
   for(const tool of source){
     if(pack([tool])){fit.push(tool);continue;}
     let turned=false;
-    if(opts.diagonal!==false){
+    if(opts.diagonal!==false&&!opts.preserveOrientation){
       const base=heads.get(tool.id)[0].normal.rotation;let outline=null,bestTurn=null;
       try{outline=pocketOutline({...tool,x:0,y:0,rotation:base},ctx.next);}catch{}
       for(let a=1;outline&&a<180;a++){
