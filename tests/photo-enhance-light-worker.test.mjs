@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { Worker as NodeWorker } from 'node:worker_threads';
 import { lightWrenchesPhoto } from './fixtures/light-tools.mjs';
 import { maskMetrics } from './fixtures/tool-photos.mjs';
+import { renderCase, cases } from './fixtures/color-tools.mjs';
 
 const created = [], instances = new Set(), sent = [];
 class BrowserWorker {
@@ -47,6 +48,15 @@ test('reflective light tools use actual recognition workers without neural repla
     const count = created.length;
     await assert.rejects(recognizeTools(lightWrenchesPhoto(), { signal: controller.signal }), { name: 'AbortError' });
     assert.equal(created.length, count);
+  });
+  await t.test('a long unobservable connector on a dark plain mat stays reviewable in an actual worker', async () => {
+    const image = renderCase(cases.find(item => item.id === 'charcoal-missing-connector')), original = image.data.slice();
+    const result = await recognizeTools(image, { kind: 'reference', pxPerMm: 2 });
+    assert.equal(result.enhanced, 'plain-background');
+    assert.equal(result.quality.status, 'review', JSON.stringify(result.quality));
+    assert.equal(result.contours.length, 4, 'only the four visible parts may be traced');
+    assert.equal(result.mask[371 * image.width + 360], 0, 'the invisible connector cannot be filled by inference');
+    assert.deepEqual(image.data, original);
   });
   await t.test('abort while the classical worker is processing rejects and terminates it', async () => {
     const controller = new AbortController(); let started = false;

@@ -1,6 +1,7 @@
 // Makes a photograph readable for auto-trace.js when tools do not stand out as dark objects on light paper.
 // Only pixel values change, never their position, so contours and the calibrated scale stay valid.
-import { lightBackgroundImage } from './photo-light.js';
+import { lightBackgroundImage, plainBackgroundImage } from './photo-light.js';
+import { darkMetalBackgroundImage } from './photo-metal-background.js';
 const GRID_PIXELS = 1000000, MIN_TRAY = .1, MIN_BRIGHT = .02, MAX_BRIGHT = .7, MIN_CONTRAST = 40, BACKGROUND_HOLE = .8, RIM_CONTACT = .05, RAIL_BAND = .05, RAIL_LENGTH = .15;
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 const lum = (r, g, b) => .2126 * r + .7152 * g + .0722 * b;
@@ -284,7 +285,9 @@ function removePrintedWords(mask, w, h, side) {
       if (group.length >= 3 || (group.length >= 2 && width >= height * 3)) for (const g of group) drop[g.label] = 1;
     }
   }
-  for (let p = 0; p < labels.length; p++) if (drop[labels[p]]) mask[p] = 0;
+  let removed = false;
+  for (let p = 0; p < labels.length; p++) if (drop[labels[p]]) { removed ||= !!mask[p]; mask[p] = 0; }
+  return removed;
 }
 
 // A thin socket rim can disappear, or open into an arc, when spurs are removed.
@@ -345,10 +348,20 @@ function dropRim(bright, inner, w, h, side) {
 /**
  * Light tools on a dark case insert or a dark mat: the surface is found, everything else turns white, brightness inside is reversed.
  * Also prepares reflective tools on a plain light background without moving pixels.
- * Returns {image,name:'dark-tray'|'light-background'} with the source size, or null.
+ * Returns {image,name:'dark-tray'|'light-background'|'plain-background'} or null.
  */
 export function readableImage(image) {
   const light = lightBackgroundImage(image); if (light) return light;
+  const plain = plainBackgroundImage(image) || darkMetalBackgroundImage(image);
+  if (plain) {
+    // Isolated size labels remain printing on a flat mat. Reuse the same
+    // density-aware classifier as trays; dense small real parts stay intact.
+    const { width, height, data } = plain.image;
+    const mask = Uint8Array.from({ length: width * height }, (_, p) => +(data[p * 4] < 128));
+    plain.ambiguousPrinting = !!removePrintedWords(mask, width, height, Math.min(width, height));
+    for (let p = 0; p < mask.length; p++) if (!mask[p]) data[p * 4] = data[p * 4 + 1] = data[p * 4 + 2] = 255;
+    return plain;
+  }
   const grid = grayGrid(image), { gray, w, h, step } = grid, side = Math.min(w, h), darkLimit = clamp(otsu(gray) * .62, 45, 90);
   const surface = largest(Uint8Array.from(gray, v => +(v < darkLimit)), w, h);
   if (surface.size < gray.length * MIN_TRAY) return null;

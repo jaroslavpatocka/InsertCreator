@@ -1,11 +1,12 @@
 import { detectPaper, rectifyImage, calibrateSegment } from './trace.js';
 import { calibrateRulers, rectifyRulers } from './ruler-calibration.js';
 import { recognizeTools } from './recognize.js';
-import { captureToolPoints, captureItemDimensions, resizeCaptureItem, toolFromCaptureItem } from './capture-tools.js';
+import { captureToolPoints, capturePhotoGeometry, captureItemDimensions, resizeCaptureItem, toolFromCaptureItem } from './capture-tools.js';
 import { drawCaptureContours, drawCaptureToolPreview } from './capture-preview.js';
 import { bindCanvasView, identityView, photoToView, viewToPhoto } from './capture-view.js';
 import { mountCaptureGuide } from './capture-guide.js';
 import { bindCaptureContextMenu } from './capture-context-menu.js';
+import { bindCaptureContourEditor } from './capture-contour-editor.js';
 import { icon, esc, openModal } from './ui.js';
 import { t, plural, i18nError, errorText } from './i18n.js';
 import { unit, inputValue, parseLength, fmtSize, fmtLen } from './units.js';
@@ -57,7 +58,7 @@ function info(contour,scale){
 }
 
 export function openCapture({onAdd,toast=()=>{},maxDepth=()=>MAX_DEPTH}){
-  let closed=false,controller=null,observer=null,cancelCalibration=null,photoRun=0,guide=null,guided=false,resultContext=null,resultMaskPixels=null,resultPhoto=null,resultPhotoMask=false,resultView=identityView(),resultViewCleanup=null,detailView=identityView(),detailViewCanvas=null,detailViewIndex=null,detailViewCleanup=null;
+  let closed=false,controller=null,observer=null,cancelCalibration=null,photoRun=0,guide=null,guided=false,contourEditor=null,resultContext=null,resultMaskPixels=null,resultPhoto=null,resultPhotoMask=false,resultView=identityView(),resultViewCleanup=null,detailView=identityView(),detailViewCanvas=null,detailViewIndex=null,detailViewCleanup=null;
   const state={step:0,reference:'a4',mode:'portrait',image:null,imageCanvas:null,corners:[],ruler:[],rulerMm:100,rulerSecond:false,rulerSecondMm:100,rulerPointer:null,calibrationView:{zoom:1,x:0,y:0},referencePoints:[],activePoint:0,detected:false,busy:false,work:null,scale:1,result:null,items:[],activeItem:null,showMask:false,pocketMargin:DEFAULT_POCKET_MARGIN,pocketMarginText:undefined,error:'',progress:null,message:'Načítám fotografii…'};
   if(!document.getElementById('capture-guide-styles')){
     const stylesheet=document.createElement('link');stylesheet.id='capture-guide-styles';stylesheet.rel='stylesheet';
@@ -65,7 +66,7 @@ export function openCapture({onAdd,toast=()=>{},maxDepth=()=>MAX_DEPTH}){
   }
   // state.message, quality reasons and worker errors stay Czech source text; t()/errorText() translate them on display.
   const blurCalibration=()=>cancelCalibration?.();window.addEventListener('blur',blurCalibration);
-  const modal=openModal({title:t('Vyfoťte. Obrys připravíme my.'),subtitle:t('Automatické měřítko, rozpoznání nástroje i čisté hrany. Bez kreslení bodů.'),wide:true,body:'',footer:'',onClose:()=>{closed=true;resultContext?.();guide?.destroy();controller?.abort();observer?.disconnect();cancelCalibration?.();window.removeEventListener('blur',blurCalibration);}});
+  const modal=openModal({title:t('Vyfoťte. Obrys připravíme my.'),subtitle:t('Automatické obrysy s možností ručních úprav.'),wide:true,body:'',footer:'',onClose:()=>{closed=true;contourEditor?.destroy();contourEditor=null;resultViewCleanup?.();detailViewCleanup?.();resultContext?.();guide?.destroy();controller?.abort();observer?.disconnect();cancelCalibration?.();window.removeEventListener('blur',blurCalibration);}});
   const steps=()=>`<div class="capture-steps"><span class="${state.step===0?'active':'done'}">1 · ${t('Fotografie')}</span><span class="${state.step===1||state.step===3?'active':state.step===2?'done':''}">2 · ${t('Automatické rozpoznání')}</span><span class="${state.step===2?'active':''}">3 · ${t('Hotový obrys')}</span></div>`;
   const errorHTML=()=>`<div id="capture-error" role="alert" class="form-error" ${state.error?'':'hidden'}>${esc(state.error)}</div>`;
   const depthLimit=()=>Math.max(MIN_DEPTH,Math.min(MAX_DEPTH,maxDepth()));
@@ -240,9 +241,9 @@ export function openCapture({onAdd,toast=()=>{},maxDepth=()=>MAX_DEPTH}){
     render();modal.body.scrollTop=0;modal.body.querySelector('#calibration-canvas')?.focus({preventScroll:true});
   }
   function renderResult(){
-    const quality=state.result?.quality||{status:'retake',reasons:[]},hasCandidates=quality.status==='ready'&&state.items.length>0,referenceOnly=hasCandidates&&state.items.every(item=>item.isReference),ready=hasCandidates&&!referenceOnly;
-    modal.body.innerHTML=steps()+`<div class="capture-grid"><div class="capture-canvas"><canvas id="trace-canvas" role="img" aria-label="${esc(t('Automaticky rozpoznané obrysy nástrojů'))}"></canvas></div><div class="capture-sidebar auto-sidebar"><div class="recognition-status ${ready?'ready':'retake'}">${icon(ready?'check':'camera')}${referenceOnly?t('Samostatné nástroje se nerozpoznaly.'):ready?t('Rozpoznáno automaticky'):t('Tuhle fotku raději zopakujte')}</div><h3>${referenceOnly?t('Obrysy obsahují značky měřítka.'):ready?t('Obrysy jsou připravené.'):t('Z fotky není hrana dost jistá.')}</h3><p>${referenceOnly?t('Nalezené obrysy obsahují obě značky měřítka, proto nejsou automaticky vybrané. Jednotlivé nástroje uvnitř kufříku nebo držáku se neoddělily. Pro samostatné obrysy je vyjměte a vyfoťte odděleně na jednolitém kontrastním podkladu.'):ready?t('Měřítko, oddělení pozadí i vyhlazení už jsou hotové. Stačí pojmenovat nástroje a přidat je do sestavy.'):t('Nebudeme po vás chtít kreslit konturu. Pořiďte novou fotku v lepším světle; nerozpoznanou hranu by bylo nutné hádat.')}</p>${ready&&state.result?.enhanced?`<p class="tip" data-photo-enhanced>${t(state.result.enhanced==='light-background'?'Fotku jsme pro rozpoznání automaticky upravili: oddělili jsme světlé pozadí a potlačili vnitřní odlesky. Původní fotka, poloha a měřítko zůstávají zachované.':'Fotku jsme pro rozpoznání automaticky upravili: světlé nástroje jsme oddělili od tmavé vložky. Poloha a rozměry obrysů se tím nezměnily.')}</p>`:''}${!hasCandidates?`<div class="issue-box">${quality.reasons.map(r=>`<p>${esc(t(r))}</p>`).join('')||`<p>${t('Použijte rozptýlené světlo, oddělené předměty a kontrastní podklad.')}</p>`}</div>`:''}${hasCandidates?`<label class="field full-span"><span>${t('Tvar kapsy')}</span><select id="capture-pocket-shape"><option value="hybrid" ${lastPocketShape==='hybrid'?'selected':''}>${t('Vyvážený obrys (50 : 50)')}</option><option value="functional" ${lastPocketShape==='functional'?'selected':''}>${t('Pravidelné tvary podél osy')}</option><option value="measured" ${lastPocketShape==='measured'?'selected':''}>${t('Naměřený obrys')}</option></select></label><p class="muted-note full-span">${t('Vyvážený obrys je napůl mezi naměřeným obrysem a pravidelnými tvary. Přerušovaná čára ukazuje osu. Vůli nastavte pro tento modul nebo jednotlivou kapsu.')}</p><div id="capture-guide" class="full-span"></div><div id="trace-items" class="trace-items full-span"></div><p id="trace-summary" class="full-span"></p><label class="field full-span" id="capture-layout-field"><span>${t('Přidat jako')}</span><select id="capture-layout">${LAYOUTS.map(([id,label])=>`<option value="${id}" ${lastLayout===id?'selected':''}>${t(label)}</option>`).join('')}</select></label><label class="field full-span"><span>${t('Vůle kapes v novém modulu')}</span><div class="input-wrap"><input id="capture-pocket-margin" type="text" inputmode="decimal" autocomplete="off" spellcheck="false" value="${esc(state.pocketMarginText??inputValue(state.pocketMargin,{digits:6}))}"><em>${unit()}</em></div></label><p class="muted-note full-span">${t('Vůle je na každé straně: 1 mm přidá 2 mm k délce i šířce kapsy. Modrá čára ukazuje výslednou kapsu.')}</p><label class="field full-span"><span>${t('Hloubka kapsy')}</span><div class="input-wrap"><input id="capture-depth" type="text" inputmode="decimal" autocomplete="off" spellcheck="false" value="${esc(state.depth??inputValue(Math.min(lastDepth,depthLimit())))}"><em>${unit()}</em></div></label><p class="trace-depth-note full-span">${t('Platí pro všechny nástroje. Jinou hloubku zadejte přímo v seznamu. Nejvýše {max} při současné výšce inzertu.',{max:fmtLen(depthLimit())})}</p><label class="check-row"><input id="trace-mask" type="checkbox">${t('Kontrastní náhled')}</label>`:''}<button class="btn btn-light block-button" id="retake-photo">${icon('camera')}${t('Vybrat jinou fotku')}</button>${errorHTML()}<p class="muted-note full-span">${t('Rozměry jsou bez vůle kapsy. Hloubka se z fotografie neměří, zadejte ji podle nástroje.')}</p></div></div>`;
-    modal.footer.innerHTML=`<button class="btn btn-light" id="capture-calibration-back">${t('Zpět k měřítku')}</button><span class="footnote">${ready?t('Bez posuvníků. Bez ruční úpravy bodů.'):t('Přesný inzert začíná čitelnou fotografií.')}</span><button class="btn btn-primary" id="capture-add" ${hasCandidates?'':'disabled'}>${hasCandidates?t('Přidat do šuplíku'):t('Potřebuji lepší fotografii')}</button>`;
+    const quality=state.result?.quality||{status:'retake',reasons:[]},automaticallyReady=quality.status==='ready',hasCandidates=(automaticallyReady||quality.status==='review')&&state.items.length>0,referenceOnly=hasCandidates&&state.items.every(item=>item.isReference),ready=hasCandidates&&!referenceOnly;
+    modal.body.innerHTML=steps()+`<div class="capture-grid"><div class="capture-canvas"><canvas id="trace-canvas" role="img" aria-label="${esc(t('Automaticky rozpoznané obrysy nástrojů'))}"></canvas></div><div class="capture-sidebar auto-sidebar"><div class="recognition-status ${ready?(automaticallyReady?'ready':'review'):'retake'}">${icon(ready?(automaticallyReady?'check':'edit'):'camera')}${referenceOnly?t('Samostatné nástroje se nerozpoznaly.'):ready?t(automaticallyReady?'Rozpoznáno automaticky':'Kontury potřebují kontrolu'):t('Tuhle fotku raději zopakujte')}</div><h3>${referenceOnly?t('Obrysy obsahují značky měřítka.'):ready?t(automaticallyReady?'Obrysy jsou připravené.':'Nalezené obrysy můžete upravit.'):t('Z fotky není hrana dost jistá.')}</h3><p>${referenceOnly?t('Nalezené obrysy obsahují obě značky měřítka, proto nejsou automaticky vybrané. Jednotlivé nástroje uvnitř kufříku nebo držáku se neoddělily. Pro samostatné obrysy je vyjměte a vyfoťte odděleně na jednolitém kontrastním podkladu.'):ready?t(automaticallyReady?'Měřítko, oddělení pozadí i vyhlazení už jsou hotové. Stačí pojmenovat nástroje a přidat je do sestavy.':'Zkontrolujte nalezené obrysy. Kliknutím na hranu přidáte bod a upravíte tvar před přidáním.'):t('Nebudeme po vás chtít kreslit konturu. Pořiďte novou fotku v lepším světle; nerozpoznanou hranu by bylo nutné hádat.')}</p>${ready&&state.result?.enhanced?`<p class="tip" data-photo-enhanced>${t(state.result.enhanced==='plain-background'?"Fotku jsme pro rozpoznání automaticky upravili: oddělili jsme jednolité pozadí a potlačili vnitřní odlesky. Původní fotka, poloha a měřítko zůstávají zachované.":state.result.enhanced==='light-background'?'Fotku jsme pro rozpoznání automaticky upravili: oddělili jsme světlé pozadí a potlačili vnitřní odlesky. Původní fotka, poloha a měřítko zůstávají zachované.':'Fotku jsme pro rozpoznání automaticky upravili: světlé nástroje jsme oddělili od tmavé vložky. Poloha a rozměry obrysů se tím nezměnily.')}</p>`:''}${!automaticallyReady?`<div class="issue-box">${quality.reasons.map(r=>`<p>${esc(t(r))}</p>`).join('')||`<p>${t('Použijte rozptýlené světlo, oddělené předměty a kontrastní podklad.')}</p>`}</div>`:''}${hasCandidates?`<label class="field full-span"><span>${t('Tvar kapsy')}</span><select id="capture-pocket-shape"><option value="hybrid" ${lastPocketShape==='hybrid'?'selected':''}>${t('Vyvážený obrys (50 : 50)')}</option><option value="functional" ${lastPocketShape==='functional'?'selected':''}>${t('Pravidelné tvary podél osy')}</option><option value="measured" ${lastPocketShape==='measured'?'selected':''}>${t('Naměřený obrys')}</option></select></label><p class="muted-note full-span">${t('Vyvážený obrys je napůl mezi naměřeným obrysem a pravidelnými tvary. Přerušovaná čára ukazuje osu. Vůli nastavte pro tento modul nebo jednotlivou kapsu.')}</p><div id="capture-guide" class="full-span"></div><div id="trace-items" class="trace-items full-span"></div><p id="trace-summary" class="full-span"></p><label class="field full-span" id="capture-layout-field"><span>${t('Přidat jako')}</span><select id="capture-layout">${LAYOUTS.map(([id,label])=>`<option value="${id}" ${lastLayout===id?'selected':''}>${t(label)}</option>`).join('')}</select></label><label class="field full-span"><span>${t('Vůle kapes v novém modulu')}</span><div class="input-wrap"><input id="capture-pocket-margin" type="text" inputmode="decimal" autocomplete="off" spellcheck="false" value="${esc(state.pocketMarginText??inputValue(state.pocketMargin,{digits:6}))}"><em>${unit()}</em></div></label><p class="muted-note full-span">${t('Vůle je na každé straně: 1 mm přidá 2 mm k délce i šířce kapsy. Modrá čára ukazuje výslednou kapsu.')}</p><label class="field full-span"><span>${t('Hloubka kapsy')}</span><div class="input-wrap"><input id="capture-depth" type="text" inputmode="decimal" autocomplete="off" spellcheck="false" value="${esc(state.depth??inputValue(Math.min(lastDepth,depthLimit())))}"><em>${unit()}</em></div></label><p class="trace-depth-note full-span">${t('Platí pro všechny nástroje. Jinou hloubku zadejte přímo v seznamu. Nejvýše {max} při současné výšce inzertu.',{max:fmtLen(depthLimit())})}</p><label class="check-row"><input id="trace-mask" type="checkbox">${t('Kontrastní náhled')}</label>`:''}<button class="btn btn-light block-button" id="retake-photo">${icon('camera')}${t('Vybrat jinou fotku')}</button>${errorHTML()}<p class="muted-note full-span">${t('Rozměry jsou bez vůle kapsy. Hloubka se z fotografie neměří, zadejte ji podle nástroje.')}</p></div></div>`;
+    modal.footer.innerHTML=`<button class="btn btn-light" id="capture-calibration-back">${t('Zpět k měřítku')}</button><span class="footnote">${ready?t('Kliknutím na obrys přidáte bod. Tažením bod přesunete.'):t('Přesný inzert začíná čitelnou fotografií.')}</span><button class="btn btn-primary" id="capture-add" ${hasCandidates?'':'disabled'}>${hasCandidates?t('Přidat do šuplíku'):t('Potřebuji lepší fotografii')}</button>`;
     const canvas=modal.body.querySelector('#trace-canvas');canvas.width=state.work?.width||state.image.width;canvas.height=state.work?.height||state.image.height;
     modal.body.querySelector('#retake-photo').onclick=reset;modal.footer.querySelector('#capture-calibration-back').onclick=returnToCalibration;
     if(hasCandidates){
@@ -282,11 +283,12 @@ export function openCapture({onAdd,toast=()=>{},maxDepth=()=>MAX_DEPTH}){
         onError:message=>setError(typeof message==='string'?message:errorText(message))
       });
       canvas.tabIndex=0;canvas.setAttribute('aria-haspopup','menu');
-      canvas.title=t('Kolečko přibližuje, levé tlačítko posouvá. Pravé kliknutí na nástroj zobrazí údaje a možnosti úprav.');
-      resultViewCleanup=bindCanvasView(canvas,{getView:()=>resultView,setView:view=>{resultView=view;},draw:drawResult});
+      canvas.title=t('Kliknutí na obrys přidá bod. Bod přetáhněte. Kolečko přibližuje; tažení mimo obrys posouvá náhled. Pravé kliknutí na nástroj zobrazí údaje a možnosti úprav.');
+      resultViewCleanup=bindCanvasView(canvas,{getView:()=>resultView,setView:view=>{resultView=view;},draw:drawResult,canTouchPan:()=>!contourEditor?.dragging&&resultView.zoom>1,onNavigationStart:()=>contourEditor?.cancel()});
+      contourEditor=bindCaptureContourEditor(canvas,{getItems:()=>state.items,getActiveIndex:()=>state.activeItem,onSelect:index=>guided?guide.open(index):selectActiveItem(index),getPhotoScale:()=>state.scale,getView:()=>resultView,isBusy:()=>closed||state.busy,onUpdate:index=>{if(Number.isInteger(index))syncListItem(index);guide?.refresh({geometryChanged:true,index});updateSummary();drawResult();},onError:message=>setError(message)});
       resultContext=bindCaptureContextMenu(canvas,{
         getItems:()=>state.items,getActiveIndex:()=>state.activeItem,isBusy:()=>closed||state.busy,
-        getScale:()=>canvas.width/Math.max(250,canvas.clientWidth||550)/resultView.zoom,
+        getScale:()=>canvas.width/Math.max(250,canvas.clientWidth||550)/resultView.zoom,getPoints:item=>capturePhotoGeometry(item,state.scale).points,
         toPhoto:point=>viewToPhoto(resultView,point),fromPhoto:point=>photoToView(resultView,point),
         onSelect:index=>guided?guide.open(index):selectActiveItem(index),
         getDescription:item=>{
@@ -300,7 +302,7 @@ export function openCapture({onAdd,toast=()=>{},maxDepth=()=>MAX_DEPTH}){
         }
       });
       modal.footer.querySelector('#capture-add').onclick=async()=>{
-        if(state.busy||!guide.validate())return;
+        if(state.busy||!contourEditor.validate()||!guide.validate())return;
         let pocketMargin;
         try{pocketMargin=state.pocketMarginText===undefined?validatePocketMargin(state.pocketMargin):validatePocketMargin(parseLength(state.pocketMarginText));}
         catch(error){setError(errorText(error));modal.body.querySelector('#capture-pocket-margin').focus();return;}
@@ -328,7 +330,7 @@ export function openCapture({onAdd,toast=()=>{},maxDepth=()=>MAX_DEPTH}){
     drawResult();
   }
   function selectActiveItem(index){
-    if(!state.items[index])return;state.activeItem=index;
+    if(!state.items[index])return;state.activeItem=index;contourEditor?.refresh();
     for(const row of modal.body.querySelectorAll('[data-trace-index]')){
       const active=Number(row.dataset.traceIndex)===index;row.classList.toggle('is-active',active);row.dataset.active=String(active);
     }
@@ -341,7 +343,7 @@ export function openCapture({onAdd,toast=()=>{},maxDepth=()=>MAX_DEPTH}){
     {const points=captureToolPoints(item,state.scale),xs=points.map(p=>p.x),ys=points.map(p=>p.y);row.querySelector('span:last-child').textContent=fmtSize(Math.max(...xs)-Math.min(...xs),Math.max(...ys)-Math.min(...ys));}
   }
   function updateSummary(){
-    if(state.busy)resultContext?.dismiss();
+    if(state.busy){resultContext?.dismiss();contourEditor?.cancel();}
     const count=state.items.filter(i=>i.checked).length,el=modal.body.querySelector('#trace-summary'),button=modal.footer.querySelector('#capture-add');
     const layout=modal.body.querySelector('#capture-layout-field');if(layout)layout.hidden=guided||count<2;
     if(el)el.textContent=t('{tools} · měřítko načteno',{tools:plural(count,['{n} nástroj připraven','{n} nástroje připraveny','{n} nástrojů připraveno'])});
@@ -349,7 +351,7 @@ export function openCapture({onAdd,toast=()=>{},maxDepth=()=>MAX_DEPTH}){
     guide?.setBusy(state.busy);
     const back=modal.footer.querySelector('#capture-calibration-back');if(back)back.disabled=state.busy;
     if(button){
-      button.disabled=state.busy||count===0||state.result?.quality.status!=='ready';
+      button.disabled=state.busy||count===0||!['ready','review'].includes(state.result?.quality.status);
       if(state.busy){button.setAttribute('data-loading-busy','true');if(!button.querySelector('[data-loading-ui]'))button.innerHTML=loadingMarkup({title:t('Přidávám nástroje do šuplíku…'),compact:true});}
       else{button.removeAttribute('data-loading-busy');button.textContent=count?t('Přidat do šuplíku ({n})',{n:count}):t('Vyberte alespoň jeden nástroj');}
     }
@@ -370,7 +372,8 @@ export function openCapture({onAdd,toast=()=>{},maxDepth=()=>MAX_DEPTH}){
     if(zoomed){ctx.save();ctx.setTransform(resultView.zoom,0,0,resultView.zoom,resultView.x,resultView.y);ctx.drawImage(photo(),0,0);}
     else ctx.putImageData(resultPixels(),0,0);
     const scale=canvas.width/Math.max(250,canvas.clientWidth||550)/resultView.zoom;
-    if(state.result?.quality.status==='ready')drawCaptureContours(ctx,state.items,{activeIndex:state.activeItem,scale,photoScale:state.scale,pocketMargin:state.pocketMargin});
+    if(['ready','review'].includes(state.result?.quality.status))drawCaptureContours(ctx,state.items,{activeIndex:state.activeItem,scale,photoScale:state.scale,pocketMargin:state.pocketMargin});
+    contourEditor?.refresh();contourEditor?.draw(ctx,scale);
     if(zoomed)ctx.restore();
     const detail=modal.body.querySelector('#capture-guide-preview');
     if(detail&&state.items[state.activeItem]){
@@ -384,7 +387,7 @@ export function openCapture({onAdd,toast=()=>{},maxDepth=()=>MAX_DEPTH}){
     }
   }
   function render(){
-    if(closed)return;resultContext?.();resultContext=null;resultViewCleanup?.();resultViewCleanup=null;detailViewCleanup?.();detailViewCleanup=null;detailViewCanvas=null;resultView=identityView();guide?.destroy();guide=null;guided=false;resultMaskPixels=null;resultPhoto=null;cancelCalibration?.();cancelCalibration=null;observer?.disconnect();
+    if(closed)return;contourEditor?.destroy();contourEditor=null;resultContext?.();resultContext=null;resultViewCleanup?.();resultViewCleanup=null;detailViewCleanup?.();detailViewCleanup=null;detailViewCanvas=null;resultView=identityView();guide?.destroy();guide=null;guided=false;resultMaskPixels=null;resultPhoto=null;cancelCalibration?.();cancelCalibration=null;observer?.disconnect();
     if(state.step===0)renderUpload();else if(state.step===1)renderCalibration();else if(state.step===3)renderProcessing();else renderResult();
     const canvas=modal.body.querySelector('canvas');if(canvas&&typeof ResizeObserver==='function'&&state.step!==3){observer=new ResizeObserver(()=>{if(!closed)state.step===1?drawCalibration():drawResult();});observer.observe(canvas);}
   }

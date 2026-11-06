@@ -56,7 +56,7 @@ test('a case with many tools is recognised tool by tool, at the true position an
 
 test('tools on a dark mat that fills the photograph are recognised too',async()=>{
   const tools=grid(5,2),result=await recognizeTools(asPlain(matImage(tools)),{pxPerMm:2});
-  assert.equal(result.enhanced,'dark-tray');assert.equal(result.contours.length,tools.length);
+  assert.equal(result.enhanced,'plain-background');assert.equal(result.contours.length,tools.length);
   assert.equal(matched(result.contours,tools,3),tools.length);
 });
 
@@ -76,7 +76,8 @@ test('ordinary photographs stay untouched',()=>{
   assert.equal(readableImage(asPlain(ctx.getImageData(0,0,SIZE,SIZE))),null,'an empty dark surface');
 });
 
-test('a dark surface with too few recognisable pieces falls back to the normal recognition',async()=>{
+test('one tool on a plain dark surface can use measured background separation',async()=>{
   const tools=[{x:300,y:300,w:200,h:200}],result=await recognizeTools(asPlain(matImage(tools)),{pxPerMm:2});
-  assert.equal(result.enhanced,undefined);
+  assert.equal(result.enhanced,'plain-background');assert.equal(result.contours.length,1);
+  assert.equal(matched(result.contours,tools,3),1);
 });

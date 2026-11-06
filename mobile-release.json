@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "sourceCommit": "67647a982b5099c1e194fca02ce5e4809ef89d55",
+  "sourceCommit": "5bb1dbb47ccea6f8b38691cb8153d1138c58da1b",
   "files": [
     {
       "path": "app.js",
@@ -9,8 +9,8 @@
     },
     {
       "path": "auto-trace.js",
-      "sha256": "C821CEF13DDC22D9D20BD8087DE3E4F34E253BF43B1B1AE38679570464286D79",
-      "bytes": 37980
+      "sha256": "F0D06A29DBF0D4B9E2C84AE2110675DE3D8C902041DECC3A159D9E86E94C6428",
+      "bytes": 39358
     },
     {
       "path": "bulk-edit.js",
@@ -19,8 +19,23 @@
     },
     {
       "path": "capture-context-menu.js",
-      "sha256": "68375ACC31C14BDE88C51B559E78A42B805A2A53028B8CF9214899C0F2DA114E",
-      "bytes": 4294
+      "sha256": "B10A8B04C0F9A369589240CB6F7212871294618F9DACE02C9D5A038DA378AB9E",
+      "bytes": 4461
+    },
+    {
+      "path": "capture-contour-edit.js",
+      "sha256": "DA6FAEAB1AF47C1B9018CB26DF9B9EA0B191CD770DBC19094A23570589AF037F",
+      "bytes": 9246
+    },
+    {
+      "path": "capture-contour-editor.css",
+      "sha256": "D83491CCDE358263F0FBBC25F0A0ABDB6D55AED4D1275C125D51F65A6F1FBD2D",
+      "bytes": 1566
+    },
+    {
+      "path": "capture-contour-editor.js",
+      "sha256": "2878CC887083DA28BE06B923F4CBD8325D6EB0E056C82227AC9C09F9848CCA79",
+      "bytes": 20459
     },
     {
       "path": "capture-guide.css",
@@ -29,8 +44,8 @@
     },
     {
       "path": "capture-guide.js",
-      "sha256": "AC3E41279AB22EA088C5D06C9302B88CDC4203B4DB64F1CE9EB65C95A111791B",
-      "bytes": 15866
+      "sha256": "30C8DAE4F4FD9F6C7CEBAB2D0B8593A65CDAF455D0B355F5DD071F136531A2AA",
+      "bytes": 15999
     },
     {
       "path": "capture-preview.js",
@@ -39,8 +54,8 @@
     },
     {
       "path": "capture-tools.js",
-      "sha256": "8CBBF5C55D4F43B1F2DC3E801A65DF1A1B790A83B874F2C57D1712291FD61F8F",
-      "bytes": 5237
+      "sha256": "937AC6A268D189658F3D20EDB27FA9DC6540DA0DCD5A1D2A46902A7EBC166DD6",
+      "bytes": 5838
     },
     {
       "path": "capture-view.js",
@@ -49,8 +64,8 @@
     },
     {
       "path": "capture.js",
-      "sha256": "0FF6B8E49EE8715580609DC80227F485054EE4E128D858ACF644E6B486F0A344",
-      "bytes": 53555
+      "sha256": "7A0D555E766D2319CF0B642BBB2312AA90EF9290A9F581E59267D47FD02EB5E1",
+      "bytes": 54821
     },
     {
       "path": "catalog-ui.js",
@@ -419,8 +434,8 @@
     },
     {
       "path": "locales/en-capture.js",
-      "sha256": "0339088210E5E8B62DFAB33A0F6880FCABACA138A944D3C49755DAEBA58E321F",
-      "bytes": 25229
+      "sha256": "1EBA14F162D35BF690C96D5F6E7579BA6D3CE0D9F64DB323FB0130A1892E2F5F",
+      "bytes": 29278
     },
     {
       "path": "locales/en-core.js",
@@ -558,9 +573,14 @@
       "bytes": 3119
     },
     {
+      "path": "photo-background-model.js",
+      "sha256": "D03224266AD2F02DDA5F1D7B10C2BE5B00858980293FDC276EE38F75DF6C6177",
+      "bytes": 2583
+    },
+    {
       "path": "photo-enhance.js",
-      "sha256": "04E1A165AEF4F24FDBA396E635602D26A1AFC0F285803655DE1B90F11D25B01D",
-      "bytes": 26038
+      "sha256": "DEE6647576F3C3F0B676B59B99C63DBAF6B479752E98973483E2187A54046AE5",
+      "bytes": 26818
     },
     {
       "path": "photo-layout.js",
@@ -569,8 +589,13 @@
     },
     {
       "path": "photo-light.js",
-      "sha256": "E735CE8C112DEA4442F110E6F8D6F082FCD86DA066332CAD7FA1196425BAEE50",
-      "bytes": 8492
+      "sha256": "BBDF9B3467F1ED9707E5C44EF11195AEFD86F2A778BBC9B17853497D5694296A",
+      "bytes": 9096
+    },
+    {
+      "path": "photo-metal-background.js",
+      "sha256": "D2AA8DC93DA726F540F396C22BF2F58DB39E076358B2C8DD496065CB74C40A04",
+      "bytes": 17724
     },
     {
       "path": "photo-module.js",
@@ -654,8 +679,8 @@
     },
     {
       "path": "recognize.js",
-      "sha256": "86E71AF8C80DB0E2501A408BAE6F9C114CDA2C094C85CC1A34F34E5991D196C5",
-      "bytes": 4782
+      "sha256": "F4921BCC1A059178D3E9C0DDEF498A8573C080621AFEDCEACDDEC82EE216F301",
+      "bytes": 6597
     },
     {
       "path": "ruler-calibration.js",
@@ -714,8 +739,8 @@
     },
     {
       "path": "sw.js",
-      "sha256": "070D15A0A65E57B45D9C60D18D64385CE6D6BBF69D089C246DF246410B38118F",
-      "bytes": 4673
+      "sha256": "65BCA3121567CF26A691CBC2A62D8F59FA6C0B1C05AED5EBDA085994E7E8AAEA",
+      "bytes": 4827
     },
     {
       "path": "three-mf.js",

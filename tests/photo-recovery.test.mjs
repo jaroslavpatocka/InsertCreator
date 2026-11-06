@@ -64,7 +64,7 @@ function intersectionOverUnion(a,b){
 for(const angle of [0,-25,25])test(`black grip and bright cap stay part of one tool on a dark mat (${angle} degrees)`,async()=>{
   const fixture=scene({angle}),sourceCopy=new Uint8ClampedArray(fixture.image.data);
   const result=await recognizeTools(fixture.image,{pxPerMm:2});
-  assert.equal(result.enhanced,'dark-tray');
+  assert.equal(result.enhanced,'plain-background');
   assert.equal(result.contours.length,2,'the ratchet and the neighbouring tool each need one contour');
   assert.equal(hasPixel(result,505,210,angle),1,'the real black grip must remain inside the ratchet');
   assert.equal(hasPixel(result,565,210,angle),1,'the bright cap must remain inside the ratchet');
@@ -76,7 +76,7 @@ for(const angle of [0,-25,25])test(`black grip and bright cap stay part of one t
 
 test('collinear bright pieces with real textured background between them stay separate',async()=>{
   const fixture=scene({bridge:'gap'}),result=await recognizeTools(fixture.image,{pxPerMm:2});
-  assert.equal(result.enhanced,'dark-tray');
+  assert.equal(result.enhanced,'plain-background');
   assert.equal(result.contours.length,3,'a real gap must not be closed merely because objects align');
   assert.equal(hasPixel(result,505,210),0,'there is no photographed tool surface in the gap');
   assert.ok(intersectionOverUnion(result.mask,fixture.truth)>.92);
@@ -101,7 +101,15 @@ for(const angle of [0,-25,25])test(`strong diagonal mat texture cannot supply a 
 });
 
 test('dark grip recovery preserves both input images and their dimensions',()=>{
-  const original=scene().image,enhanced=readableImage(original).image;
+  const fixture=scene(),original=fixture.image;
+  // The generic plain-background path already sees this grip. Exercise the
+  // legacy recovery independently with known physical foreground anchors:
+  // preserve the truth mask everywhere except the photographed black grip.
+  const enhanced={width:WIDTH,height:HEIGHT,data:new Uint8ClampedArray(original.data.length).fill(255)};
+  for(let y=0;y<HEIGHT;y++)for(let x=0;x<WIDTH;x++){
+    const p=y*WIDTH+x,blackGrip=x>=455&&x<555&&y>=188&&y<232;
+    if(fixture.truth[p]&&!blackGrip)enhanced.data[p*4]=enhanced.data[p*4+1]=enhanced.data[p*4+2]=0;
+  }
   const originalCopy=new Uint8ClampedArray(original.data),enhancedCopy=new Uint8ClampedArray(enhanced.data);
   const result=recoverDarkTools(original,enhanced);
   assert.equal(result.width,WIDTH);assert.equal(result.height,HEIGHT);

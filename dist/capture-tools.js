@@ -44,7 +44,7 @@ export function capturePhotoGeometry(item,scale,{includeMargin=false,pocketMargi
   const xs=source.map(point=>point.x),ys=source.map(point=>point.y);
   const px=item.contour.points.map(point=>point.x),py=item.contour.points.map(point=>point.y);
   const center={x:(Math.min(...px)+Math.max(...px))/2,y:(Math.min(...py)+Math.max(...py))/2};
-  const origin={x:center.x-(Math.max(...xs)+Math.min(...xs))*scale/2,y:center.y-(Math.max(...ys)+Math.min(...ys))*scale/2};
+  const origin=item.contourEditOrigin||{x:center.x-(Math.max(...xs)+Math.min(...xs))*scale/2,y:center.y-(Math.max(...ys)+Math.min(...ys))*scale/2};
   const photo=point=>({x:origin.x+point.x*scale,y:origin.y+point.y*scale});
   let points=geometry.points;
   if(includeMargin){
@@ -60,9 +60,15 @@ export function captureItemDimensions(item,scale){
 
 /** Commit only a valid resize to this item, without changing photo calibration. */
 export function resizeCaptureItem(item,scale,dimensions){
+  const editedPhoto=item.contourEditOrigin?capturePhotoGeometry(item,scale).points:null;
+  const photoCenter=editedPhoto?{x:(Math.min(...editedPhoto.map(p=>p.x))+Math.max(...editedPhoto.map(p=>p.x)))/2,y:(Math.min(...editedPhoto.map(p=>p.y))+Math.max(...editedPhoto.map(p=>p.y)))/2}:null;
   const next=resizeToolDimensions({points:sourcePoints(item,scale),x:0,y:0,rotation:0},dimensions);
   const measured=getToolDimensions(next);
   item.editedPoints=next.points;
+  if(photoCenter){
+    item.contourEditOrigin={x:photoCenter.x-(Math.min(...next.points.map(p=>p.x))+Math.max(...next.points.map(p=>p.x)))*scale/2,y:photoCenter.y-(Math.min(...next.points.map(p=>p.y))+Math.max(...next.points.map(p=>p.y)))*scale/2};
+    delete item.contourEdit;
+  }
   return measured;
 }
 

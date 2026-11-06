@@ -225,8 +225,9 @@ export function mountCaptureGuide({
   render();
   return {
     open,
-    refresh() {
+    refresh({geometryChanged=false,index=current}={}) {
       if (destroyed) return;
+      if(geometryChanged&&!dimensionDrafts.get(index)?.dirty)dimensionDrafts.delete(index);
       if (active) { syncCurrent(); onSelect(current); } else render();
     },
     setBusy(value) { busy = !!value; if (!destroyed) syncBusy(); },

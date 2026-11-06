@@ -19,13 +19,13 @@ function containsPoint(point,polygon){
 }
 
 /** Hit the painted contour or number badge in raw photo pixels, in paint order. */
-export function hitCaptureItem(items,point,{activeIndex=null,scale=1}={}){
+export function hitCaptureItem(items,point,{activeIndex=null,scale=1,getPoints=item=>item.contour?.points}={}){
   if(!Array.isArray(items)||!finitePoint(point))return null;
   const size=positiveScale(scale);
   const hits=index=>{
     const item=items[index];if(!item)return false;
     const center=item.info?.center,radius=(index===activeIndex?12:10)*size;
-    return (finitePoint(center)&&Math.hypot(point.x-center.x,point.y-center.y)<=radius)||containsPoint(point,item.contour?.points);
+    return (finitePoint(center)&&Math.hypot(point.x-center.x,point.y-center.y)<=radius)||containsPoint(point,getPoints(item));
   };
   // The active contour is drawn after all remaining contours.
   if(Number.isInteger(activeIndex)&&items[activeIndex]&&hits(activeIndex))return activeIndex;
@@ -41,6 +41,7 @@ export function hitCaptureItem(items,point,{activeIndex=null,scale=1}={}){
 export function bindCaptureContextMenu(canvas,{
   getItems=()=>[],getActiveIndex=()=>null,isBusy=()=>false,
   getScale=()=>canvas.width/Math.max(250,canvas.clientWidth||550),
+  getPoints=item=>item.contour?.points,
   toPhoto=point=>point,fromPhoto=point=>point,
   onSelect,onEdit,getDescription
 }={}){
@@ -62,7 +63,7 @@ export function bindCaptureContextMenu(canvas,{
     if(disposed||isBusy())return;
     const rect=canvas.getBoundingClientRect();
     const point={x:(event.clientX-rect.left)*canvas.width/(rect.width||canvas.width),y:(event.clientY-rect.top)*canvas.height/(rect.height||canvas.height)};
-    const index=hitCaptureItem(getItems(),toPhoto(point),{activeIndex:getActiveIndex(),scale:getScale()});
+    const index=hitCaptureItem(getItems(),toPhoto(point),{activeIndex:getActiveIndex(),scale:getScale(),getPoints});
     if(index!==null)open(index,event.clientX,event.clientY);
   };
   const keyboard=event=>{

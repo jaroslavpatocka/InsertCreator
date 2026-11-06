@@ -244,7 +244,24 @@ function hasWidthTransition(points, axis) {
   return widths.length >= 12 && widths[Math.floor(widths.length * .8)] > widths[Math.floor(widths.length * .2)] * 1.7;
 }
 
-function possibleFragments(a, b, pxPerMm) {
+// A compact jaw need not share the shaft's principal axis. On a plain surface
+// a tiny gap at that joint can be either a real separation or a reflective seam.
+// Flag that identity ambiguity for review; never paint a connection here.
+function compactHeadFragment(anchor, head, pxPerMm) {
+  const axis = contourAxis(anchor.contour.points), normal = { x: -axis.y, y: axis.x };
+  const a = projection(anchor.contour.points, axis), aw = projection(anchor.contour.points, normal);
+  const b = projection(head.contour.points, axis), bw = projection(head.contour.points, normal);
+  if (a.length < Math.max(10, pxPerMm * 8, aw.length * 2.5) || b.length > a.length * .55
+    || b.length > bw.length * 1.8 || head.contour.area > anchor.contour.area * .7
+    || bw.length < aw.length * .4 || bw.length > aw.length * 2.2) return false;
+  const gap = Math.max(a.lo - b.hi, b.lo - a.hi);
+  if (gap <= 0 || gap >= Math.max(2, pxPerMm * 4)) return false;
+  return Math.abs((aw.lo + aw.hi - bw.lo - bw.hi) / 2) <= aw.length * .3
+    && Math.min(aw.hi, bw.hi) - Math.max(aw.lo, bw.lo) >= Math.min(aw.length, bw.length) * .65;
+}
+
+function possibleFragments(a, b, pxPerMm, wide = false) {
+  if (wide && (compactHeadFragment(a, b, pxPerMm) || compactHeadFragment(b, a, pxPerMm))) return true;
   const aa = contourAxis(a.contour.points), ba = contourAxis(b.contour.points);
   const alignment = aa.x * ba.x + aa.y * ba.y;
   if (Math.abs(alignment) < .94) return false;
@@ -253,7 +270,7 @@ function possibleFragments(a, b, pxPerMm) {
   const al = projection(a.contour.points, axis), bl = projection(b.contour.points, axis);
   const aw = projection(a.contour.points, normal), bw = projection(b.contour.points, normal);
   const gap = Math.max(al.lo - bl.hi, bl.lo - al.hi);
-  const limit = Math.max(2, pxPerMm * 4);
+  const limit = Math.max(2, pxPerMm * 4, wide ? Math.min(pxPerMm * 30, Math.min(al.length, bl.length) * .5) : 0);
   // Side-by-side tools have overlapping longitudinal intervals. Only aligned
   // end-to-end pieces can be a shaft separated from its handle by a reflection.
   if (gap <= 0 || gap >= limit || Math.min(al.length / Math.max(1, aw.length), bl.length / Math.max(1, bw.length)) < 1.5) return false;
@@ -347,7 +364,7 @@ function separateTouching(binary, result, im, features, pxPerMm, options) {
   });
 }
 
-function evaluateCandidate(name, binary, im, features, pxPerMm, separated = false) {
+function evaluateCandidate(name, binary, im, features, pxPerMm, separated = false, wideFragments = false) {
   const options = { smoothing: Math.max(.25, .15 * pxPerMm), minArea: Math.max(im.width * im.height * .00016, 4 * pxPerMm * pxPerMm) };
   const result = traceMask(binary, im.width, im.height, { ...options, includeLabels: true });
   const contours = separateTouching(binary, result, im, features, pxPerMm, options);
@@ -361,7 +378,7 @@ function evaluateCandidate(name, binary, im, features, pxPerMm, separated = fals
   coverage = perimeter ? coverage / perimeter : 0; strength = perimeter ? strength / perimeter : 0;
   let fragments = 0;
   for (let i = 0; i < accepted.length; i++) for (let j = i + 1; j < accepted.length; j++) {
-    if (possibleFragments(accepted[i], accepted[j], pxPerMm)) fragments++;
+    if (possibleFragments(accepted[i], accepted[j], pxPerMm, wideFragments)) fragments++;
   }
   const fill = count / mask.length, foregroundEvidence = count ? strong / count : 0, neuralAgreement = count && im.prior ? prior / count : null;
   const rawScore = .44 * coverage + .28 * strength + .16 * foregroundEvidence + .12 - (separated ? 0 : Math.min(.25, fragments * .075) + Math.max(0, accepted.length - 15) * .012) - Math.max(0, fill - .65) * 1.5;
@@ -422,7 +439,7 @@ function restore(candidate, original, im) {
  * probability is an optional source-sized Float32Array (0..1) from a segmentation model.
  * onProgress receives {stage,progress,message}. score0to1 is a heuristic evidence score.
  */
-export async function autoTraceImage(imageData, { pxPerMm = 1, kind = 'paper', probability = null, source = null, onProgress } = {}) {
+export async function autoTraceImage(imageData, { pxPerMm = 1, kind = 'paper', probability = null, source = null, wideFragments = false, onProgress } = {}) {
   const started = performance.now(), progress = (stage, value, message) => { try { onProgress?.({ stage, progress: value, message }); } catch {} };
   progress('background', .03, 'Měřím barvu papíru a vyrovnávám osvětlení…'); await pause();
   const im = prepare(imageData, probability), scale = Number.isFinite(pxPerMm) && pxPerMm > 0 ? pxPerMm / im.scaleX : 1;
@@ -448,7 +465,7 @@ export async function autoTraceImage(imageData, { pxPerMm = 1, kind = 'paper', p
   const candidates = [];
   for (let i = 0; i < definitions.length; i++) {
     progress('contours', .38 + i / definitions.length * .42, `Porovnávám automatické obrysy (${i + 1}/${definitions.length})…`); await pause();
-    const definition = definitions[i]; candidates.push(evaluateCandidate(definition.name, definition.mask, im, features, scale, kind === 'tray' || kind === 'light')); definition.mask = null;
+    const definition = definitions[i]; candidates.push(evaluateCandidate(definition.name, definition.mask, im, features, scale, kind === 'tray' || kind === 'light', wideFragments)); definition.mask = null;
   }
   progress('quality', .9, 'Ověřuji souvislost hran a shodu metod…'); await pause();
   for (let i = 0; i < candidates.length; i++) for (let j = i + 1; j < candidates.length; j++) { const agreement = overlap(candidates[i].mask, candidates[j].mask); candidates[i].agreement = Math.max(candidates[i].agreement, agreement); candidates[j].agreement = Math.max(candidates[j].agreement, agreement); }

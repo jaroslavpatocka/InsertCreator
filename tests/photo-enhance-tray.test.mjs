@@ -150,7 +150,7 @@ test('a bright tool close to the tray edge retains its physical width and positi
   assert.equal(result.mask[320*WIDTH+24],0,'the white area outside the tray is still excluded');
 });
 
-test('coloured tools on a light coloured plain background use the normal image path',async()=>{
+test('coloured tools on a light coloured plain background use measured RGB separation',async()=>{
   const canvas=createCanvas(WIDTH,HEIGHT),ctx=canvas.getContext('2d');
   ctx.fillStyle='#f0dfc9';ctx.fillRect(0,0,WIDTH,HEIGHT);
   const tools=[];
@@ -160,5 +160,5 @@ test('coloured tools on a light coloured plain background use the normal image p
     tools.push({name:`coloured tool ${i+1}`,mask,bounds:{x0:x,x1:x+w,y0:y,y1:y+h}});
   }
   const result=await recognizeTools(ctx.getImageData(0,0,WIDTH,HEIGHT),{pxPerMm:2});
-  assert.equal(result.enhanced,undefined);assertKnownTools(result,tools);
+  assert.equal(result.enhanced,'plain-background');assertKnownTools(result,tools);
 });

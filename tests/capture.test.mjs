@@ -41,7 +41,8 @@ const {openCapture}=await import('../dist/capture.js');
 const $=selector=>win.document.querySelector(selector);
 const click=selector=>{const element=$(selector);assert.ok(element,'Missing '+selector);element.click();};
 const pause=ms=>new Promise(resolve=>setTimeout(resolve,ms));
-async function waitFor(fn,message='capture state',timeout=16000){const started=performance.now();while(!fn()){if(performance.now()-started>timeout)throw new Error('Timed out: '+message+'; '+($('.modal-body')?.textContent||''));await pause(3);}}
+// Real WASM inference shares CPU with other integration files in the full suite.
+async function waitFor(fn,message='capture state',timeout=30000){const started=performance.now();while(!fn()){if(performance.now()-started>timeout)throw new Error('Timed out: '+message+'; '+($('.modal-body')?.textContent||''));await pause(3);}}
 const bounds=tool=>({width:Math.max(...tool.points.map(p=>p.x))-Math.min(...tool.points.map(p=>p.x)),height:Math.max(...tool.points.map(p=>p.y))-Math.min(...tool.points.map(p=>p.y))});
 
 test('capture A4 flow uses real neural workers without user calibration or contour controls',{timeout:45000},async t=>{

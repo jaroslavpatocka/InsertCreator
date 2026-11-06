@@ -6,6 +6,14 @@ import { i18nError } from './i18n.js';
 // Progress messages and worker errors are Czech source text; capture.js translates them with t()/errorText().
 
 const aborted = () => new DOMException('Rozpoznávání bylo zrušeno.', 'AbortError');
+function requireSourceReview(result, readable) {
+  if (!readable?.requiresReview || result.quality.status === 'retake') return;
+  result.requiresReview = true;
+  if (result.quality.status === 'ready') {
+    result.quality.status = 'review';
+    result.quality.reasons = ['Na tmavém podkladu mohou sousední nebo málo kontrastní části splývat. Ověřte počet a oddělení nástrojů.'];
+  }
+}
 function classical(image, options, signal) {
   if (signal?.aborted) return Promise.reject(aborted());
   if (typeof Worker !== 'function') return autoTraceImage(image, options);
@@ -30,7 +38,7 @@ function classical(image, options, signal) {
     const pixels = new Uint8ClampedArray(image.data);
     const probability = options.probability ? new Float32Array(options.probability) : null;
     const source = options.source ? { width: options.source.width, height: options.source.height, data: new Uint8ClampedArray(options.source.data) } : null;
-    worker.postMessage({ image: { width: image.width, height: image.height, data: pixels }, options: { pxPerMm: options.pxPerMm, kind: options.kind, probability, source } }, [pixels.buffer, ...(probability ? [probability.buffer] : []), ...(source ? [source.data.buffer] : [])]);
+    worker.postMessage({ image: { width: image.width, height: image.height, data: pixels }, options: { pxPerMm: options.pxPerMm, kind: options.kind, wideFragments: options.wideFragments, probability, source } }, [pixels.buffer, ...(probability ? [probability.buffer] : []), ...(source ? [source.data.buffer] : [])]);
   });
 }
 
@@ -42,10 +50,25 @@ export async function recognizeTools(image, { pxPerMm = 1, kind = 'paper', signa
   const readable = readableImage(image);
   if (readable) {
     progress({ stage: 'enhance', progress: .05, message: 'Upravuji fotku, aby byly nástroje čitelné…' });
-    const light = readable.name === 'light-background';
+    const light = readable.name === 'light-background' || readable.name === 'plain-background';
     const recovered = light ? readable.image : recoverDarkTools(image, readable.image);
-    const result = await classical(recovered, { pxPerMm, kind: light ? 'light' : 'tray', source: image, onProgress: progress }, signal);
+    const result = await classical(recovered, { pxPerMm, kind: light ? 'light' : 'tray', wideFragments: readable.wideFragments ?? readable.name === 'plain-background', source: image, onProgress: progress }, signal);
     if (signal?.aborted) throw aborted();
+    if (readable.ambiguousBridge && result.quality.status !== 'retake') {
+      const reason = 'Krátké přerušení obrysu bylo odhadnuto z okolních hran. Ověřte spojené části podle fotografie.';
+      result.quality.reasons = result.quality.status === 'ready' ? [reason] : [reason, ...result.quality.reasons];
+      result.quality.status = 'review'; result.ambiguousBridge = true; result.recoveredBands = readable.recoveredBands;
+    }
+    if (readable.ambiguousMaterial && result.quality.status !== 'retake') {
+      result.quality.status = 'review'; result.ambiguousMaterial = true;
+      result.quality.reasons = ['Část hrany je málo kontrastní nebo splývá se stínem. Přesnost této části nelze z fotografie spolehlivě ověřit.', ...result.quality.reasons];
+    }
+    if (readable.ambiguousPrinting && result.quality.status !== 'retake') {
+      const reason = 'Na podkladu jsou drobné značky, které mohou být potisk. Zkontrolujte výběr nástrojů.';
+      result.quality.reasons = result.quality.status === 'ready' ? [reason] : [...result.quality.reasons, reason];
+      result.quality.status = 'review'; result.ambiguousPrinting = true;
+    }
+    requireSourceReview(result, readable);
     if (result.quality.status !== 'retake' && result.contours.length >= (light ? 1 : 2)) {
       result.enhanced = readable.name; result.neuralModel = null;
       progress({ stage: 'done', progress: 1, message: result.quality.status === 'ready' ? 'Obrysy jsou připravené.' : 'Fotka potřebuje lepší podmínky.' });
@@ -69,6 +92,7 @@ export async function recognizeTools(image, { pxPerMm = 1, kind = 'paper', signa
     result.neuralModel = null;
     result.neuralUnavailable = neural.status === 'rejected';
   } else throw base.reason || i18nError('Fotografii se nepodařilo zpracovat.');
+  requireSourceReview(result, readable);
   progress({ stage: 'done', progress: 1, message: result.quality.status === 'ready' ? 'Obrysy jsou připravené.' : 'Fotka potřebuje lepší podmínky.' });
   return result;
 }
