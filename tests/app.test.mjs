@@ -6,6 +6,7 @@ import {createCanvas,ImageData} from '@napi-rs/canvas';
 import {bounds,validateLayout} from '../dist/geometry.js';
 import {validateProject} from '../dist/model.js';
 import {Worker as NodeWorker} from 'node:worker_threads';
+import {seedSample} from './sample-fixture.mjs';
 
 // Browser workers stay real in this integration test. The final
 // project has nine tools, so the intentionally bounded UI-thread fallback must
@@ -85,6 +86,7 @@ function stlHeight(bytes){
   }
   assert.ok(zmin>=-1e-5);return zmax-zmin;
 }
+seedSample();
 await import('../dist/app.js');
 
 test('rotation shortcut ignores Ctrl, Meta and Alt while plain R still rotates',()=>{

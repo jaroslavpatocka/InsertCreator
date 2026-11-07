@@ -30,6 +30,9 @@ const items=[
 let loads=0;
 setCatalogSource(async()=>{loads++;return{categories:CATEGORIES,items};});
 
+// Dynamic so i18n still loads after the language is stored above.
+const {seedSample}=await import('./sample-fixture.mjs');
+seedSample();
 await import('../dist/app.js');
 
 const $=s=>win.document.querySelector(s);
