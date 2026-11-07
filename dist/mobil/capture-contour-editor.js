@@ -3,8 +3,9 @@ import {getToolDimensions} from './tool-dimensions.js';
 import {openContextMenu} from './context-menu.js';
 import {t,errorText} from './i18n.js';
 import {inputValue,parseLength,unit} from './units.js';
+import {capturePhotoGeometry} from './capture-tools.js';
 
-const fields=['editedPoints','contourEdit','contourEditOrigin','pocketShape'];
+const fields=['editedPoints','contourEdit','contourEditOrigin','contourReserveRatio','pocketShape'];
 const snapshot=item=>Object.fromEntries(fields.filter(key=>Object.hasOwn(item,key)).map(key=>[key,structuredClone(item[key])]));
 const restore=(item,value)=>{for(const key of fields)delete item[key];Object.assign(item,structuredClone(value));};
 const same=(a,b)=>JSON.stringify(a)===JSON.stringify(b);
@@ -12,7 +13,7 @@ let nextHint=0;
 
 /** Direct point/curve editing. Navigation observes touch first and can cancel
  * this editor when a second finger starts a pinch; ordinary mouse pan bubbles. */
-export function bindCaptureContourEditor(canvas,{getItems,getActiveIndex,onSelect,getPhotoScale,getView,isBusy=()=>false,onUpdate=()=>{},onError=()=>{}}){
+export function bindCaptureContourEditor(canvas,{getItems,getActiveIndex,onSelect,getPhotoScale,getView,getPocketMargin=()=>null,isBusy=()=>false,onUpdate=()=>{},onError=()=>{}}){
   const document=canvas.ownerDocument,host=document.defaultView;
   const previousTabIndex=canvas.getAttribute('tabindex'),previousDescription=canvas.getAttribute('aria-describedby');canvas.tabIndex=0;
   if(!document.getElementById('capture-contour-editor-styles')){
@@ -40,9 +41,11 @@ export function bindCaptureContourEditor(canvas,{getItems,getActiveIndex,onSelec
   const notify=index=>{onUpdate(index);refresh();};
   const record=(item,before)=>{if(same(before,snapshot(item)))return;const h=history(item);h.past.push(before);if(h.past.length>50)h.past.shift();h.future=[];};
   const fail=error=>onError(errorText(error));
-  const local=event=>{const rect=canvas.getBoundingClientRect(),view=getView(),scale=getPhotoScale();return{x:((event.clientX-rect.left)*canvas.width/(rect.width||canvas.width)-view.x)/view.zoom,y:((event.clientY-rect.top)*canvas.height/(rect.height||canvas.height)-view.y)/view.zoom,scale};};
+  const surfaces=new Map();let focusSurface=canvas;
+  const surfaceOf=event=>surfaces.has(event?.currentTarget)?event.currentTarget:focusSurface;
+  const local=event=>{const target=surfaceOf(event),rect=target.getBoundingClientRect(),view=surfaces.get(target).getView(),scale=getPhotoScale();return{x:((event.clientX-rect.left)*target.width/(rect.width||target.width)-view.x)/view.zoom,y:((event.clientY-rect.top)*target.height/(rect.height||target.height)-view.y)/view.zoom,scale};};
   const inModel=(point,model)=>({x:(point.x-model.origin.x)/point.scale,y:(point.y-model.origin.y)/point.scale});
-  const cssScale=()=>{const rect=canvas.getBoundingClientRect();return canvas.width/(rect.width||canvas.width)/getView().zoom;};
+  const cssScale=event=>{const target=surfaceOf(event),rect=target.getBoundingClientRect();return target.width/(rect.width||target.width)/surfaces.get(target).getView().zoom;};
   const stop=event=>{event.preventDefault();event.stopImmediatePropagation?.();};
   const clearSelection=()=>{selected=null;selectedItem=null;};
 
@@ -50,7 +53,7 @@ export function bindCaptureContourEditor(canvas,{getItems,getActiveIndex,onSelec
     if(disposed)return;
     const active=current();if(active?.item!==selectedItem){selected=null;selectedItem=active?.item||null;}
     const h=active?history(active.item):null,busy=isBusy();
-    buttons.toggle.setAttribute('aria-pressed',String(enabled));canvas.classList.toggle('is-contour-editing',enabled&&!busy);
+    buttons.toggle.setAttribute('aria-pressed',String(enabled));for(const target of surfaces.keys())target.classList.toggle('is-contour-editing',enabled&&!busy);
     buttons.undo.disabled=busy||!h?.past.length;buttons.redo.disabled=busy||!h?.future.length;buttons.reset.disabled=busy||!active?.item.editedPoints;
     buttons.toggle.disabled=busy;
     const model=active?modelOf(active.item):null,node=model&&selected!==null?model.nodes[selected]:null;
@@ -64,7 +67,7 @@ export function bindCaptureContourEditor(canvas,{getItems,getActiveIndex,onSelec
   function commit(next,{preserveFields=false,target=current()}={}){if(!target)return;const before=snapshot(target.item);applyCaptureEdit(target.item,getPhotoScale(),next);record(target.item,before);invalidModel=null;if(!preserveFields)clearFields();onError('');notify(target.index);}
   function menuAt(event){
     const active=current();if(!active||selected===null)return;closeMenu();
-    menu=openContextMenu({title:t('Bod a profil kontury'),x:event.clientX,y:event.clientY,returnFocus:canvas,
+    menu=openContextMenu({title:t('Bod a profil kontury'),x:event.clientX,y:event.clientY,returnFocus:focusSurface,
       items:[{action:'move',label:t('Přesunout bod')},{action:'curve',label:t('Bézierova křivka')},{action:'straight',label:t('Rovný bod')},{action:'width',label:t('Rozšířit / zúžit')},{action:'length',label:t('Prodloužit / zkrátit')},{action:'delete',label:t('Smazat bod'),disabled:modelOf(active.item).nodes.length<=3}],
       onAction:action=>{
         if(disposed||isBusy())return;
@@ -73,7 +76,7 @@ export function bindCaptureContourEditor(canvas,{getItems,getActiveIndex,onSelec
           else if(action==='straight')commit(straightContourNode(modelOf(active.item),selected));
           else if(action==='delete'){commit(deleteContourNode(modelOf(active.item),selected));selected=null;notify(active.index);}
           else if(action==='width'||action==='length'){inputs[action].focus();inputs[action].select();return;}
-          canvas.focus({preventScroll:true});
+          focusSurface.focus({preventScroll:true});
         }catch(error){fail(error);}
       }});menu.menu.classList.add('capture-contour-menu');
   }
@@ -81,15 +84,15 @@ export function bindCaptureContourEditor(canvas,{getItems,getActiveIndex,onSelec
   function cancel(){
     if(!drag)return;
     const previous=drag;drag=null;restore(previous.item,previous.before);selected=previous.previousSelection;invalidModel=null;
-    try{canvas.releasePointerCapture?.(previous.id);}catch{}
+    try{previous.surface.releasePointerCapture?.(previous.id);}catch{}
     notify(previous.index);
   }
 
   function down(event){
     if(disposed||!enabled||isBusy()||space||event.button!==0||event.isPrimary===false||drag||event.altKey)return;
     if(!validateFields()){stop(event);return;}
-    closeMenu();let active=current(),point=local(event),model=active?modelOf(active.item):null,hit=null;
-    const radius=(event.pointerType==='touch'?22:9)*cssScale()/point.scale;
+    closeMenu();focusSurface=surfaceOf(event);let active=current(),point=local(event),model=active?modelOf(active.item):null,hit=null;
+    const radius=(event.pointerType==='touch'?22:9)*cssScale(event)/point.scale;
     if(model){
       const p=inModel(point,model),candidates=[];
       model.nodes.forEach((node,index)=>{if(node.manual||index===selected)candidates.push({index,point:node});if(index===selected)for(const handle of ['in','out'])if(node[handle])candidates.push({index,point:node[handle],handle});});
@@ -99,8 +102,20 @@ export function bindCaptureContourEditor(canvas,{getItems,getActiveIndex,onSelec
     if(!hit){
       let nearest=null;
       for(const [index,item] of getItems().entries()){
+        if(focusSurface!==canvas&&index!==getActiveIndex())continue;
         const candidateModel=modelOf(item),edge=nearestContourSegment(candidateModel,inModel(point,candidateModel));
-        if(edge&&edge.distance<=radius&&(!nearest||edge.distance<nearest.edge.distance))nearest={index,item,model:candidateModel,edge};
+        if(!edge)continue;
+        let distance=edge.distance;
+        // Both the green profile and the blue manufacturing boundary are visible
+        // editing targets. At high zoom the clearance can be much wider than the
+        // hit radius; resolve a blue hit back to the un-offset editable profile.
+        const margin=getPocketMargin();
+        if(margin!==null&&(item.checked||index===getActiveIndex())){
+          const visible=capturePhotoGeometry(item,point.scale,{includeMargin:true,pocketMargin:margin}).points;
+          distance=Math.min(distance,nearestContourSegment({nodes:visible},point).distance/point.scale);
+        }
+        if(index===getActiveIndex()&&['ideal','hybrid','functional'].includes(item.pocketShape))distance=Math.min(distance,nearestContourSegment({nodes:item.contour.points},point).distance/point.scale);
+        if(distance<=radius&&(!nearest||distance<nearest.distance))nearest={index,item,model:candidateModel,edge,distance};
       }
       if(!nearest)return;
       active={index:nearest.index,item:nearest.item};model=nearest.model;before=snapshot(active.item);previousSelection=active.item===selectedItem?selected:null;
@@ -109,8 +124,8 @@ export function bindCaptureContourEditor(canvas,{getItems,getActiveIndex,onSelec
       catch(error){fail(error);return;}
     }else selected=hit.index;
     selectedItem=active.item;const p=inModel(point,model),target=hit.handle?model.nodes[selected][hit.handle]:model.nodes[selected];
-    drag={id:event.pointerId,index:active.index,item:active.item,before,previousSelection,model:cloneContourModel(model),node:selected,handle:hit.handle,offset:{x:target.x-p.x,y:target.y-p.y},inserted,moved:false,invalid:false,start:{x:event.clientX,y:event.clientY}};
-    suppressClick=true;stop(event);canvas.focus({preventScroll:true});try{canvas.setPointerCapture?.(event.pointerId);}catch{}clearFields();onError('');notify(active.index);
+    drag={id:event.pointerId,surface:focusSurface,index:active.index,item:active.item,before,previousSelection,model:cloneContourModel(model),node:selected,handle:hit.handle,offset:{x:target.x-p.x,y:target.y-p.y},inserted,moved:false,invalid:false,start:{x:event.clientX,y:event.clientY}};
+    suppressClick=true;stop(event);focusSurface.focus({preventScroll:true});try{focusSurface.setPointerCapture?.(event.pointerId);}catch{}clearFields();onError('');notify(active.index);
   }
 
   function move(event){
@@ -127,7 +142,7 @@ export function bindCaptureContourEditor(canvas,{getItems,getActiveIndex,onSelec
   function up(event){
     if(!drag||event.pointerId!==drag.id)return;stop(event);
     const previous=drag;drag=null;
-    try{canvas.releasePointerCapture?.(previous.id);}catch{}
+    try{previous.surface.releasePointerCapture?.(previous.id);}catch{}
     if(previous.invalid){restore(previous.item,previous.before);selected=previous.previousSelection;invalidModel=null;onError(t('Kontura se nesmí křížit sama se sebou.'));}
     else record(previous.item,previous.before);
     notify(previous.index);
@@ -136,7 +151,7 @@ export function bindCaptureContourEditor(canvas,{getItems,getActiveIndex,onSelec
 
   function key(event){
     if(event.code==='Space'||event.key===' '){space=true;return;}
-    if(event.target!==canvas)return;
+    if(!surfaces.has(event.target))return;focusSurface=event.target;
     const active=current();if(!active||isBusy())return;
     if(event.key==='Escape'){stop(event);closeMenu();if(drag)cancel();else{clearSelection();refresh();onUpdate(active.index);}return;}
     if((event.ctrlKey||event.metaKey)&&event.key.toLowerCase()==='z'){stop(event);runAction(event.shiftKey?'redo':'undo');return;}
@@ -146,7 +161,7 @@ export function bindCaptureContourEditor(canvas,{getItems,getActiveIndex,onSelec
       else if(['ArrowLeft','ArrowRight','ArrowUp','ArrowDown'].includes(event.key)){
         stop(event);const model=modelOf(active.item),node=model.nodes[selected],step=event.shiftKey?1:.1;
         commit(moveContourNode(model,selected,{x:node.x+(event.key==='ArrowLeft'?-step:event.key==='ArrowRight'?step:0),y:node.y+(event.key==='ArrowUp'?-step:event.key==='ArrowDown'?step:0)}));
-      }else if(event.key==='Enter'){stop(event);const rect=canvas.getBoundingClientRect(),node=modelOf(active.item).nodes[selected],model=modelOf(active.item),view=getView();menuAt({clientX:rect.left+(model.origin.x+node.x*getPhotoScale())*view.zoom*(rect.width||canvas.width)/canvas.width+view.x*(rect.width||canvas.width)/canvas.width,clientY:rect.top+(model.origin.y+node.y*getPhotoScale())*view.zoom*(rect.height||canvas.height)/canvas.height+view.y*(rect.height||canvas.height)/canvas.height});}
+      }else if(event.key==='Enter'){stop(event);const target=focusSurface,rect=target.getBoundingClientRect(),node=modelOf(active.item).nodes[selected],model=modelOf(active.item),view=surfaces.get(target).getView();menuAt({clientX:rect.left+((model.origin.x+node.x*getPhotoScale())*view.zoom+view.x)*(rect.width||target.width)/target.width,clientY:rect.top+((model.origin.y+node.y*getPhotoScale())*view.zoom+view.y)*(rect.height||target.height)/target.height});}
     }catch(error){fail(error);}
   }
 
@@ -197,10 +212,18 @@ export function bindCaptureContourEditor(canvas,{getItems,getActiveIndex,onSelec
   const click=event=>{if(suppressClick){suppressClick=false;stop(event);}};
   const keyup=event=>{if(event.code==='Space'||event.key===' ')space=false;};
   const blur=()=>{space=false;cancel();};
-  canvas.addEventListener('pointerdown',down,true);canvas.addEventListener('pointermove',move,true);canvas.addEventListener('pointerup',up,true);canvas.addEventListener('pointercancel',cancelEvent,true);canvas.addEventListener('lostpointercapture',cancelEvent,true);canvas.addEventListener('click',click,true);canvas.addEventListener('keydown',key,true);host?.addEventListener('keyup',keyup);host?.addEventListener('blur',blur);
+  const listeners=[['pointerdown',down],['pointermove',move],['pointerup',up],['pointercancel',cancelEvent],['lostpointercapture',cancelEvent],['click',click],['keydown',key]];
+  function bindSurface(target,{getView:surfaceView=getView}={}){
+    if(surfaces.has(target))return()=>{};
+    const attributes={tabindex:target.getAttribute('tabindex'),'aria-describedby':target.getAttribute('aria-describedby')};
+    surfaces.set(target,{getView:surfaceView,attributes});target.tabIndex=0;if(target!==canvas)target.setAttribute('aria-describedby',hint.id);
+    for(const [name,listener] of listeners)target.addEventListener(name,listener,true);
+    return()=>{if(drag?.surface===target)cancel();for(const [name,listener] of listeners)target.removeEventListener(name,listener,true);surfaces.delete(target);target.classList.remove('is-contour-editing');for(const [name,value] of Object.entries(attributes))if(value===null)target.removeAttribute(name);else target.setAttribute(name,value);if(focusSurface===target)focusSurface=canvas;};
+  }
+  bindSurface(canvas);host?.addEventListener('keyup',keyup);host?.addEventListener('blur',blur);
   refresh();
   return{
-    get dragging(){return !!drag;},cancel,refresh,
+    get dragging(){return !!drag;},get draggingSurface(){return drag?.surface||null;},cancel,refresh,bindSurface,
     validate:validateFields,
     draw(ctx,scale=1){
       const active=current();if(!enabled||!active||active.item!==selectedItem)return;
@@ -214,6 +237,6 @@ export function bindCaptureContourEditor(canvas,{getItems,getActiveIndex,onSelec
       }
       ctx.restore();
     },
-    destroy(){if(disposed)return;cancel();disposed=true;closeMenu();canvas.removeEventListener('pointerdown',down,true);canvas.removeEventListener('pointermove',move,true);canvas.removeEventListener('pointerup',up,true);canvas.removeEventListener('pointercancel',cancelEvent,true);canvas.removeEventListener('lostpointercapture',cancelEvent,true);canvas.removeEventListener('click',click,true);canvas.removeEventListener('keydown',key,true);host?.removeEventListener('keyup',keyup);host?.removeEventListener('blur',blur);toolbar.remove();canvas.classList.remove('is-contour-editing');if(previousTabIndex===null)canvas.removeAttribute('tabindex');else canvas.setAttribute('tabindex',previousTabIndex);if(previousDescription===null)canvas.removeAttribute('aria-describedby');else canvas.setAttribute('aria-describedby',previousDescription);if(area.isConnected){area.replaceWith(surface);}}
+    destroy(){if(disposed)return;cancel();disposed=true;closeMenu();for(const [target,{attributes}] of surfaces){for(const [name,listener] of listeners)target.removeEventListener(name,listener,true);target.classList.remove('is-contour-editing');for(const [name,value] of Object.entries(attributes))if(value===null)target.removeAttribute(name);else target.setAttribute(name,value);}surfaces.clear();host?.removeEventListener('keyup',keyup);host?.removeEventListener('blur',blur);toolbar.remove();if(previousTabIndex===null)canvas.removeAttribute('tabindex');else canvas.setAttribute('tabindex',previousTabIndex);if(previousDescription===null)canvas.removeAttribute('aria-describedby');else canvas.setAttribute('aria-describedby',previousDescription);if(area.isConnected){area.replaceWith(surface);}}
   };
 }

@@ -3,6 +3,7 @@ import {getToolDimensions,resizeToolDimensions} from './tool-dimensions.js';
 import {CATEGORIES} from './tool-categories.js';
 import {t,i18nError} from './i18n.js';
 import {fitFunctionalPocket,fitHybridPocket} from './functional-pocket.js';
+import {fitIdealPocket} from './ideal-pocket.js';
 import {pocketFitSignature} from './pocket-fit-meta.js';
 import {effectivePocketMargin,optionalPocketMargin} from './pocket-margin.js';
 
@@ -22,10 +23,11 @@ function sourcePoints(item,scale){
 export function capturePocketGeometry(item,scale){
   const reference=item.editedPoints||item.contour.points,mode=item.pocketShape||'measured';
   let cached=geometryCache.get(item);
-  if(!cached||cached.reference!==reference||cached.scale!==scale||cached.mode!==mode){
+  const reserved=Number(item.contourReserveRatio)||0;
+  if(!cached||cached.reference!==reference||cached.scale!==scale||cached.mode!==mode||cached.reserved!==reserved){
     const source=sourcePoints(item,scale);
-    const fitted=mode==='hybrid'?fitHybridPocket(source):mode==='functional'?fitFunctionalPocket(source):{points:source,axis:null,primitives:[],kind:'measured'};
-    cached={reference,scale,mode,geometry:fitted};geometryCache.set(item,cached);
+    const fitted=mode==='ideal'?fitIdealPocket(source,{reserveRatio:reserved>0?0:.02}):mode==='hybrid'?fitHybridPocket(source):mode==='functional'?fitFunctionalPocket(source):{points:source,axis:null,primitives:[],kind:'measured'};
+    cached={reference,scale,mode,reserved,geometry:fitted};geometryCache.set(item,cached);
   }
   const fitted=cached.geometry;
   return{...fitted,points:fitted.points.map(point=>({...point})),axis:fitted.axis?{start:{...fitted.axis.start},end:{...fitted.axis.end}}:null};
@@ -88,7 +90,7 @@ export function toolFromCaptureItem(item,{scale,depth,id,preservePosition=false}
     if(label)metadata.sizeLabel=label;
   }
   const points=captureToolPoints(item,scale);
-  if(item.pocketShape==='hybrid'||item.pocketShape==='functional')metadata.pocketFit={mode:item.pocketShape,signature:pocketFitSignature(points)};
+  if(['ideal','hybrid','functional'].includes(item.pocketShape))metadata.pocketFit={mode:item.pocketShape,signature:pocketFitSignature(points)};
   let x=0,y=0;
   if(preservePosition){
     const photo=capturePhotoGeometry(item,scale).points;

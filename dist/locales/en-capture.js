@@ -2,6 +2,10 @@
 // Keep {placeholders} identical in both languages.
 // Worker progress messages, quality reasons and worker errors travel as Czech text and are translated in capture.js.
 export default {
+  'Hladká kapsa (+2 %)':'Smooth pocket (+2%)',
+  'Vyhlazený tvar s 2% rezervou. Běžná vůle kapsy se přidá navíc.':'A smooth shape with a 2% allowance. Regular pocket clearance is added separately.',
+  'Kapsa je vyhlazená a zvětšená přibližně o 2 %.':'The pocket is smoothed and enlarged by approximately 2%.',
+  'Vyhladí tvar a přidá 2% rezervu pro snadné vložení nástroje.':'Smooths the shape and adds a 2% allowance for easy tool insertion.',
   'Vůle kapes v novém modulu':'Pocket clearance in the new module',
   'Vůle je na každé straně: 1 mm přidá 2 mm k délce i šířce kapsy. Modrá čára ukazuje výslednou kapsu.':'Clearance applies on each side: 1 mm adds 2 mm to the pocket length and width. The blue line shows the finished pocket.',
   'Vlastní vůle této kapsy':'Custom clearance for this pocket',

@@ -35,7 +35,7 @@ test('switching capture pocket modes is reversible and never replaces measured p
 });
 
 test('photo positions and model normalization preserve the exact fitted frame at any tool angle',()=>{
-  for(const mode of ['hybrid','functional'])for(const angle of [0,.37,Math.PI/2,2.8]){
+  for(const mode of ['ideal','hybrid','functional'])for(const angle of [0,.37,Math.PI/2,2.8]){
     const draft=fixture(angle,mode),before=structuredClone(draft),tool=convert(draft);
     const expected=capturePhotoGeometry(draft,2.5).points.map(p=>({x:p.x/2.5,y:p.y/2.5}));
     samePoints(transformedPoints(tool),expected);
@@ -48,7 +48,7 @@ test('photo positions and model normalization preserve the exact fitted frame at
 });
 
 test('resizing changes the measured source once and fitting cannot accumulate across switching or export',()=>{
-  for(const mode of ['hybrid','functional']){
+  for(const mode of ['ideal','hybrid','functional']){
   const draft=fixture(.31,mode),photo=structuredClone(draft.contour),before=captureItemDimensions(draft,2.5);
   resizeCaptureItem(draft,2.5,{length:before.length*1.2});
   const source=structuredClone(draft.editedPoints),once=captureToolPoints(draft,2.5);
@@ -67,7 +67,7 @@ function recorder(){
   return{strokes,save(){},restore(){},beginPath(){path=[];},moveTo(x,y){path.push({x,y});},lineTo(x,y){path.push({x,y});},closePath(){},arc(){},fill(){},fillText(){},fillRect(){},translate(){},scale(){},drawImage(){},setLineDash(value){dash=[...value];},stroke(){strokes.push({points:structuredClone(path),color:this.strokeStyle,dash:[...dash]});}};
 }
 test('overview and close-up render the exported functional outline and its tool axis',()=>{
-  for(const mode of ['hybrid','functional']){
+  for(const mode of ['ideal','hybrid','functional']){
   const draft=fixture(.42,mode),expected=capturePhotoGeometry(draft,2.5),ctx=recorder();
   drawCaptureContours(ctx,[draft],{activeIndex:0,scale:1,photoScale:2.5});
   samePoints(ctx.strokes.find(stroke=>stroke.color==='#577b67').points,expected.points);

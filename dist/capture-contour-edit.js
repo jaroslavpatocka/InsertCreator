@@ -81,11 +81,14 @@ export function getCaptureEditModel(item,scale){
 export function applyCaptureEdit(item,scale,model){
   if(!(Number.isFinite(scale)&&scale>0))throw i18nError('Měřítko fotografie není platné.');
   const next=cloneContourModel(model),points=validateContourModel(next);
+  // Manual edits start with the displayed fitted pocket. Its reserve is already
+  // in these points, so a later return to the automatic fit must not add it twice.
+  if(item.pocketShape==='ideal')item.contourReserveRatio=.02;
   item.contourEdit=next;item.contourEditOrigin=copyPoint(next.origin);item.editedPoints=points;item.pocketShape='measured';
   return points;
 }
 
-export function resetCaptureEdit(item){delete item.editedPoints;delete item.contourEdit;delete item.contourEditOrigin;item.pocketShape='measured';}
+export function resetCaptureEdit(item){delete item.editedPoints;delete item.contourEdit;delete item.contourEditOrigin;delete item.contourReserveRatio;item.pocketShape='measured';}
 
 export function nearestContourSegment(model,point){
   let best=null;

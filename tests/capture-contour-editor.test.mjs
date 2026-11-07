@@ -7,7 +7,7 @@ import {flattenContour} from '../dist/capture-contour-edit.js';
 import * as navigation from '../dist/capture-view.js';
 import {setLang} from '../dist/i18n.js';
 
-function fixture(t,{zoom=1,scale=2,pocketShape='measured',outline,language='cs',two=false}={}){
+function fixture(t,{zoom=1,scale=2,pocketShape='measured',outline,language='cs',two=false,pocketMargin=null}={}){
   const win=new Window({url:'http://localhost/'});
   for(const key of ['document','localStorage','HTMLElement'])globalThis[key]=win[key];globalThis.window=win;
   setLang(language,{save:false});
@@ -18,7 +18,7 @@ function fixture(t,{zoom=1,scale=2,pocketShape='measured',outline,language='cs',
   const items=[item];if(two)items.push({...structuredClone(item),name:'Druhý klíč',contour:{points:points.map(p=>({x:p.x,y:p.y+250}))},info:{...item.info,minY:item.info.minY+250,center:{x:item.info.center.x,y:item.info.center.y+250}}});
   const updates=[],errors=[];let active=null,view={zoom,x:zoom>1?-100:0,y:zoom>1?-50:0},editor;
   const viewCleanup=navigation.bindCanvasView(canvas,{getView:()=>view,setView:value=>view=value,draw:()=>{},canTouchPan:()=>!editor?.dragging&&view.zoom>1,onNavigationStart:()=>editor?.cancel()});
-  editor=bindCaptureContourEditor(canvas,{getItems:()=>items,getActiveIndex:()=>active,onSelect:index=>active=index,getPhotoScale:()=>scale,getView:()=>view,onUpdate:index=>updates.push(index),onError:value=>errors.push(value)});
+  editor=bindCaptureContourEditor(canvas,{getItems:()=>items,getActiveIndex:()=>active,onSelect:index=>active=index,getPhotoScale:()=>scale,getView:()=>view,getPocketMargin:()=>pocketMargin,onUpdate:index=>updates.push(index),onError:value=>errors.push(value)});
   const screen=point=>({clientX:rect.left+(point.x*view.zoom+view.x)*rect.width/canvas.width,clientY:rect.top+(point.y*view.zoom+view.y)*rect.height/canvas.height});
   const pointer=(type,point,options={})=>{const event=new win.PointerEvent(type,{bubbles:true,cancelable:true,button:0,buttons:type==='pointerup'?0:1,pointerId:1,pointerType:'mouse',isPrimary:true,...screen(point),...options});canvas.dispatchEvent(event);return event;};
   const key=(key,options={})=>canvas.dispatchEvent(new win.KeyboardEvent('keydown',{key,bubbles:true,cancelable:true,...options}));
@@ -133,7 +133,7 @@ for(const selection of ['profile','external'])test(`an invalid owned draft survi
   input.value='200 mm';input.dispatchEvent(new f.win.Event('input',{bubbles:true}));input.dispatchEvent(new f.win.Event('change',{bubbles:true}));assert.equal(f.editor.validate(),true);assert.equal(captureItemDimensions(f.items[0],2).length,200);assert.equal(captureItemDimensions(f.items[1],2).length,250);
 });
 
-for(const pocketShape of ['hybrid','functional'])test(`starting a manual ${pocketShape} correction preserves the displayed profile without a mode-change jump`,t=>{
+for(const pocketShape of ['ideal','hybrid','functional'])test(`starting a manual ${pocketShape} correction preserves the displayed profile without a mode-change jump`,t=>{
   const f=fixture(t,{pocketShape,outline:[{x:100,y:190},{x:220,y:150},{x:530,y:180},{x:600,y:230},{x:560,y:350},{x:210,y:320},{x:100,y:290}]});
   const before=capturePhotoGeometry(f.item,2).points,a=before[0],b=before[1];
   f.click({x:(a.x+b.x)/2,y:(a.y+b.y)/2});
@@ -142,13 +142,36 @@ for(const pocketShape of ['hybrid','functional'])test(`starting a manual ${pocke
   assert.equal(f.item.pocketShape,'measured');
 });
 
-for(const pocketShape of ['hybrid','functional'])test(`reopening manual edits after an explicit ${pocketShape} mode change uses the new displayed profile`,t=>{
+for(const pocketShape of ['ideal','hybrid','functional'])test(`reopening manual edits after an explicit ${pocketShape} mode change uses the new displayed profile`,t=>{
   const f=fixture(t,{outline:[{x:100,y:150},{x:600,y:150},{x:600,y:220},{x:300,y:220},{x:300,y:350},{x:100,y:350}]});
   f.click({x:350,y:150});f.action('move');f.pointer('pointerdown',{x:350,y:150});f.pointer('pointermove',{x:350,y:120});f.pointer('pointerup',{x:350,y:120});
   f.item.pocketShape=pocketShape;f.editor.refresh();const before=capturePhotoGeometry(f.item,2).points,a=before[0],b=before[1];
   f.click({x:(a.x+b.x)/2,y:(a.y+b.y)/2});const after=capturePhotoGeometry(f.item,2).points;
   for(const point of before)assert.ok(after.some(p=>Math.hypot(p.x-point.x,p.y-point.y)<1e-6),'new visible profile must not be replaced by the stale pre-fit manual node cache');
   assert.equal(f.item.pocketShape,'measured');
+});
+
+for(const pointerType of ['mouse','touch'])test(`clicking the visible blue pocket edge at high zoom inserts and drags a point with ${pointerType}`,t=>{
+  const f=fixture(t,{zoom:12,scale:5,pocketMargin:1});
+  // 1 mm is 30 CSS px here: beyond both the 9px mouse and 22px touch radius.
+  const point={x:350,y:145},view=structuredClone(f.view());
+  f.pointer('pointerdown',point,{pointerType});f.pointer('pointerup',point,{pointerType});
+  assert.ok(f.win.document.querySelector('[data-context-action="curve"]'),'the painted blue edge responds with point actions');
+  assert.equal(f.item.contourEdit.nodes.length,5);f.action('move');
+  f.pointer('pointerdown',{x:350,y:150},{pointerType});f.pointer('pointermove',{x:350,y:130},{pointerType});f.pointer('pointerup',{x:350,y:130},{pointerType});
+  assert.ok(capturePhotoGeometry(f.item,5).points.some(p=>Math.hypot(p.x-350,p.y-130)<1e-7));
+  assert.deepEqual(f.view(),view,'profile editing must not start photo panning');
+  f.win.document.querySelector('[data-contour-action="undo"]').click();
+  assert.ok(capturePhotoGeometry(f.item,5).points.some(p=>Math.hypot(p.x-350,p.y-150)<1e-7));
+});
+
+test('returning a manually corrected ideal profile to automatic mode does not add the reserve again',t=>{
+  const f=fixture(t,{pocketShape:'ideal'}),before=capturePhotoGeometry(f.item,2).points;
+  const a=before[0],b=before[1];f.click({x:(a.x+b.x)/2,y:(a.y+b.y)/2});f.action('move');
+  assert.equal(f.item.contourReserveRatio,.02);const first=capturePhotoGeometry(f.item,2).points;
+  f.item.pocketShape='ideal';const refitted=capturePhotoGeometry(f.item,2).points;
+  const span=points=>({width:Math.max(...points.map(p=>p.x))-Math.min(...points.map(p=>p.x)),height:Math.max(...points.map(p=>p.y))-Math.min(...points.map(p=>p.y))});
+  const left=span(first),right=span(refitted);assert.ok(Math.abs(left.width-right.width)<.001);assert.ok(Math.abs(left.height-right.height)<.001);
 });
 
 if(typeof navigation.bindTouchNavigation==='function')test('a second touch rolls back a point drag and hands the gesture to existing pinch navigation',t=>{

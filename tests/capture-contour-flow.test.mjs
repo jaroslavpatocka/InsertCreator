@@ -80,6 +80,24 @@ test('the actual capture flow supports profile insertion, a movable point and im
       pointer('pointerdown',350,160);pointer('pointermove',350,150);pointer('pointerup',350,150);assert.equal($('#capture-guide-width').value,'90 mm','manual edits preserve unconfirmed numeric drafts in the optional guide');
     }finally{modal.close();}
   });
+  await t.test('the enlarged guide photo inserts and moves a point through the same editor and undo history',async()=>{
+    setLang('cs',{save:false});status='ready';let added;
+    const modal=openCapture({onAdd:tools=>added=tools});try{
+      await begin();$('#capture-guide-start').click();
+      const detail=$('#capture-guide-preview');detail.getBoundingClientRect=()=>({left:60,top:20,width:320,height:180});
+      const margin=.8*scale,zoom=Math.min(568/(300+2*margin),288/(100+2*margin));
+      const point=(type,x,y)=>detail.dispatchEvent(new win.PointerEvent(type,{clientX:60+(320+zoom*(x-350))/2,clientY:20+(180+zoom*(y-250))/2,pointerId:1,pointerType:'mouse',button:0,buttons:type==='pointerup'?0:1,isPrimary:true,bubbles:true,cancelable:true}));
+      point('pointerdown',350,200);point('pointerup',350,200);
+      assert.ok($('[data-context-action="curve"]'),'the enlarged photo is an editing surface');
+      $('[data-context-action="move"]').click();assert.equal(win.document.activeElement,detail);
+      point('pointerdown',350,200);point('pointermove',350,180);point('pointermove',350,170);point('pointerup',350,170);
+      assert.ok(Math.abs(parseLength($('[data-contour-field="y"]').value)+30/scale)<.001,'dragging the enlarged photo changes its calibrated node');
+      $('[data-contour-action="undo"]').click();assert.ok(Math.abs(parseLength($('[data-contour-field="width"]').value)-100/scale)<.05,'the existing toolbar undoes an enlarged-photo edit');
+      $('[data-contour-action="redo"]').click();assert.ok(parseLength($('[data-contour-field="width"]').value)>110/scale);
+      $('#capture-guide-list').click();$('#capture-add').click();await waitFor(()=>added,'enlarged-photo edited import');
+      assert.equal(added.length,1);assert.ok(added[0].points.some(p=>Math.abs(p.x-150/scale)<.001&&Math.abs(p.y)<.001),'import uses the point moved on the enlarged photograph');
+    }finally{modal.close();}
+  });
   await t.test('a late numeric blur during guide navigation edits its original tool and refreshes that tool’s cached dimensions',async()=>{
     setLang('cs',{save:false});status='ready';let added;
     const modal=openCapture({onAdd:tools=>added=tools});try{

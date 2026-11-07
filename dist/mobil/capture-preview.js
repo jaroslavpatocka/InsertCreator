@@ -15,7 +15,7 @@ function drawMargin(ctx,item,scale,photoScale,pocketMargin){
 }
 
 function drawItem(ctx, item, index, scale, active = false, photoScale = 1) {
-  const regular=item.pocketShape==='functional'||item.pocketShape==='hybrid';
+  const regular=['ideal','functional','hybrid'].includes(item.pocketShape);
   const geometry=regular||item.editedPoints?capturePhotoGeometry(item,photoScale):{points:item.contour.points,axis:null};
   if(active&&regular){
     outline(ctx,item.contour.points);ctx.strokeStyle='#ffffff99';ctx.lineWidth=scale;ctx.stroke();
@@ -68,31 +68,30 @@ export function drawCaptureContours(ctx, items, {activeIndex = null, scale = 1, 
 }
 
 /** An enlarged photo of the current tool; manufacturing corrections never warp the photo. */
-export function drawCaptureToolPreview(canvas, photo, item, index, view = { zoom: 1, x: 0, y: 0 }, photoScale = 1, pocketMargin = null) {
+export function drawCaptureToolPreview(canvas, photo, item, index, view = { zoom: 1, x: 0, y: 0 }, photoScale = 1, pocketMargin = null, fixedPhotoView = null) {
   if (!canvas || !photo || !item) return;
   canvas.width = 640;
   canvas.height = 360;
   const ctx = canvas.getContext('2d');
   let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-  const displayed=item.pocketShape==='functional'||item.pocketShape==='hybrid'||item.editedPoints?capturePhotoGeometry(item,photoScale).points:item.contour.points;
+  const displayed=['ideal','functional','hybrid'].includes(item.pocketShape)||item.editedPoints?capturePhotoGeometry(item,photoScale).points:item.contour.points;
   const expanded=pocketMargin===null?[]:capturePhotoGeometry(item,photoScale,{includeMargin:true,pocketMargin}).points;
   for (const point of [...item.contour.points,...displayed,...expanded]) {
     minX = Math.min(minX, point.x); minY = Math.min(minY, point.y);
     maxX = Math.max(maxX, point.x); maxY = Math.max(maxY, point.y);
   }
   const zoom = Math.min((canvas.width - 72) / Math.max(1, maxX - minX), (canvas.height - 72) / Math.max(1, maxY - minY));
+  const photoView=fixedPhotoView||{zoom:zoom*view.zoom,x:view.x+view.zoom*(canvas.width/2-zoom*(minX+maxX)/2),y:view.y+view.zoom*(canvas.height/2-zoom*(minY+maxY)/2)};
   const displayScale = canvas.width / Math.max(200, canvas.clientWidth || 320);
   ctx.fillStyle = '#f6f7f3';
   ctx.fillRect(0, 0, canvas.width, canvas.height);
   ctx.save();
-  ctx.translate(view.x, view.y);
-  ctx.scale(view.zoom, view.zoom);
-  ctx.translate(canvas.width / 2, canvas.height / 2);
-  ctx.scale(zoom, zoom);
-  ctx.translate(-(minX + maxX) / 2, -(minY + maxY) / 2);
+  ctx.translate(photoView.x,photoView.y);
+  ctx.scale(photoView.zoom,photoView.zoom);
   ctx.drawImage(photo, 0, 0);
   ctx.lineJoin = 'round';
-  if(pocketMargin!==null)drawMargin(ctx,item,displayScale/(zoom*view.zoom),photoScale,pocketMargin);
-  drawItem(ctx, item, index, displayScale / (zoom * view.zoom), true, photoScale);
+  if(pocketMargin!==null)drawMargin(ctx,item,displayScale/photoView.zoom,photoScale,pocketMargin);
+  drawItem(ctx, item, index, displayScale/photoView.zoom, true, photoScale);
   ctx.restore();
+  return photoView;
 }

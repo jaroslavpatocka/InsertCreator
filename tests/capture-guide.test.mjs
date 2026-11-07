@@ -150,9 +150,11 @@ test('optional capture guide preserves edits, validates chosen tools and exports
       assert.equal(added.length,2);assert.equal(added[0].name,'Ratchet wrench');assert.equal(added[0].category,'wrenches');assert.equal(added[0].sizeLabel,'3/8 in');
       approximate(added[0].depth,6.35,'imperial depth is exported in millimetres',1e-8);
       const dimensions=getToolDimensions(added[0]);
-      approximate(dimensions.length,127,'manufacturing length is millimetres');approximate(dimensions.width,25.4,'manufacturing width is millimetres');
+      approximate(dimensions.length,127*1.02,'manufacturing length includes the single 2% reserve in millimetres');approximate(dimensions.width,25.4*1.02,'manufacturing width includes the single 2% reserve in millimetres');
       assert.ok(added[0].points.every(point=>Number.isFinite(point.x)&&Number.isFinite(point.y)&&point.x>=0&&point.y>=0));
-      assert.deepEqual(added[1].points,simpleOutline([{x:0,y:0},{x:25,y:0},{x:25,y:80},{x:0,y:80}]),'untouched Next keeps the exact original metric outline');
+      const secondDimensions=getToolDimensions(added[1]);
+      approximate(secondDimensions.length,80*1.02,'untouched Next keeps the metric length with one 2% reserve');approximate(secondDimensions.width,25*1.02,'untouched Next keeps the metric width with one 2% reserve');
+      assert.equal(added[1].pocketFit.mode,'ideal');
       await waitFor(()=>!$('#trace-canvas'),'successful addition closes capture');
     }finally{modal.close();fixtureRecognition=false;setLang('cs',{save:false});setAppUnit('mm',{save:false});}
   });

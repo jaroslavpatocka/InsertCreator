@@ -34,6 +34,8 @@ function select(id){click($(`#board-svg [data-tool="${id}"]`));const section=$('
 test('geometric pocket preview is read-only; apply persists one undoable valid geometry change',()=>{
   const before=state();click(select('rough'));
   assert.ok($('[data-functional-pocket-preview]'));assert.ok($('[data-functional-pocket-preview] line'));
+  assert.equal($('[data-pocket-fit-mode]').value,'ideal','a saved photo tool opens the smooth pocket without another mode-selection step');
+  assert.match($('[data-functional-pocket-parts]').textContent,/2 %/);
   assert.equal($('#modal-title').nextElementSibling.textContent,'Tool <&>');
   assert.deepEqual(state(),before);assert.equal($('#app [data-action="undo"]').disabled,true);
   click($('#modal-root .modal-foot [data-modal-close]'));assert.equal($('[data-functional-pocket-preview]'),null);assert.deepEqual(state(),before);

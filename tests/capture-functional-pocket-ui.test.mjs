@@ -46,22 +46,23 @@ function change(selector,value){const field=$(selector);field.value=value;field.
 const waitFor=async(fn)=>{const started=performance.now();while(!fn()){if(performance.now()-started>5000)throw Error('Capture did not become ready');await new Promise(resolve=>setTimeout(resolve,2));}};
 const green=()=>paints.get($('#trace-canvas')).find(stroke=>stroke.color==='#577b67');
 
-test('capture defaults to balanced pockets, switches without recognition, and imports the previewed geometry',{timeout:15000},async t=>{
+test('capture defaults to smooth pockets with reserve, switches without recognition, and imports the previewed geometry',{timeout:15000},async t=>{
   let added,options;const modal=openCapture({onAdd:(tools,opts)=>{added=tools;options=opts;}});
   t.after(async()=>{modal.close();delete globalThis.Worker;await win.happyDOM.close();});
   $('#sample-scan').click();await waitFor(()=>$('[data-name="1"]'));
-  assert.equal($('#capture-pocket-shape').value,'hybrid');
-  assert.deepEqual([...$('#capture-pocket-shape').options].map(option=>option.value),['hybrid','functional','measured']);
+  assert.equal($('#capture-pocket-shape').value,'ideal');
+  assert.deepEqual([...$('#capture-pocket-shape').options].map(option=>option.value),['ideal','hybrid','functional','measured']);
   $('[data-name="0"]').focus();const fitted=structuredClone(green().points),calls=recognitions;
   assert.ok(paints.get($('#trace-canvas')).some(stroke=>stroke.dash.length),'active tool axis is visible');
   change('#capture-pocket-shape','measured');assert.notDeepEqual(green().points,fitted);
   change('#capture-pocket-shape','functional');assert.notDeepEqual(green().points,fitted,'fully regular is a distinct optional pocket');
-  change('#capture-pocket-shape','hybrid');assert.deepEqual(green().points,fitted);assert.equal(recognitions,calls);
-  $('#capture-guide-start').click();assert.equal($('#capture-pocket-shape').value,'hybrid');
+  change('#capture-pocket-shape','hybrid');assert.notDeepEqual(green().points,fitted,'balanced pockets remain accessible');
+  change('#capture-pocket-shape','ideal');assert.deepEqual(green().points,fitted);assert.equal(recognitions,calls);
+  $('#capture-guide-start').click();assert.equal($('#capture-pocket-shape').value,'ideal');
   $('#capture-guide-list').click();change('#capture-layout','photo');
   $('#capture-add').click();await waitFor(()=>added);
   assert.equal(options.layout,'photo');assert.equal(added.length,2);
-  assert.equal(added[0].pocketFit.mode,'hybrid');
+  assert.equal(added[0].pocketFit.mode,'ideal');
   const points=added[0].points.map(point=>({x:point.x+added[0].x,y:point.y+added[0].y}));assert.equal(points.length,fitted.length);
   points.forEach((point,i)=>{assert.ok(Math.abs(point.x-fitted[i].x/calibration)<1e-7);assert.ok(Math.abs(point.y-fitted[i].y/calibration)<1e-7);});
 });
