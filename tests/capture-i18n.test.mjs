@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import {Window} from 'happy-dom';
 import {createCanvas,ImageData} from '@napi-rs/canvas';
+import {instanceWorkerReply} from './fixtures/instance-worker-reply.mjs';
 
 const win=new Window({url:'http://localhost:5173'});
 win.document.write((await fs.readFile(new URL('../dist/index.html',import.meta.url),'utf8')).replace(/<script[^>]*>[\s\S]*?<\/script>/g,''));
@@ -16,9 +17,9 @@ function actual(element){
   const canvas=canvases.get(element);if(canvas.width!==element.width)canvas.width=element.width;if(canvas.height!==element.height)canvas.height=element.height;return canvas;
 }
 win.HTMLCanvasElement.prototype.getContext=function(type){if(type!=='2d')return null;const ctx=actual(this).getContext('2d');return new Proxy(ctx,{get:(target,key)=>key==='drawImage'?((source,...args)=>target.drawImage(source instanceof win.HTMLCanvasElement?actual(source):source,...args)):typeof target[key]==='function'?target[key].bind(target):target[key],set:(target,key,value)=>(target[key]=value,true)});};
-// Fake workers record what recognition receives (the calibrated scale) and never answer.
+// The instance fixture answers; the contour worker records calibrated input and remains pending.
 const posted=[];
-globalThis.Worker=class{constructor(url){this.url=String(url);}postMessage(message){posted.push({url:this.url,message});}terminate(){}};
+globalThis.Worker=class{constructor(url){this.url=String(url);}postMessage(message){posted.push({url:this.url,message});if(this.url.endsWith('/tool-neural-worker.js'))queueMicrotask(()=>this.onmessage?.({data:instanceWorkerReply(message)}));}terminate(){}};
 const {setLang,getLang}=await import('../dist/i18n.js'),{setAppUnit,parseLength}=await import('../dist/units.js');
 const {openCapture}=await import('../dist/capture.js');
 const $=selector=>win.document.querySelector(selector);

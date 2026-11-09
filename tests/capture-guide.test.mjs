@@ -1,3 +1,4 @@
+import {instanceWorkerReply} from './fixtures/instance-worker-reply.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
@@ -54,9 +55,9 @@ class BrowserWorker{
     if(!this.fixture)return this.inner.postMessage(message,transfer);
     queueMicrotask(()=>{
       if(this.terminated)return;
-      if(this.url.endsWith('/neural-worker.js'))return this.onmessage?.({data:{type:'error',id:message.id,message:'Fixture uses deterministic classical contours'}});
+      if(this.url.endsWith('/tool-neural-worker.js'))return this.onmessage?.({data:instanceWorkerReply(message)});
       const scale=message.options.pxPerMm,rect=(x,y,width,height)=>({points:[{x:x*scale,y:y*scale},{x:(x+width)*scale,y:y*scale},{x:(x+width)*scale,y:(y+height)*scale},{x:x*scale,y:(y+height)*scale}]});
-      this.onmessage?.({data:{result:{contours:[rect(10,10,20,100),rect(60,10,25,80)],mask:new Uint8Array(message.image.width*message.image.height),quality:{status:'ready',reasons:[]}}}});
+      this.onmessage?.({data:{result:{width:message.image.width,height:message.image.height,contours:[rect(10,10,20,100),rect(60,10,25,80)],mask:new Uint8Array(message.image.width*message.image.height),quality:{status:'ready',reasons:[]}}}});
     });
   }
   terminate(){this.terminated=true;workers.delete(this);return this.inner?.terminate();}

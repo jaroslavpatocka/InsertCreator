@@ -1,3 +1,4 @@
+import {instanceWorkerReply} from './fixtures/instance-worker-reply.mjs';
 ﻿import {test,after} from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
@@ -37,8 +38,8 @@ function photoContour(index,scale){
   return [{x:0,y:0},{x:80,y:0},{x:95,y:8},{x:80,y:16},{x:0,y:16}].map(point=>({x:(30+index*140+point.x*c-point.y*s)*scale,y:(45+point.x*s+point.y*c)*scale}));
 }
 globalThis.Worker=class{
-  constructor(url){this.url=String(url);if(!/\/(?:recognize|neural)-worker\.js$/.test(this.url))throw Error('Use fallback');}
-  postMessage(message){queueMicrotask(()=>{if(this.terminated)return;if(this.url.endsWith('/neural-worker.js'))return this.onmessage?.({data:{type:'error',id:message.id,message:'Deterministic fixture'}});this.onmessage?.({data:{result:{contours:Array.from({length:contourCount},(_,index)=>({points:photoContour(index,message.options.pxPerMm)})),mask:new Uint8Array(message.image.width*message.image.height),quality:{status:'ready',reasons:[]}}}});});}
+  constructor(url){this.url=String(url);if(!/\/(?:recognize|tool-neural)-worker\.js$/.test(this.url))throw Error('Use fallback');}
+  postMessage(message){queueMicrotask(()=>{if(this.terminated)return;if(this.url.endsWith('/tool-neural-worker.js'))return this.onmessage?.({data:instanceWorkerReply(message)});this.onmessage?.({data:{result:{width:message.image.width,height:message.image.height,contours:Array.from({length:contourCount},(_,index)=>({points:photoContour(index,message.options.pxPerMm)})),mask:new Uint8Array(message.image.width*message.image.height),quality:{status:'ready',reasons:[]}}}});});}
   terminate(){this.terminated=true;}
 };
 const initial={...blankProject(),id:'photo-orientation',name:'Photo angle regression',width:504,height:378};

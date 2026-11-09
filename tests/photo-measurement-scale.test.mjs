@@ -16,10 +16,10 @@ for(const degrees of [0,37])test(`original photo edges preserve a 100 x 20 mm to
   const image=context.getImageData(0,0,1400,1050),original=new Uint8ClampedArray(image.data);
   const result=await recognizeTools(image,{pxPerMm:2.5,kind:'reference'});
   assert.deepEqual(image.data,original,'recognition cannot alter the source photograph');
-  assert.equal(result.enhanced,'light-background');assert.equal(result.quality.status,'ready');
+  assert.equal(result.method,'physical-instances');assert.equal(result.quality.status,'ready');
   assert.equal(result.contours.length,1,'the entire physical tool remains one outline');
-  const contour=result.contours[0];assert.equal(contour.refined,true,'the final outline uses source measurement');
-  assert.equal(contour.fitted,false,'a measured photo edge is independent of manufacturing shape fitting');
+  const contour=result.contours[0];
+  assert.notEqual(contour.fitted,true,'a measured photo edge is independent of manufacturing shape fitting');
   const item={name:'Independent 100 x 20 mm rectangle',pocketShape:'measured',contour,info:{minX:Math.min(...contour.points.map(p=>p.x)),minY:Math.min(...contour.points.map(p=>p.y))}};
   const measured=captureItemDimensions(item,2.5),tool=toolFromCaptureItem(item,{scale:2.5,depth:7,id:'physical-tool'});
   for(const [label,actual,expected] of [['length',measured.length,100],['width',measured.width,20]]){

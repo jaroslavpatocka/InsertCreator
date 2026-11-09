@@ -196,7 +196,7 @@ test('the fallback review requirement retains a more specific source-bridge warn
   assert.ok(result.quality.reasons[0].startsWith('Krátké přerušení obrysu bylo odhadnuto'),'generic fallback review must not replace the specific unresolved source-topology warning');
 });
 
-test('a raw retry cannot bypass source review after the prepared proposal was rejected',async()=>{
+test('an instance-inference failure cannot approve an unchecked source partition',async()=>{
   const image=wrenchImage({softShadow:true}),source=image.data.slice();
   assert.equal(readableImage(image)?.requiresReview,true);
   const previousWorker=globalThis.Worker;
@@ -207,19 +207,20 @@ test('a raw retry cannot bypass source review after the prepared proposal was re
         constructor(url){this.neural=String(url).endsWith('neural-worker.js');}
         postMessage(message){
           if(this.neural){neuralCalls++;queueMicrotask(()=>this.onmessage?.({data:{id:message.id,type:'error',message:'Unavailable in the controlled retry fixture'}}));return;}
-          const call=++classicalCalls,status=call===1?'retake':call===3?finalStatus:'ready';
-          const result={contours:status==='retake'?[]:[{points:[{x:150,y:150},{x:300,y:150},{x:300,y:190},{x:150,y:190}]}],quality:{status,score0to1:.99,reasons:[]}};
+          ++classicalCalls;const status=finalStatus;
+          const result={width:image.width,height:image.height,mask:new Uint8Array(image.width*image.height),contours:status==='retake'?[]:[{points:[{x:150,y:150},{x:300,y:150},{x:300,y:190},{x:150,y:190}]}],quality:{status,score0to1:.99,reasons:[]}};
           queueMicrotask(()=>this.onmessage?.({data:{result}}));
         }
         terminate(){}
       };
       const result=await recognizeTools(image,{pxPerMm:2});
-      assert.equal(classicalCalls,3,'exercise prepared rejection, raw base and measured raw retry');
-      assert.equal(neuralCalls,1,'exercise the ordinary recognition fallback');
+      assert.equal(classicalCalls,1,'the source fallback is measured once after the failed instance worker');
+      assert.equal(neuralCalls,1,'exercise the actual instance-inference failure path');
+      assert.equal(result.neuralUnavailable,true);
       assert.equal(result.quality.status,finalStatus==='ready'?'review':'retake');
       if(finalStatus==='ready'){
         assert.equal(result.requiresReview,true);
-        assert.equal(result.quality.reasons[0],'Na tmavém podkladu mohou sousední nebo málo kontrastní části splývat. Ověřte počet a oddělení nástrojů.');
+        assert.ok(result.quality.reasons[0].startsWith('Lokální neuronové rozpoznávání nebylo dostupné.'));
         assert.equal(result.ambiguousBridge,undefined,'a raw retry did not use the proposed bridge');
       }
       assert.deepEqual(image.data,source);

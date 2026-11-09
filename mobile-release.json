@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "sourceCommit": "7556cbed578ff23308f36a4c34d611aa022cc932",
+  "sourceCommit": "db79fcf1d4d76a9512c174b47b181f02b5348214",
   "files": [
     {
       "path": "app.js",
@@ -9,8 +9,8 @@
     },
     {
       "path": "auto-trace.js",
-      "sha256": "E8154373B8D6E87D96A946A53CAF2790FBDDD9552AD8C6BE83F816E0ED5046AE",
-      "bytes": 39962
+      "sha256": "CD60D010112A681D1E570DD2CE574162158FDEB0DD2FB2DC09F1CFEDEDB85F67",
+      "bytes": 40282
     },
     {
       "path": "bulk-edit.js",
@@ -419,8 +419,8 @@
     },
     {
       "path": "licenses-en.html",
-      "sha256": "D189CD15C19D4E6A830E9025148C9168BE2A6DBADCEB822437007BC07FB8758D",
-      "bytes": 12167
+      "sha256": "B5029CE0A203FFD595B19876FFBEE39473D7D003963F6FC58883F6DB30ECCD40",
+      "bytes": 12975
     },
     {
       "path": "licenses.css",
@@ -429,8 +429,8 @@
     },
     {
       "path": "licenses.html",
-      "sha256": "682FB92C31EAF9865E1FCBBFC7A48670C89FD9DB6DB29348DBE43CE350AE763A",
-      "bytes": 12412
+      "sha256": "D1C7A4DAB244952EA108C4B4CE89243658435392E534D2EBC3BCFB93919D5434",
+      "bytes": 13232
     },
     {
       "path": "loading-ui.css",
@@ -449,8 +449,8 @@
     },
     {
       "path": "locales/en-capture.js",
-      "sha256": "1C75A9399F7E18C38863B5BD3056FD2739E55E416D76B2F5E69CFC077AB0CC41",
-      "bytes": 32388
+      "sha256": "0E7A4A3701E171FBF2B5371FECC19415084E58EDBD2D0B83909CA1150CD8A3E1",
+      "bytes": 34592
     },
     {
       "path": "locales/en-core.js",
@@ -528,6 +528,31 @@
       "bytes": 7819
     },
     {
+      "path": "models/FASTSAM-MODEL-CARD.md",
+      "sha256": "FFB3D662368294E811B59BA77133AF2921C8C3D2BC93FB92919C243D3698D5A6",
+      "bytes": 1179
+    },
+    {
+      "path": "models/FASTSAM-PROVENANCE.json",
+      "sha256": "E108F71A24C0B6508365C0E370CF52BC6A5447DF98864074D501B781A5988341",
+      "bytes": 953
+    },
+    {
+      "path": "models/FASTSAM-README.txt",
+      "sha256": "BB1BA2026C47D6CDA52ABFF939343C7B5CB6C9BB4BDD23AD97921D37C45A4CD1",
+      "bytes": 1288
+    },
+    {
+      "path": "models/FASTSAM-UPSTREAM-LICENSE.txt",
+      "sha256": "0D96A4FF68AD6D4B6F1F30F713B18D5184912BA8DD389F86AA7710DB079ABCB0",
+      "bytes": 34523
+    },
+    {
+      "path": "models/FASTSAM-UPSTREAM-README.md",
+      "sha256": "3C882913439B8D8F2EBB7755DE0B96C712D10FFBBD8D624D07DA74FC6FD639F2",
+      "bytes": 11602
+    },
+    {
       "path": "models/README.txt",
       "sha256": "26FBFF3574C04E941E03D8F2D9D76E039309ADC0862CC1CEFC65958E232B810B",
       "bytes": 879
@@ -541,6 +566,11 @@
       "path": "models/U2NET-LICENSE",
       "sha256": "C71D239DF91726FC519C6EB72D318EC65820627232B2F796219E87DCF35D0AB4",
       "bytes": 11357
+    },
+    {
+      "path": "models/fastsam_s.onnx",
+      "sha256": "8663B25472F06D36FC90F9B6262318292B760403C69C240360DA5D1A3509F1EA",
+      "bytes": 47637745
     },
     {
       "path": "models/u2netp.onnx",
@@ -693,14 +723,24 @@
       "bytes": 2649
     },
     {
+      "path": "recognition-foreground.js",
+      "sha256": "5E4740329CB4E3D9B9D310981DE42890CDD76DE2B6574A613084A230FA77A003",
+      "bytes": 31663
+    },
+    {
+      "path": "recognition-topology.js",
+      "sha256": "B1F38533F6963AB90A8C507A4406F732D72E2C9512DAF449D5B59088E1220B50",
+      "bytes": 10369
+    },
+    {
       "path": "recognize-worker.js",
-      "sha256": "844AD089ACC32D6746159AC119B0B21717424BF8DB040FD5C33E7E68F891939C",
-      "bytes": 382
+      "sha256": "5BDD95D971B774871E8D7105DCD6DD1FC2A93D84B0DAC2875987809581F2B7CE",
+      "bytes": 400
     },
     {
       "path": "recognize.js",
-      "sha256": "F4921BCC1A059178D3E9C0DDEF498A8573C080621AFEDCEACDDEC82EE216F301",
-      "bytes": 6597
+      "sha256": "C502502F73A33D550C1ED9ECFAAED859A985E7AF562429A4ABF1016BE9F887BA",
+      "bytes": 5679
     },
     {
       "path": "ruler-calibration.js",
@@ -769,8 +809,8 @@
     },
     {
       "path": "sw.js",
-      "sha256": "8EF6B824DC7883EEF1F0017CB178E8C4B3593DFD2B6D85E2D5EBFCB08F5B2BDA",
-      "bytes": 4962
+      "sha256": "808DAE6F7FB2BC557191D8D2B6E0CDA01141EDCD8825C566E70A13F09829F876",
+      "bytes": 5289
     },
     {
       "path": "three-mf.js",
@@ -806,6 +846,26 @@
       "path": "tool-magnet.js",
       "sha256": "247C394F72E606B02F28AC3A8AE6F887A9C82569B648CB82D6E6AE6A8F2A1558",
       "bytes": 6759
+    },
+    {
+      "path": "tool-neural-core.js",
+      "sha256": "F1F25F154AFC99742C7115012CA72236734D9046770ADE58D950ECE8E0600EFF",
+      "bytes": 5409
+    },
+    {
+      "path": "tool-neural-worker.js",
+      "sha256": "1D5086A8605FC5C6E7843A43A3547C0000B82CD9ED847BD0083345B5AECC8B6D",
+      "bytes": 3367
+    },
+    {
+      "path": "tool-neural.js",
+      "sha256": "C84C2AF9D3721E4F2B480BE3049ABDB0241A207F59B835294DB6A7BB2C415C87",
+      "bytes": 3113
+    },
+    {
+      "path": "tool-recognition.js",
+      "sha256": "B971DB7A6104E20E44BD7D3DEA16635412451106F190C0A1CE35B266CD063ABB",
+      "bytes": 22699
     },
     {
       "path": "tool-sets.js",

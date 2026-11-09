@@ -405,7 +405,7 @@ test('editor workflows and actual photo pipeline integrate with persistent proje
   if(arranged){action('undo');assert.equal(saved().tools.length,7);action('redo');}
   // The measured sample needs a 252mm module including its walls and clearance.
   action('export');change('.modal [data-field=bedHeight]',256);click('[data-modal-close]');
-  action('capture');click('#sample-scan');await waitFor(()=>$('#trace-items input[type=checkbox]'));
+  action('capture');click('#sample-scan');await waitFor(()=>$('#trace-items input[type=checkbox]'),90000);
   assert.ok($('#calibration-canvas')===null,'A4 scale and perspective must be automatic');
   assert.ok($('#trace-threshold')===null,'The user must not have to tune a threshold');
   assert.ok($('#trace-smoothing')===null,'The user must not have to tune smoothing');

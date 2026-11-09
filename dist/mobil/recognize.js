@@ -1,98 +1,91 @@
-import { autoTraceImage } from './auto-trace.js';
-import { segmentNeural } from './neural.js';
-import { readableImage } from './photo-enhance.js';
-import { recoverDarkTools } from './photo-recovery.js';
-import { i18nError } from './i18n.js';
-// Progress messages and worker errors are Czech source text; capture.js translates them with t()/errorText().
+import { recognizeToolRegions } from './tool-recognition.js';
+import { segmentToolInstances } from './tool-neural.js';
+import { validateInstanceImage } from './tool-neural-core.js';
 
 const aborted = () => new DOMException('Rozpoznávání bylo zrušeno.', 'AbortError');
-function requireSourceReview(result, readable) {
-  if (!readable?.requiresReview || result.quality.status === 'retake') return;
-  result.requiresReview = true;
-  if (result.quality.status === 'ready') {
-    result.quality.status = 'review';
-    result.quality.reasons = ['Na tmavém podkladu mohou sousední nebo málo kontrastní části splývat. Ověřte počet a oddělení nástrojů.'];
-  }
-}
-function classical(image, options, signal) {
+
+function measureRegions(image, options, signal) {
   if (signal?.aborted) return Promise.reject(aborted());
-  if (typeof Worker !== 'function') return autoTraceImage(image, options);
+  if (typeof Worker !== 'function') return Promise.resolve(recognizeToolRegions(image, options));
   return new Promise((resolve, reject) => {
-    const worker = new Worker(new URL('./recognize-worker.js', import.meta.url), { type: 'module' });
-    let finished = false;
+    let worker, timer, finished = false;
     const finish = (error, result) => {
       if (finished) return;
       finished = true;
+      clearTimeout(timer);
       signal?.removeEventListener('abort', cancel);
-      worker.terminate();
+      worker?.terminate();
       error ? reject(error) : resolve(result);
     };
     const cancel = () => finish(aborted());
-    signal?.addEventListener('abort', cancel, { once: true });
-    worker.onmessage = ({ data }) => {
-      if (data.progress) options.onProgress?.(data.progress);
-      else if (data.error) finish(new Error(data.error));
-      else finish(null, data.result);
-    };
-    worker.onerror = () => finish(i18nError('Automatické rozpoznávání se nepodařilo spustit. Obnovte aplikaci a zkuste to znovu.'));
-    const pixels = new Uint8ClampedArray(image.data);
-    const probability = options.probability ? new Float32Array(options.probability) : null;
-    const source = options.source ? { width: options.source.width, height: options.source.height, data: new Uint8ClampedArray(options.source.data) } : null;
-    worker.postMessage({ image: { width: image.width, height: image.height, data: pixels }, options: { pxPerMm: options.pxPerMm, kind: options.kind, wideFragments: options.wideFragments, probability, source } }, [pixels.buffer, ...(probability ? [probability.buffer] : []), ...(source ? [source.data.buffer] : [])]);
+    try {
+      worker = new Worker(new URL('./recognize-worker.js', import.meta.url), { type: 'module', name: 'tool-regions' });
+      signal?.addEventListener('abort', cancel, { once: true });
+      if (signal?.aborted) { cancel(); return; }
+      timer = setTimeout(() => finish(new Error('Rozpoznávání trvalo příliš dlouho. Zkuste menší snímek nebo novější zařízení.')), 120000);
+      worker.onmessage = ({ data }) => {
+        if (finished) return;
+        if (!data || typeof data !== 'object') { finish(new Error('Rozpoznávání nevrátilo platné oblasti nástrojů.')); return; }
+        if (data.progress) { try { options.onProgress?.(data.progress); } catch {} }
+        else if (data.error) finish(new Error(data.error));
+        else if (data.result) {
+          const r = data.result;
+          if (r.width !== image.width || r.height !== image.height || !(r.mask instanceof Uint8Array) || r.mask.length !== image.width * image.height || !Array.isArray(r.contours) || !r.contours.every(c => c && Array.isArray(c.points) && c.points.length >= 3 && c.points.every(p => p && Number.isFinite(p.x) && Number.isFinite(p.y))) || !r.quality || !['ready', 'review', 'retake'].includes(r.quality.status) || !Array.isArray(r.quality.reasons)) {
+            finish(new Error('Rozpoznávání nevrátilo platné oblasti nástrojů.')); return;
+          }
+          finish(null, r);
+        } else finish(new Error('Rozpoznávání nevrátilo platné oblasti nástrojů.'));
+      };
+      worker.onerror = event => { event.preventDefault?.(); finish(new Error('Automatické rozpoznávání se nepodařilo spustit. Obnovte aplikaci a zkuste to znovu.')); };
+      worker.onmessageerror = () => finish(new Error('Masku rozpoznaných nástrojů se nepodařilo předat. Zkuste snímek znovu.'));
+      const pixels = new Uint8ClampedArray(image.data);
+      const { onProgress, ...workerOptions } = options;
+      const transfer = [pixels.buffer];
+      // Only inference-owned buffers move; the user's source photograph stays intact.
+      if (workerOptions.prototypes) transfer.push(workerOptions.prototypes.buffer);
+      for (const instance of workerOptions.instances || []) {
+        if (instance.mask?.data) transfer.push(instance.mask.data.buffer);
+        if (instance.probability?.data) transfer.push(instance.probability.data.buffer);
+      }
+      worker.postMessage({ image: { width: image.width, height: image.height, data: pixels }, options: workerOptions }, [...new Set(transfer)]);
+    } catch (error) { finish(error); }
   });
 }
 
-/** No user thresholds or hand-drawn corrections: learned foreground + measured RGB edges. */
+/** Source-coordinate physical objects. Calibration, editing and pocket fitting remain downstream. */
 export async function recognizeTools(image, { pxPerMm = 1, kind = 'paper', signal, onProgress } = {}) {
+  validateInstanceImage(image);
   if (signal?.aborted) throw aborted();
-  const progress = event => { if (!signal?.aborted) onProgress?.(event); };
-  // Light tools on a dark insert would be traced as one dark object, whatever its score, so this comes first.
-  const readable = readableImage(image);
-  if (readable) {
-    progress({ stage: 'enhance', progress: .05, message: 'Upravuji fotku, aby byly nástroje čitelné…' });
-    const light = readable.name === 'light-background' || readable.name === 'plain-background';
-    const recovered = light ? readable.image : recoverDarkTools(image, readable.image);
-    const result = await classical(recovered, { pxPerMm, kind: light ? 'light' : 'tray', wideFragments: readable.wideFragments ?? readable.name === 'plain-background', source: image, onProgress: progress }, signal);
-    if (signal?.aborted) throw aborted();
-    if (readable.ambiguousBridge && result.quality.status !== 'retake') {
-      const reason = 'Krátké přerušení obrysu bylo odhadnuto z okolních hran. Ověřte spojené části podle fotografie.';
-      result.quality.reasons = result.quality.status === 'ready' ? [reason] : [reason, ...result.quality.reasons];
-      result.quality.status = 'review'; result.ambiguousBridge = true; result.recoveredBands = readable.recoveredBands;
-    }
-    if (readable.ambiguousMaterial && result.quality.status !== 'retake') {
-      result.quality.status = 'review'; result.ambiguousMaterial = true;
-      result.quality.reasons = ['Část hrany je málo kontrastní nebo splývá se stínem. Přesnost této části nelze z fotografie spolehlivě ověřit.', ...result.quality.reasons];
-    }
-    if (readable.ambiguousPrinting && result.quality.status !== 'retake') {
-      const reason = 'Na podkladu jsou drobné značky, které mohou být potisk. Zkontrolujte výběr nástrojů.';
-      result.quality.reasons = result.quality.status === 'ready' ? [reason] : [...result.quality.reasons, reason];
-      result.quality.status = 'review'; result.ambiguousPrinting = true;
-    }
-    requireSourceReview(result, readable);
-    if (result.quality.status !== 'retake' && result.contours.length >= (light ? 1 : 2)) {
-      result.enhanced = readable.name; result.neuralModel = null;
-      progress({ stage: 'done', progress: 1, message: result.quality.status === 'ready' ? 'Obrysy jsou připravené.' : 'Fotka potřebuje lepší podmínky.' });
-      return result;
+  let completed = 0;
+  const progress = event => {
+    if (signal?.aborted) return;
+    if (Number.isFinite(event.progress)) { completed = Math.max(completed, Math.min(1, Math.max(0, event.progress))); event = { ...event, progress: completed }; }
+    try { onProgress?.(event); } catch {}
+  };
+  const hasWorker = typeof Worker === 'function';
+  let neural = null, neuralUnavailable = !hasWorker;
+  if (typeof Worker === 'function') {
+    try { neural = await segmentToolInstances(image, { signal, onProgress: progress }); }
+    catch (error) {
+      if (signal?.aborted || error.name === 'AbortError') throw aborted();
+      neuralUnavailable = true;
     }
   }
-  progress({ stage: 'recognition', progress: .05, message: 'Odděluji nástroje od papíru…' });
-  const [base, neural] = await Promise.allSettled([
-    // With a worker this pass is normally replaced by the neural one below, so it skips the measuring.
-    classical(image, { pxPerMm, kind, source: typeof Worker === 'function' ? null : image, onProgress: progress }, signal),
-    typeof Worker === 'function' ? segmentNeural(image, { onProgress: progress, signal }) : Promise.resolve(null)
-  ]);
   if (signal?.aborted) throw aborted();
-  let result;
-  if (neural.status === 'fulfilled' && neural.value?.probability) {
-    progress({ stage: 'refine', progress: .86, message: 'Zpřesňuji skutečné hrany a odstraňuji stíny…' });
-    result = await classical(image, { pxPerMm, kind, probability: neural.value.probability, source: image, onProgress: progress }, signal);
-    result.neuralModel = neural.value.model;
-  } else if (base.status === 'fulfilled') {
-    result = typeof Worker === 'function' ? await classical(image, { pxPerMm, kind, source: image, onProgress: progress }, signal) : base.value;
-    result.neuralModel = null;
-    result.neuralUnavailable = neural.status === 'rejected';
-  } else throw base.reason || i18nError('Fotografii se nepodařilo zpracovat.');
-  requireSourceReview(result, readable);
-  progress({ stage: 'done', progress: 1, message: result.quality.status === 'ready' ? 'Obrysy jsou připravené.' : 'Fotka potřebuje lepší podmínky.' });
+  progress({ stage: 'refine', progress: hasWorker ? .91 : .05, message: 'Skládám části nástrojů a měřím jejich obrysy…' });
+  const result = await measureRegions(image, {
+    pxPerMm, kind, onProgress: event => progress({ ...event, progress: (hasWorker ? .91 : .05) + (hasWorker ? .08 : .94) * Math.max(0, Math.min(1, event.progress || 0)) }),
+    ...(neural ? { instances: neural.instances, weakProposals: neural.weakProposals, prototypes: neural.prototypes, transform: neural.transform } : {})
+  }, signal);
+  if (signal?.aborted) throw aborted();
+  result.neuralModel = neural?.model || null;
+  result.neuralUnavailable = neuralUnavailable;
+  if (!hasWorker) result.diagnostics = { ...result.diagnostics, neuralSkipped: 'worker-unavailable' };
+  if (hasWorker && neuralUnavailable && result.quality.status !== 'retake') {
+    result.requiresReview = true;
+    result.quality.status = 'review';
+    result.quality.reasons = ['Lokální neuronové rozpoznávání nebylo dostupné. Zkontrolujte úplnost a oddělení nástrojů podle fotografie.', ...result.quality.reasons];
+  }
+  progress({ stage: 'done', progress: 1, message: result.quality.status === 'ready' ? 'Obrysy jsou připravené.' : 'Zkontrolujte nalezené obrysy podle fotografie.' });
   return result;
 }

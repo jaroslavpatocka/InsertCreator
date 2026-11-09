@@ -1,3 +1,4 @@
+import {instanceWorkerReply} from './fixtures/instance-worker-reply.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
@@ -17,7 +18,7 @@ const original=[{x:200,y:200},{x:500,y:200},{x:500,y:300},{x:200,y:300}];
 const second=original.map(point=>({x:point.x,y:point.y+250}));outlines=[original];
 globalThis.Worker=class{
   constructor(url){this.url=String(url);this.terminated=false;}
-  postMessage(message){queueMicrotask(()=>{if(this.terminated)return;if(this.url.endsWith('/neural-worker.js'))return this.onmessage?.({data:{type:'error',id:message.id,message:'Deterministic capture contour fixture'}});scale=message.options.pxPerMm;this.onmessage?.({data:{result:{contours:outlines.map(points=>({points:structuredClone(points)})),mask:new Uint8Array(message.image.width*message.image.height),quality:{status,reasons:status==='review'?['Část hrany je málo kontrastní nebo splývá se stínem. Přesnost této části nelze z fotografie spolehlivě ověřit.']:[]}}}});});}
+  postMessage(message){queueMicrotask(()=>{if(this.terminated)return;if(this.url.endsWith('/tool-neural-worker.js'))return this.onmessage?.({data:instanceWorkerReply(message)});scale=message.options.pxPerMm;this.onmessage?.({data:{result:{width:message.image.width,height:message.image.height,contours:outlines.map(points=>({points:structuredClone(points)})),mask:new Uint8Array(message.image.width*message.image.height),quality:{status,reasons:status==='review'?['Část hrany je málo kontrastní nebo splývá se stínem. Přesnost této části nelze z fotografie spolehlivě ověřit.']:[]}}}});});}
   terminate(){this.terminated=true;}
 };
 const {openCapture}=await import('../dist/capture.js');

@@ -102,7 +102,7 @@ test('uploaded A4 photos add complete, separate tools through real ONNX recognit
     assert.equal(decodedFiles,beforeDecode+1,'the actual PNG upload must be decoded');
     assert.ok($('#retake-missing')===null,'the complete A4 sheet must calibrate automatically');
     assert.ok(phases.filter(phase=>phase==='inference').length>beforeInference,'real ONNX inference must execute for each upload');
-    assert.ok(created.some(url=>url.endsWith('/neural-worker.js')));
+    assert.ok(created.some(url=>url.endsWith('/tool-neural-worker.js')));
     assert.ok(created.some(url=>url.endsWith('/recognize-worker.js')));
     const diagnostic=JSON.stringify({result:results.at(-1),message:$('.recognition-status')?.textContent,reasons:$('.issue-box')?.textContent});
     assert.equal($('#capture-add')?.disabled,false,diagnostic);

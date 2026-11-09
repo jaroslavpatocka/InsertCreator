@@ -4,6 +4,7 @@ import fs from 'node:fs/promises';
 import {Window} from 'happy-dom';
 import {createCanvas,ImageData} from '@napi-rs/canvas';
 import {calibrateRulers} from '../dist/ruler-calibration.js';
+import {instanceWorkerReply} from './fixtures/instance-worker-reply.mjs';
 
 const win=new Window({url:'http://localhost:5173'});
 win.document.write((await fs.readFile(new URL('../dist/index.html',import.meta.url),'utf8')).replace(/<script[^>]*>[\s\S]*?<\/script>/g,''));
@@ -27,7 +28,7 @@ win.HTMLCanvasElement.prototype.getContext=function(type){if(type!=='2d')return 
 win.HTMLCanvasElement.prototype.setPointerCapture=function(id){captured.set(id,this);};
 win.HTMLCanvasElement.prototype.hasPointerCapture=function(id){return captured.get(id)===this;};
 win.HTMLCanvasElement.prototype.releasePointerCapture=function(id){if(captured.get(id)===this)captured.delete(id);};
-globalThis.Worker=class{constructor(url){this.url=String(url);}postMessage(message){posted.push({url:this.url,message});if(respond)setTimeout(()=>respond?.(this,message),0);}terminate(){}};
+globalThis.Worker=class{constructor(url){this.url=String(url);}postMessage(message){posted.push({url:this.url,message});if(this.url.endsWith('/tool-neural-worker.js'))return queueMicrotask(()=>this.onmessage?.({data:instanceWorkerReply(message)}));if(respond)setTimeout(()=>respond?.(this,message),0);}terminate(){}};
 const {setLang}=await import('../dist/i18n.js'),{setAppUnit}=await import('../dist/units.js'),{openCapture}=await import('../dist/capture.js');
 setLang('cs',{save:false});setAppUnit('mm',{save:false});
 const $=selector=>win.document.querySelector(selector),pause=()=>new Promise(resolve=>setTimeout(resolve,2));
@@ -133,7 +134,7 @@ test('ruler calibration uses visible open crosshairs, accessible points and safe
       $('#ruler-second').checked=true;$('#ruler-second').dispatchEvent(new win.Event('change'));sizeCanvas();
       const refs=[{x:100,y:100},{x:500,y:100},{x:600,y:100},{x:600,y:500}];refs.forEach((p,i)=>place(i+1,p.x,p.y));input($('#ruler-distance'),'100');input($('#ruler-second-distance'),'50');wheel({deltaY:-120});pan(2);
       const originalView={...view()},original=sources.get($('#calibration-canvas')).getContext('2d').getImageData(0,0,1000,900).data.slice();
-      respond=(worker,message)=>{if(worker.url.includes('neural-worker'))worker.onmessage?.({data:{type:'error',id:message.id,message:'test uses measured contours'}});else worker.onmessage?.({data:{result:{contours:[{points:[{x:20,y:20},{x:80,y:20},{x:80,y:80},{x:20,y:80}]}],quality:{status:'ready',reasons:[]},mask:new Uint8Array(message.image.width*message.image.height)}}});};
+      respond=(worker,message)=>{worker.onmessage?.({data:{result:{width:message.image.width,height:message.image.height,contours:[{points:[{x:20,y:20},{x:80,y:20},{x:80,y:80},{x:20,y:80}]}],quality:{status:'ready',reasons:[]},mask:new Uint8Array(message.image.width*message.image.height)}}});};
       $('#capture-continue').click();await waitFor(()=>$('#capture-calibration-back'));assert.equal(additions,0);$('#capture-calibration-back').click();sizeCanvas();pointer('pointermove',{x:500,y:450});
       assert.equal($('#calibration-canvas').width,1000);assert.equal($('#calibration-canvas').height,900);assert.deepEqual(view(),originalView);assert.equal($('#ruler-second').checked,true);assert.equal($('#ruler-distance').value,'100');assert.equal($('#ruler-second-distance').value,'50');assert.deepEqual(sources.get($('#calibration-canvas')).getContext('2d').getImageData(0,0,1000,900).data,original);
       fit();refs.forEach((p,i)=>closePoint(marked(i+1),p,'back retains ruler positions in original photograph'));
@@ -143,14 +144,14 @@ test('ruler calibration uses visible open crosshairs, accessible points and safe
   });
   await t.test('a failed A4 result can return to manual rulers on the same original photograph',async()=>{
     posted.length=0;const modal=openCapture({onAdd:()=>assert.fail('returning to calibration must not add tools')});try{
-      respond=(worker,message)=>{if(worker.url.includes('neural-worker'))worker.onmessage?.({data:{type:'error',id:message.id,message:'test uses measured contours'}});else worker.onmessage?.({data:{result:{contours:[],quality:{status:'retake',reasons:[]},mask:new Uint8Array(message.image.width*message.image.height)}}});};
+      respond=(worker,message)=>{worker.onmessage?.({data:{result:{width:message.image.width,height:message.image.height,contours:[],quality:{status:'retake',reasons:[]},mask:new Uint8Array(message.image.width*message.image.height)}}});};
       $('#sample-scan').click();await waitFor(()=>$('#capture-calibration-back'));assert.ok($('#trace-canvas'));$('#capture-calibration-back').click();sizeCanvas();assert.ok($('#a4-orientation'));assert.equal($('#ruler-distance'),null);$('#use-ruler').click();sizeCanvas();assert.ok($('#ruler-distance'));assert.equal($('#calibration-canvas').width,1000);assert.equal($('#calibration-canvas').height,900);
       respond=null;const previousRuns=posted.filter(p=>p.url.includes('recognize-worker')).length;$('#capture-continue').click();await waitFor(()=>posted.filter(p=>p.url.includes('recognize-worker')).length>previousRuns);assert.equal(posted.filter(p=>p.url.includes('recognize-worker')).at(-1).message.options.kind,'reference');$('#cancel-processing').click();
     }finally{respond=null;modal.close();}
   });
   await t.test('a reference-only case contour warns instead of claiming individual tools were recognized, with deliberate manual override',async()=>{
     let added=[];const modal=await openRuler(tools=>{added=tools;});try{
-      respond=(worker,message)=>{if(worker.url.includes('neural-worker'))worker.onmessage?.({data:{type:'error',id:message.id,message:'test uses measured contours'}});else worker.onmessage?.({data:{result:{contours:[{points:[{x:100,y:100},{x:900,y:100},{x:900,y:800},{x:100,y:800}]}],quality:{status:'ready',reasons:[]},mask:new Uint8Array(message.image.width*message.image.height)}}});};
+      respond=(worker,message)=>{worker.onmessage?.({data:{result:{width:message.image.width,height:message.image.height,contours:[{points:[{x:100,y:100},{x:900,y:100},{x:900,y:800},{x:100,y:800}]}],quality:{status:'ready',reasons:[]},mask:new Uint8Array(message.image.width*message.image.height)}}});};
       $('#capture-continue').click();await waitFor(()=>$('#trace-items input[type=checkbox]'));
       assert.equal($('.recognition-status').classList.contains('ready'),false);assert.equal($('.recognition-status').classList.contains('retake'),true);
       assert.match($('.recognition-status').textContent,/Samostatné nástroje se nerozpoznaly/);assert.match($('.capture-sidebar').textContent,/obě značky měřítka/);assert.match($('.capture-sidebar').textContent,/kufříku nebo držáku/);
@@ -162,7 +163,7 @@ test('ruler calibration uses visible open crosshairs, accessible points and safe
   });
   await t.test('manually deselecting a genuine tool does not reclassify it as a reference-only failure',async()=>{
     const modal=await openRuler();try{
-      respond=(worker,message)=>{if(worker.url.includes('neural-worker'))worker.onmessage?.({data:{type:'error',id:message.id,message:'test uses measured contours'}});else worker.onmessage?.({data:{result:{contours:[{points:[{x:200,y:500},{x:800,y:500},{x:800,y:700},{x:200,y:700}]},{points:[{x:100,y:100},{x:200,y:100},{x:200,y:200},{x:100,y:200}]}],quality:{status:'ready',reasons:[]},mask:new Uint8Array(message.image.width*message.image.height)}}});};
+      respond=(worker,message)=>{worker.onmessage?.({data:{result:{width:message.image.width,height:message.image.height,contours:[{points:[{x:200,y:500},{x:800,y:500},{x:800,y:700},{x:200,y:700}]},{points:[{x:100,y:100},{x:200,y:100},{x:200,y:200},{x:100,y:200}]}],quality:{status:'ready',reasons:[]},mask:new Uint8Array(message.image.width*message.image.height)}}});};
       $('#capture-continue').click();await waitFor(()=>$('#trace-items input[type=checkbox]'));
       const candidates=[...win.document.querySelectorAll('#trace-items input[type=checkbox]')];assert.deepEqual(candidates.map(candidate=>candidate.checked),[false,true]);assert.equal($('.recognition-status').classList.contains('ready'),true);
       candidates[1].checked=false;candidates[1].dispatchEvent(new win.Event('change',{bubbles:true}));assert.equal($('#capture-add').disabled,true);assert.equal($('.recognition-status').classList.contains('ready'),true);assert.doesNotMatch($('.capture-sidebar').textContent,/Samostatné nástroje se nerozpoznaly/);
@@ -175,7 +176,7 @@ test('ruler calibration uses visible open crosshairs, accessible points and safe
     const box=(x0,y0,x1,y1)=>({points:[{x:x0,y:y0},{x:x1,y:y0},{x:x1,y:y1},{x:x0,y:y1}]});
     const around=(a,b)=>box(Math.min(a.x,b.x)-8,Math.min(a.y,b.y)-8,Math.max(a.x,b.x)+8,Math.max(a.y,b.y)+8);
     const contours=[around(...calibrated.points.slice(0,2)),around(...calibrated.points.slice(2)),box(30,30,80,80)];
-    respond=(worker,message)=>{if(worker.url.includes('neural-worker'))worker.onmessage?.({data:{type:'error',id:message.id,message:'test uses measured contours'}});else worker.onmessage?.({data:{result:{contours,quality:{status:'ready',reasons:[]},mask:new Uint8Array(message.image.width*message.image.height)}}});};
+    respond=(worker,message)=>{worker.onmessage?.({data:{result:{width:message.image.width,height:message.image.height,contours,quality:{status:'ready',reasons:[]},mask:new Uint8Array(message.image.width*message.image.height)}}});};
     $('#capture-continue').click();await waitFor(()=>$('#trace-items input[type=checkbox]'));
     assert.deepEqual([...win.document.querySelectorAll('#trace-items input[type=checkbox]')].map(i=>i.checked),[false,false,true]);
     $('#capture-add').click();await waitFor(()=>!$('#modal-root').children.length);assert.equal(added.length,1);assert.equal(added[0].name,'Nástroj 3');respond=null;modal.close();

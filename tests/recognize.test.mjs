@@ -34,24 +34,25 @@ function tools(){
 }
 function iou(a,b){let union=0,intersection=0;for(let i=0;i<a.length;i++){union+=+(a[i]||b[i]);intersection+=+(a[i]&&b[i]);}return union?intersection/union:0;}
 
-test('actual recognition workers combine real U2Netp with measured contours and cancellation',{timeout:45000},async t=>{
+test('actual recognition workers combine real FastSAM instances with measured contours and cancellation',{timeout:90000},async t=>{
   t.after(async()=>{await Promise.all([...workers].map(worker=>worker.terminate()));delete globalThis.Worker;});
   await t.test('two tools are recognized automatically with accurate calibrated dimensions',async()=>{
     const im=tools(),events=[],result=await recognizeTools(im,{pxPerMm:2,kind:'paper',onProgress:event=>events.push(event)});
-    assert.equal(result.neuralModel,'u2netp');assert.ok(events.some(event=>event.phase==='inference'),'actual neural worker must execute inference');
-    assert.ok(created.some(url=>url.endsWith('/neural-worker.js')));assert.ok(created.some(url=>url.endsWith('/recognize-worker.js')));
+    assert.equal(result.neuralModel,'fastsam-s');assert.equal(result.neuralUnavailable,false);assert.ok(events.some(event=>event.phase==='inference'),'actual neural worker must execute inference');
+    assert.ok(created.some(url=>url.endsWith('/tool-neural-worker.js')));assert.ok(created.some(url=>url.endsWith('/recognize-worker.js')));
     assert.equal(result.quality.status,'ready',JSON.stringify({quality:result.quality,diagnostics:result.diagnostics}));assert.equal(result.contours.length,2);
     const contours=[...result.contours].sort((a,b)=>b.height-a.height),expected=[{width:27,height:170},{width:25,height:137}];
     for(let i=0;i<2;i++){assert.ok(Math.abs(contours[i].width/2-expected[i].width)<1.5,`width ${contours[i].width/2}mm`);assert.ok(Math.abs(contours[i].height/2-expected[i].height)<1.5,`height ${contours[i].height/2}mm`);}
-    assert.ok(iou(result.mask,im.truth)>.9,JSON.stringify(result.diagnostics));assert.ok(im.data.byteLength>0,'worker transfer must not detach the caller photo');
+    assert.ok(iou(result.mask,im.truth)>.9,JSON.stringify(result.diagnostics));assert.ok(im.data.byteLength>0,'worker transfer must not detach the caller photo');assert.equal(workers.size,0,'every worker is released before the result is returned');
     t.diagnostic(`real workers: ${result.contours.length} contours, mask IoU=${iou(result.mask,im.truth).toFixed(3)}, method=${result.method}`);
   });
   await t.test('a blank sheet fails the photo quality check despite real model output',async()=>{
-    const result=await recognizeTools(fixture(),{pxPerMm:2});assert.equal(result.neuralModel,'u2netp');assert.equal(result.quality.status,'retake',JSON.stringify(result));assert.equal(result.contours.length,0);
+    const result=await recognizeTools(fixture(),{pxPerMm:2});assert.equal(result.neuralModel,'fastsam-s');assert.equal(result.quality.status,'retake',JSON.stringify(result));assert.equal(result.contours.length,0);
   });
   await t.test('cancelling during actual inference stops workers and rejects with AbortError',async()=>{
     const controller=new AbortController();let inferenceStarted=false;const started=performance.now();
     await assert.rejects(recognizeTools(tools(),{pxPerMm:2,signal:controller.signal,onProgress:event=>{if(event.phase==='inference'){inferenceStarted=true;controller.abort();}}}),{name:'AbortError'});
     assert.ok(inferenceStarted,'cancellation must occur while a real inference is active');assert.ok(performance.now()-started<5000);
+    assert.equal(workers.size,0,'cancel releases every worker');
   });
 });

@@ -1,3 +1,4 @@
+import {instanceWorkerReply} from './fixtures/instance-worker-reply.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
@@ -31,11 +32,11 @@ globalThis.Worker=class{
   constructor(url){this.url=String(url);}
   postMessage(message){queueMicrotask(()=>{
     if(this.closed)return;
-    if(this.url.endsWith('/neural-worker.js'))return this.onmessage?.({data:{type:'error',id:message.id,message:'No neural model for deterministic capture test'}});
+    if(this.url.endsWith('/tool-neural-worker.js'))return this.onmessage?.({data:instanceWorkerReply(message)});
     recognitions++;calibration=message.options.pxPerMm;
     const source=[{x:30,y:30},{x:45,y:30},{x:45,y:50},{x:39,y:50},{x:39.3,y:60},{x:39,y:70},{x:39.4,y:80},{x:39,y:90},{x:47,y:90},{x:47,y:125},{x:27,y:125},{x:27,y:90},{x:33,y:90},{x:33,y:50},{x:30,y:50}];
     const contours=[source,[{x:110,y:40},{x:130,y:40},{x:130,y:100},{x:110,y:100}]].map(points=>({points:points.map(p=>({x:p.x*calibration,y:p.y*calibration}))}));
-    this.onmessage?.({data:{result:{contours,mask:new Uint8Array(message.image.width*message.image.height),quality:{status:'ready',reasons:[]}}}});
+    this.onmessage?.({data:{result:{width:message.image.width,height:message.image.height,contours,mask:new Uint8Array(message.image.width*message.image.height),quality:{status:'ready',reasons:[]}}}});
   });}
   terminate(){this.closed=true;}
 };

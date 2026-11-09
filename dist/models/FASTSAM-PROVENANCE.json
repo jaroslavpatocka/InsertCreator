@@ -1,0 +1,14 @@
+{
+  "scope": "Local evaluation integration. No production publication authorized.",
+  "modelRepo": "anakhiu/fastsam-onnx",
+  "revision": "8bb24a5b8339d6494012e5a51b18bb34fbfef07d",
+  "filename": "fastsam_s.onnx",
+  "bytes": 47637745,
+  "sha256": "8663b25472f06d36fc90f9b6262318292b760403c69c240360da5d1a3509f1ea",
+  "modelCardUrl": "https://huggingface.co/anakhiu/fastsam-onnx/blob/8bb24a5b8339d6494012e5a51b18bb34fbfef07d/README.md",
+  "upstreamRepo": "CASIA-LMC-Lab/FastSAM",
+  "upstreamRevision": "b4ed20c2fed75eadc5aa7d8b09fedd137b873b52",
+  "upstreamLicenseUrl": "https://github.com/CASIA-LMC-Lab/FastSAM/blob/b4ed20c2fed75eadc5aa7d8b09fedd137b873b52/LICENSE",
+  "licenseIssueUrl": "https://github.com/CASIA-IVA-Lab/FastSAM/issues/228",
+  "licenseStatus": "Exporter card and upstream README claim Apache-2.0; pinned upstream LICENSE is AGPL-3.0. Exact notices retained. No conclusion about the application's license or authorization to publish."
+}

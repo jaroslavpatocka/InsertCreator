@@ -1,3 +1,4 @@
+import {instanceWorkerReply} from './fixtures/instance-worker-reply.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
@@ -34,7 +35,7 @@ globalThis.Worker=class{
   constructor(url){this.url=String(url);this.terminated=false;}
   postMessage(message){queueMicrotask(()=>{
     if(this.terminated)return;
-    if(this.url.endsWith('/neural-worker.js'))return this.onmessage?.({data:{type:'error',id:message.id,message:'Independent fixed-pixel calibration fixture'}});
+    if(this.url.endsWith('/tool-neural-worker.js'))return this.onmessage?.({data:instanceWorkerReply(message)});
     posted.push({width:message.image.width,height:message.image.height,pxPerMm:message.options.pxPerMm});
     let points=structuredClone(currentContour);
     if(!points){
@@ -47,7 +48,7 @@ globalThis.Worker=class{
       assert.ok(Number.isFinite(x0),'physical tool is present in the rectified photo');
       points=[{x:x0,y:y0},{x:x1,y:y0},{x:x1,y:y1},{x:x0,y:y1}];
     }
-    this.onmessage?.({data:{result:{contours:[{points}],mask:new Uint8Array(message.image.width*message.image.height),quality:{status:'ready',reasons:[]}}}});
+    this.onmessage?.({data:{result:{width:message.image.width,height:message.image.height,contours:[{points}],mask:new Uint8Array(message.image.width*message.image.height),quality:{status:'ready',reasons:[]}}}});
   });}
   terminate(){this.terminated=true;}
 };

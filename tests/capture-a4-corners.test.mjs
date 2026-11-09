@@ -4,6 +4,7 @@ import fs from 'node:fs/promises';
 import {createHash} from 'node:crypto';
 import {Window} from 'happy-dom';
 import {createCanvas,ImageData} from '@napi-rs/canvas';
+import {instanceWorkerReply} from './fixtures/instance-worker-reply.mjs';
 
 const win=new Window({url:'http://localhost:5173'});
 win.document.write((await fs.readFile(new URL('../dist/index.html',import.meta.url),'utf8')).replace(/<script[^>]*>[\s\S]*?<\/script>/g,''));
@@ -34,7 +35,7 @@ globalThis.Worker=class{
  constructor(url){this.url=String(url);this.closed=false;}
  postMessage(message){queueMicrotask(()=>{
   if(this.closed)return;
-  if(this.url.includes('neural-worker'))return this.onmessage?.({data:{type:'error',id:message.id,message:'Independent A4 raster fixture'}});
+  if(this.url.endsWith('/tool-neural-worker.js'))return this.onmessage?.({data:instanceWorkerReply(message)});
   let x0=Infinity,y0=Infinity,x1=-Infinity,y1=-Infinity;
   for(let y=0;y<message.image.height;y++)for(let x=0;x<message.image.width;x++){
    const at=(y*message.image.width+x)*4,data=message.image.data;
@@ -42,7 +43,7 @@ globalThis.Worker=class{
   }
   posted.push({width:message.image.width,height:message.image.height,scale:message.options.pxPerMm,kind:message.options.kind,hash:digest(message.image.data)});
   const points=[{x:x0,y:y0},{x:x1,y:y0},{x:x1,y:y1},{x:x0,y:y1}];
-  this.onmessage?.({data:{result:{contours:Number.isFinite(x0)?[{points}]:[],mask:new Uint8Array(message.image.width*message.image.height),quality:{status:'ready',reasons:[]}}}});
+  this.onmessage?.({data:{result:{width:message.image.width,height:message.image.height,contours:Number.isFinite(x0)?[{points}]:[],mask:new Uint8Array(message.image.width*message.image.height),quality:{status:'ready',reasons:[]}}}});
  });}
  terminate(){this.closed=true;}
 };

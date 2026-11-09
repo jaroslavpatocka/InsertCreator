@@ -441,7 +441,7 @@ function restore(candidate, original, im) {
  * probability is an optional source-sized Float32Array (0..1) from a segmentation model.
  * onProgress receives {stage,progress,message}. score0to1 is a heuristic evidence score.
  */
-export async function autoTraceImage(imageData, { pxPerMm = 1, kind = 'paper', probability = null, source = null, wideFragments = false, onProgress } = {}) {
+export async function autoTraceImage(imageData, { pxPerMm = 1, kind = 'paper', probability = null, source = null, wideFragments = false, collectProposals = false, onProgress } = {}) {
   const started = performance.now(), progress = (stage, value, message) => { try { onProgress?.({ stage, progress: value, message }); } catch {} };
   progress('background', .03, 'Měřím barvu papíru a vyrovnávám osvětlení…'); await pause();
   const im = prepare(imageData, probability), scale = Number.isFinite(pxPerMm) && pxPerMm > 0 ? pxPerMm / im.scaleX : 1;
@@ -512,6 +512,7 @@ export async function autoTraceImage(imageData, { pxPerMm = 1, kind = 'paper', p
     } catch { /* The enhanced outlines below remain usable. */ }
   }
   restored ??= restore(regularizeCandidate(best, im, scale), imageData, im);
+  if (collectProposals) restored.sourceProposals = candidates.filter(c => !c.name.startsWith('neural-')).map(c => ({ method: c.name, score: c.score, boundaryCoverage: c.coverage, contours: c === best ? restored.contours : restore(regularizeCandidate(c, im, scale), imageData, im).contours }));
   progress('complete', 1, status === 'ready' ? 'Kontury jsou připravené.' : 'Fotografie potřebuje ověření.');
   return { ...restored, threshold: strictDark, method: best.name, quality: { status, score0to1: score, reasons, methods }, diagnostics: { elapsedMs: performance.now() - started, processingWidth: im.width, processingHeight: im.height, noise: features.noise, backgroundResidual: model.fitResidual, illuminationRange: features.illuminationRange, boundaryCoverage: best.coverage, candidateAgreement: best.agreement, clippedForeground, candidates: candidates.map(c => ({ method: c.name, score: c.score, agreement: c.agreement, contours: c.contours.length, boundaryCoverage: c.coverage, areaFraction: c.fill, rejected: c.rejected, fragments: c.fragments, neuralAgreement: c.neuralAgreement })) } };
 }

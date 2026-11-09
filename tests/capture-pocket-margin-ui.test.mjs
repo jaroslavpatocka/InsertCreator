@@ -1,3 +1,4 @@
+import {instanceWorkerReply} from './fixtures/instance-worker-reply.mjs';
 import {test,after} from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
@@ -32,10 +33,10 @@ globalThis.Worker=class{
   constructor(url){this.url=String(url);}
   postMessage(message){queueMicrotask(()=>{
     if(this.closed)return;
-    if(this.url.endsWith('/neural-worker.js'))return this.onmessage?.({data:{type:'error',id:message.id,message:'Deterministic margin fixture'}});
+    if(this.url.endsWith('/tool-neural-worker.js'))return this.onmessage?.({data:instanceWorkerReply(message)});
     calibration=message.options.pxPerMm;
     const rect=(x,y,width,height)=>({points:[{x,y},{x:x+width,y},{x:x+width,y:y+height},{x,y:y+height}].map(p=>({x:p.x*calibration,y:p.y*calibration}))});
-    this.onmessage?.({data:{result:{contours:[rect(20,25,20,60),rect(80,35,30,50)],mask:new Uint8Array(message.image.width*message.image.height),quality:{status:'ready',reasons:[]}}}});
+    this.onmessage?.({data:{result:{width:message.image.width,height:message.image.height,contours:[rect(20,25,20,60),rect(80,35,30,50)],mask:new Uint8Array(message.image.width*message.image.height),quality:{status:'ready',reasons:[]}}}});
   });}
   terminate(){this.closed=true;}
 };
