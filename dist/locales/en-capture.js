@@ -2,6 +2,10 @@
 // Keep {placeholders} identical in both languages.
 // Worker progress messages, quality reasons and worker errors travel as Czech text and are translated in capture.js.
 export default {
+  'Rozměry upraveného obrysu.':'Edited outline dimensions.',
+  'Upravený obrys: {tool}. Výsledná kapsa: {pocket}.':'Edited outline: {tool}. Final pocket: {pocket}.',
+  'Naměřený nástroj bez rezervy a vůle kapsy.':'Measured tool without pocket reserve or clearance.',
+  'Nástroj: {tool}. Výsledná kapsa: {pocket}.':'Tool: {tool}. Final pocket: {pocket}.',
   'Hladká kapsa (+2 %)':'Smooth pocket (+2%)',
   'Vyhlazený tvar s 2% rezervou. Běžná vůle kapsy se přidá navíc.':'A smooth shape with a 2% allowance. Regular pocket clearance is added separately.',
   'Kapsa je vyhlazená a zvětšená přibližně o 2 %.':'The pocket is smoothed and enlarged by approximately 2%.',

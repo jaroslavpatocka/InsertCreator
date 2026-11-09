@@ -54,6 +54,7 @@ test('capture margin belongs to the new module, supports local overrides and upd
   setLang('cs',{save:false});setAppUnit('mm',{save:false});
   let added,options;const modal=openCapture({onAdd:(tools,opts)=>{added=tools;options=opts;}});t.after(()=>modal.close());
   click('#sample-scan');await waitFor(()=>$('[data-name="1"]'));
+  const shape=$('#capture-pocket-shape');shape.value='measured';shape.dispatchEvent(new win.Event('change',{bubbles:true}));
   assert.equal($('#capture-pocket-margin').value,'0.8');close(margins()[0].width,21.6);close(margins()[1].width,31.6);
   click('#capture-guide-start');assert.equal($('#capture-guide-margin').value,'');assert.equal($('#capture-guide-margin').placeholder,'0.8');
   type('#capture-guide-margin','1 mm');close(margins()[0].width,22);
@@ -78,6 +79,7 @@ test('capture parses imperial module and per-pocket margins without changing sto
   setLang('en',{save:false});setAppUnit('in',{save:false});let added,options;
   const modal=openCapture({onAdd:(tools,opts)=>{added=tools;options=opts;}});t.after(()=>modal.close());
   click('#sample-scan');await waitFor(()=>$('[data-name="1"]'));
+  const shape=$('#capture-pocket-shape');shape.value='measured';shape.dispatchEvent(new win.Event('change',{bubbles:true}));
   type('#capture-pocket-margin','1/16 in');click('#capture-guide-start');type('#capture-guide-margin','0.5 mm');
   assert.doesNotMatch($('.capture-guide-panel').textContent,/Vlastní|Prázdné|Nula/);
   click('#capture-add');await waitFor(()=>added);close(options.pocketMargin,1.5875);close(added[0].pocketMargin,.5);assert.equal(Object.hasOwn(added[1],'pocketMargin'),false);close(box(added[0].points).width,20);

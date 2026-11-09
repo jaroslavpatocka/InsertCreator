@@ -60,6 +60,12 @@ export function captureItemDimensions(item,scale){
   return getToolDimensions({points:sourcePoints(item,scale)});
 }
 
+/** Actual cavity dimensions in mm, including its fitted reserve and per-side margin. */
+export function capturePocketDimensions(item,scale,{pocketMargin=0}={}){
+  const geometry=capturePhotoGeometry(item,scale,{includeMargin:true,pocketMargin});
+  return getToolDimensions({points:geometry.points.map(point=>({x:point.x/scale,y:point.y/scale}))});
+}
+
 /** Commit only a valid resize to this item, without changing photo calibration. */
 export function resizeCaptureItem(item,scale,dimensions){
   const editedPhoto=item.contourEditOrigin?capturePhotoGeometry(item,scale).points:null;

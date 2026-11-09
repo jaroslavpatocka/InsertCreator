@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "sourceCommit": "b1ecf501c16033261a01c411c18efac0789256bf",
+  "sourceCommit": "354425c8ebfad1ddf5b7bd3e6ad25c901efa58b2",
   "files": [
     {
       "path": "app.js",
@@ -9,8 +9,8 @@
     },
     {
       "path": "auto-trace.js",
-      "sha256": "F0D06A29DBF0D4B9E2C84AE2110675DE3D8C902041DECC3A159D9E86E94C6428",
-      "bytes": 39358
+      "sha256": "E8154373B8D6E87D96A946A53CAF2790FBDDD9552AD8C6BE83F816E0ED5046AE",
+      "bytes": 39962
     },
     {
       "path": "bulk-edit.js",
@@ -54,8 +54,8 @@
     },
     {
       "path": "capture-tools.js",
-      "sha256": "321058007516F8F1322380B9E7D73D27045CF5ABF2830697C1A3F0806747CBFA",
-      "bytes": 6049
+      "sha256": "1FBE9069229626F72B171C721D108B918C4A58DFB0B40AB6AB553250F185D952",
+      "bytes": 6407
     },
     {
       "path": "capture-view.js",
@@ -64,8 +64,8 @@
     },
     {
       "path": "capture.js",
-      "sha256": "898FC315BF2D4BD4C5E3154E989DC126F67B613DA70BA336E3BDCCD1D8CCC026",
-      "bytes": 56153
+      "sha256": "D7512C598E603487CFB0C7907CC878C43CB403AAF43583A18CD207FC4DAF5E2D",
+      "bytes": 56986
     },
     {
       "path": "catalog-ui.js",
@@ -279,8 +279,8 @@
     },
     {
       "path": "contour-refine.js",
-      "sha256": "DE7550EE07B74419FFDE4EDE11C81B5BFB0B6BDD68BA97DC47CCAEDE2B999332",
-      "bytes": 28468
+      "sha256": "1DE79FADD58ED736AD8ED6B436551B83999BDD4FEDDFE5A064DDE65E03D794E8",
+      "bytes": 28536
     },
     {
       "path": "contour-shape.js",
@@ -439,8 +439,8 @@
     },
     {
       "path": "locales/en-capture.js",
-      "sha256": "432E4384D279A1E642F750324F417D48CECC26AAF443BF0A78F8489E7DA16712",
-      "bytes": 29746
+      "sha256": "1F89DE14C5654699906FC591AA862EBF80146F146CD33B3797B6DDD6142E630A",
+      "bytes": 30118
     },
     {
       "path": "locales/en-core.js",
@@ -759,8 +759,8 @@
     },
     {
       "path": "sw.js",
-      "sha256": "234F78A89401058F60CEB82CBC17DE1C77C68E31E2CC84B5327E6361AB099243",
-      "bytes": 4900
+      "sha256": "8A778E368E37C634F170644196CAC71A8B9398E2C3C8B4E51EE7B33682F0C0C3",
+      "bytes": 4906
     },
     {
       "path": "three-mf.js",

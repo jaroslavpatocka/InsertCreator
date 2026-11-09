@@ -50,7 +50,7 @@ async function waitFor(fn,message){
 function click(selector){const element=$(selector);assert.ok(element,selector);element.click();}
 function typed(selector,value){const element=$(selector);assert.ok(element,selector);element.value=value;element.dispatchEvent(new win.Event('input',{bubbles:true}));}
 function changed(selector,value){const element=$(selector);assert.ok(element,selector);if(element.type==='checkbox')element.checked=value;else element.value=value;element.dispatchEvent(new win.Event('change',{bubbles:true}));}
-async function sample(){click('#sample-scan');await waitFor(()=>$('[data-name="2"]'),'three recognised tools');}
+async function sample(){click('#sample-scan');await waitFor(()=>$('[data-name="2"]'),'three recognised tools');changed('#capture-pocket-shape','measured');}
 function approximately(actualValue,expected,message){assert.ok(Math.abs(actualValue-expected)<.001,`${message}: ${actualValue}, expected ${expected}`);}
 
 test('preserving the photographed arrangement is optional and survives capture editing and retry',{timeout:30000},async t=>{
@@ -93,6 +93,21 @@ test('preserving the photographed arrangement is optional and survives capture e
       approximately(added[0].x,12.5,'the first tool carries its calibrated photo X');
       approximately(added[0].y,18.25,'the first tool carries its calibrated photo Y');
       await waitFor(()=>!$('#trace-canvas'),'photo import closes capture');
+    }finally{modal.close();}
+  });
+
+  await t.test('ideal pockets grow around calibrated centres without scaling their photographed spacing',async()=>{
+    let added;
+    const modal=openCapture({onAdd:tools=>{added=tools;}});
+    try{
+      await sample();changed('#capture-pocket-shape','ideal');changed('#capture-layout','photo');changed('[data-item="1"]',false);
+      click('#capture-add');await waitFor(()=>added,'ideal photo import');
+      const box=tool=>{const xs=tool.points.map(p=>p.x),ys=tool.points.map(p=>p.y);return{width:Math.max(...xs)-Math.min(...xs),height:Math.max(...ys)-Math.min(...ys)};};
+      const first=box(added[0]),second=box(added[1]);
+      approximately(first.width,20.4,'20 mm tool receives2% total width reserve');approximately(first.height,81.6,'80 mm tool receives2% total length reserve');
+      approximately(second.width,35.7,'35 mm tool receives2% total width reserve');approximately(second.height,76.5,'75 mm tool receives2% total length reserve');
+      approximately(added[1].x+second.width/2-added[0].x-first.width/2,125.75,'original physical centre distance X');
+      approximately(added[1].y+second.height/2-added[0].y-first.height/2,99.75,'original physical centre distance Y');
     }finally{modal.close();}
   });
 

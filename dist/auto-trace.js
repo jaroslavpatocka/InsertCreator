@@ -407,11 +407,13 @@ function contoursTouch(a, b) {
   return inside(a[0], b) || inside(b[0], a);
 }
 
-function regularizeCandidate(candidate, im, pxPerMm) {
+function regularizeCandidate(candidate, im, pxPerMm, { preserveMeasured = false } = {}) {
   // Quality still describes the measured image edges. Only the chosen final
   // outlines are denoised, with the same physical budget at every photo scale.
   // A fitted outline is already regular; resampling it would only soften its shoulders.
-  const points = candidate.contours.map(c => c.fitted ? c.points : regularizeContour(c.points, CONTOUR_SMOOTHING_MM * pxPerMm));
+  // Light-background measurements already follow the original pixel edge;
+  // manufacturing smoothing is selected later, independently of photo scale.
+  const points = candidate.contours.map(c => c.fitted || (preserveMeasured && c.refined) ? c.points : regularizeContour(c.points, CONTOUR_SMOOTHING_MM * pxPerMm));
   const blocked = new Set();
   for (let i = 0; i < points.length; i++) for (let j = i + 1; j < points.length; j++) {
     // Check both possible fallbacks as well: smoothing must never join tools or
@@ -498,9 +500,15 @@ export async function autoTraceImage(imageData, { pxPerMm = 1, kind = 'paper', p
     // Measuring only improves outlines that are already valid, so its failure must not lose them.
     try {
       const seeds = restore(best, imageData, im).contours;
-      let measured = refineContours(source, seeds, kind === 'tray' ? {} : { search: .004 });
-      if (kind === 'light') measured = measured.map((contour, i) => closeOutlines(seeds[i].points, contour.points, 1.5) ? contour : { ...seeds[i], refined: false });
-      restored = { ...regularizeCandidate({ contours: measured }, size, Number.isFinite(pxPerMm) && pxPerMm > 0 ? pxPerMm : 1), ...size };
+      const light = kind === 'light';
+      let measured = refineContours(source, seeds, light ? { search: .004, fitShapes: false, snapEdges: false } : kind === 'tray' ? {} : { search: .004 });
+      if (light) {
+        // The seed was sampled on a bounded grid. Compare original-photo edges
+        // within two of those cells, rather than a fixed source-pixel distance.
+        const tolerance = Math.max(1.5, 2 * Math.max(im.scaleX, im.scaleY));
+        measured = measured.map((contour, i) => closeOutlines(seeds[i].points, contour.points, tolerance) ? contour : { ...seeds[i], refined: false });
+      }
+      restored = { ...regularizeCandidate({ contours: measured }, size, Number.isFinite(pxPerMm) && pxPerMm > 0 ? pxPerMm : 1, { preserveMeasured: light }), ...size };
     } catch { /* The enhanced outlines below remain usable. */ }
   }
   restored ??= restore(regularizeCandidate(best, im, scale), imageData, im);

@@ -70,6 +70,8 @@ function open(id){action('projects');click(`[data-open="${id}"]`);return saved()
 function approximate(actualValue,expected,message){assert.ok(Math.abs(actualValue-expected)<.001,`${message}: ${actualValue}, expected ${expected}`);}
 async function preparePhoto(){
   action('capture');click('#sample-scan');await waitFor(()=>$('[data-name="2"]'),'three recognised tools');
+  // This suite isolates preservation of measured positions from optional pocket fitting.
+  change('#capture-pocket-shape','measured');
   change('#capture-layout','photo');change('[data-item="1"]',false);
   type('[data-name="0"]','Dílenský klíč');type('[data-depth="0"]','8,5');
   type('[data-name="2"]','Ráčna 3/8');type('[data-depth="2"]','12');

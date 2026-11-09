@@ -271,7 +271,7 @@ function snapToEdge(loop, strength, w, h, spacing) {
  * whether the photograph supported a new outline, otherwise the seed is returned unchanged. `search` is
  * how far an outline may move, as a share of the shorter photo side.
  */
-export function refineContours(image, contours, { search = .012 } = {}) {
+export function refineContours(image, contours, { search = .012, fitShapes = true, snapEdges = true } = {}) {
   if (!contours.length) return [];
   const { channels, w, h, step } = sampled(image), size = w * h, reach = Math.max(3, Math.min(w, h) * search);
   const seeds = new Int32Array(size); contours.forEach((c, i) => fill(c.points, i + 1, seeds, w, h, step));
@@ -387,11 +387,11 @@ export function refineContours(image, contours, { search = .012 } = {}) {
     // A small part has no long edge to average along, and a fold at a very tight neck cannot be drawn:
     // both keep the watershed line, which cannot cross itself.
     const tiny = traced.length < 64 * Math.max(1, Math.min(w, h) / 800);
-    let loop = traced.length >= 3 && !tiny ? snapToEdge(traced, edge, w, h, Math.max(1, Math.min(w, h) / 800)) : traced;
+    let loop = snapEdges && traced.length >= 3 && !tiny ? snapToEdge(traced, edge, w, h, Math.max(1, Math.min(w, h) / 800)) : traced;
     if (loop.length >= 3 && !simple(loop)) loop = traced;
     if (loop.length < 3) return { ...contour, refined: false };
     const measured = loop.map(p => ({ x: p.x * step, y: p.y * step }));
-    const fitted = fitToolShape(measured, strength, spacing * step, shaded), points = fitted ?? measured;
+    const fitted = fitShapes ? fitToolShape(measured, strength, spacing * step, shaded) : null, points = fitted ?? measured;
     let area = 0; for (let k = 0, j = points.length - 1; k < points.length; j = k++) area += points[j].x * points[k].y - points[k].x * points[j].y;
     area = Math.abs(area) / 2;
     if (!(area > contour.area * .6 && area < contour.area * 1.6)) return { ...contour, refined: false };
