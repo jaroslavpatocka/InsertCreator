@@ -1,0 +1,30 @@
+.finger-grip-editor{display:grid;grid-template-columns:minmax(260px,1fr) minmax(280px,1.15fr);gap:22px;align-items:start}
+.finger-grip-editor .fge-preview-column{position:sticky;top:0;min-width:0}
+.finger-grip-editor .fge-svg{display:block;width:100%;height:min(58vh,470px);min-height:300px;background:#f7f8f3;border:1px solid #dde2d6;border-radius:8px;touch-action:none;user-select:none;outline-offset:3px}
+.finger-grip-editor .grip-pocket{fill:#efbc5e55;stroke:#c28017;stroke-width:1.5;vector-effect:non-scaling-stroke;pointer-events:none}
+.finger-grip-editor .grip-tool{fill:#90a17c33;stroke:#779066;stroke-width:1.3;vector-effect:non-scaling-stroke;pointer-events:none}
+.finger-grip-editor .fge-area{fill:#edb13e33;stroke:#b87811;stroke-width:1.5;stroke-dasharray:5 3;vector-effect:non-scaling-stroke;cursor:grab}
+.finger-grip-editor .fge-cutout.selected .fge-area{fill:#edb13e55;stroke:#9a5d00;stroke-width:2}
+.finger-grip-editor .fge-cutout.invalid .fge-area{fill:#c8554130;stroke:#ad3e31}
+.finger-grip-editor .grip-number{fill:#654914;font-size:11px;text-anchor:middle;dominant-baseline:middle;pointer-events:none}
+.finger-grip-editor .fge-handle-hit{fill:transparent;stroke:none;cursor:nwse-resize}
+.finger-grip-editor [data-grip-action=rotation] .fge-handle-hit{cursor:crosshair}
+.finger-grip-editor .fge-handle{fill:#fff;stroke:#8a5404;stroke-width:2;vector-effect:non-scaling-stroke;pointer-events:none}
+.finger-grip-editor .fge-rotation-line{fill:none;stroke:#8a5404;stroke-width:1.5;vector-effect:non-scaling-stroke;pointer-events:none}
+.finger-grip-editor .fge-view-actions{display:flex;gap:8px;margin:8px 0;align-items:center}
+.finger-grip-editor .fge-view-actions button,.finger-grip-editor .icon-btn,.finger-grip-editor select{min-width:44px;min-height:44px}
+.finger-grip-editor .grip-edit-actions{display:flex;align-items:end;flex-wrap:wrap;gap:8px;margin-bottom:12px}
+.finger-grip-editor .grip-edit-actions button{min-height:44px}
+.finger-grip-editor .fge-new-shape{display:grid;gap:4px;flex:1 1 160px;font-size:12px}
+.finger-grip-editor .fge-new-shape select{width:100%}
+.finger-grip-editor .fge-properties{min-width:0}
+.finger-grip-editor .grip-row{padding:12px;border:1px solid #dce2d4;border-radius:8px;background:#fff;margin-bottom:10px}
+.finger-grip-editor .grip-row.fge-row-selected{border-color:#c28a37;box-shadow:0 0 0 1px #c28a3730}
+.finger-grip-editor .grip-row-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px}
+.finger-grip-editor .fge-select{border:0;background:transparent;font:inherit;font-weight:650;text-align:left;padding:5px 0;min-height:36px;cursor:pointer}
+.finger-grip-editor .fields-row{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
+.finger-grip-editor .field{min-width:0;margin:0 0 9px}
+.finger-grip-editor .field select{width:100%}
+.finger-grip-editor input[aria-invalid=true]{border-color:#b54030}
+.finger-grip-editor [data-grip-error]{min-height:1.4em;overflow-wrap:anywhere}
+@media(max-width:760px){.finger-grip-editor{grid-template-columns:minmax(0,1fr);gap:14px}.finger-grip-editor .fge-preview-column{position:static}.finger-grip-editor .fge-svg{height:36vh;min-height:240px;max-height:400px}.finger-grip-editor .fields-row{grid-template-columns:repeat(2,minmax(0,1fr))}.finger-grip-editor .fields-row .field:last-child:nth-child(3){grid-column:1/-1}.finger-grip-editor .fge-select{min-height:44px}.finger-grip-editor .grip-edit-actions{gap:6px}.finger-grip-editor .grip-edit-actions button{flex:1 1 auto}.finger-grip-editor .fge-new-shape{flex-basis:100%}}

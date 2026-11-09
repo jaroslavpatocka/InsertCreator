@@ -1,6 +1,6 @@
 import Clipper from './vendor/clipper.js';
 import {autoArrange,minimizeAutoModules,refitModules,pocketOutline,transformedPoints,validateLayout} from './geometry.js';
-import {automaticFingerGrips} from './finger-grip.js';
+import {automaticFingerGrips,fingerGripOutline} from './finger-grip.js';
 import {arrangeToolSets} from './set-layout.js';
 import {analyzeToolShape,findToolSets,setCoherence} from './tool-sets.js';
 import {orderTools} from './tool-size.js';
@@ -58,6 +58,10 @@ function usefulGrips(tool){
   if(!tool.fingerGrips?.length)return false;
   const raw=tool.points;
   return tool.fingerGrips.every(grip=>{
+    if(grip.shape&&grip.shape!=='circle'){
+      const polygon=fingerGripOutline(grip),surface=Math.abs(polygon.reduce((sum,p,i)=>{const q=polygon[(i+1)%polygon.length];return sum+p.x*q.y-q.x*p.y;},0)/2);
+      return intersectionArea(polygon,raw,Clipper.ClipType.ctDifference)>=Math.max(6,surface*.12);
+    }
     const circle=Array.from({length:64},(_,i)=>({x:grip.x+Math.cos(i*Math.PI/32)*grip.radius,y:grip.y+Math.sin(i*Math.PI/32)*grip.radius}));
     return intersectionArea(circle,raw,Clipper.ClipType.ctDifference)>=Math.max(6,Math.PI*grip.radius*grip.radius*.12);
   });

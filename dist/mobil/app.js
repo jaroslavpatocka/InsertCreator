@@ -37,7 +37,8 @@ import {openPocketMagnetDialog,planPocketMagnets,pocketMagnetEffect,pocketMagnet
 import {hasPocketMagnets} from './tool-magnet.js';
 import {uid,clone,validateProject,readLocal,writeLocal,blankProject} from './model.js';
 import {createStartGuide,isUntouchedDemo,withoutDemoTools} from './start-guide.js';
-import {automaticFingerGrips,fittingFingerGrips,pocketOutline as calculatePocketOutline,validateFingerGrips} from './finger-grip.js';
+import {automaticFingerGrips,fittingFingerGrips,pocketOutline as calculatePocketOutline,validateFingerGrips,fingerGripDimensions} from './finger-grip.js';
+import {openFingerGripEditor} from './finger-grip-editor.js';
 import {runSmartLayout} from './smart-layout-client.js';
 import {findToolSets as calculateToolSets,setCoherence} from './tool-sets.js';
 // `t` is used for tool variables throughout this file, so the translator is imported as `tr`.
@@ -356,15 +357,20 @@ function gridfinitySummary(){
   if(project.bottomMode!=='grid')return '';
   try{const layout=gridfinityLayout(project);return `<p class='muted-note'>${tr('Základna Gridfinity: {cols} × {rows} polí, rozteč 42 mm.',{cols:layout.columns,rows:layout.rows})} ${layout.expansion.right||layout.expansion.bottom?tr('Dilatační kus vpravo {right}, dole {bottom}.',{right:fmtLen(layout.expansion.right),bottom:fmtLen(layout.expansion.bottom)}):''} ${tr('Volná pole pro zátku 1×1: {n}.',{n:gridfinityFreeCells(project)})}</p><button class='btn btn-light' data-action='export-baseplate'>${icon('download')}${tr('Exportovat základnu Gridfinity')}</button>`;}catch(error){return `<p class='form-error'>${esc(errorText(error))}</p>`;}
 }
-function fingerGripPreview(t,grips=t.fingerGrips??[],showCircles=false){
+function fingerGripPreview(t,grips=t.fingerGrips??[]){
   const local={...t,x:0,y:0,rotation:0,fingerGrips:grips},raw=transformedPoints(local),outline=safePocket(local);
   const xs=outline.map(p=>p.x),ys=outline.map(p=>p.y),x=Math.min(...xs)-5,y=Math.min(...ys)-5,w=Math.max(...xs)-x+5,h=Math.max(...ys)-y+5;
-  const minX=Math.min(...t.points.map(p=>p.x)),minY=Math.min(...t.points.map(p=>p.y));
-  return `<svg class="finger-grip-preview" viewBox="${x} ${y} ${w} ${h}" role="img" aria-label="${tr('Kapsa s výřezy pro prsty a původní obrys nástroje')}"><path class="grip-pocket" d="${paths(outline)}"/><path class="grip-tool" d="${paths(raw)}"/>${showCircles?grips.filter(g=>[g.x,g.y,g.radius].every(Number.isFinite)&&g.radius>0).map((g,i)=>`<g><circle class="grip-circle" cx="${g.x-minX}" cy="${g.y-minY}" r="${g.radius}"/><text x="${g.x-minX}" y="${g.y-minY}" class="grip-number">${i+1}</text></g>`).join(''):''}</svg>`;
+  return `<svg class="finger-grip-preview" viewBox="${x} ${y} ${w} ${h}" role="img" aria-label="${tr('Kapsa s výřezy pro prsty a původní obrys nástroje')}"><path class="grip-pocket" d="${paths(outline)}"/><path class="grip-tool" d="${paths(raw)}"/></svg>`;
+}
+function fingerGripSizeLabel(grip,u){
+  const dimensions=fingerGripDimensions(grip);
+  if(!grip.shape||grip.shape==='circle')return `Ø ${fmtLen(dimensions.width,{unit:u})}`;
+  const label={'ellipse':'Ovál','rectangle':'Obdélník','rounded-rect':'Zaoblený obdélník'}[grip.shape];
+  return `${tr(label)} ${fmtSize(dimensions.width,dimensions.height,{unit:u})}${dimensions.rotation?` · ${fmt(dimensions.rotation)}°`:''}`;
 }
 function fingerGripPanel(t){
   const grips=t.fingerGrips??[],legacy=!Object.prototype.hasOwnProperty.call(t,'fingerGrips'),u=toolUnit(t);
-  return `<section class="finger-grip-panel"><strong>${tr('Výřezy pro prsty')} <span>${grips.length}</span></strong>${fingerGripPreview(t)}<div class="grip-legend"><span>${tr('Kapsa včetně výřezů')}</span><span>${tr('Původní nástroj')}</span></div><p class="muted-note">${grips.length?tr('Stejná hloubka jako kapsa: {depth}.',{depth:fmtLen(t.depth,{unit:u})}):legacy?tr('Tento nástroj zatím výřezy nemá. Přidání změní výrobní kapsu.'):tr('Výřezy jsou vypnuté. Automatické rozložení je znovu nepřidá.')}</p>${grips.length?`<ul class="grip-summary">${grips.map((g,i)=>`<li>${i+1}. X ${fmtLen(g.x,{unit:u,suffix:false})} · Y ${fmtLen(g.y,{unit:u,suffix:false})} · Ø ${fmtLen(g.radius*2,{unit:u})}</li>`).join('')}</ul>`:''}<div class="selected-actions"><button class="btn btn-light" data-action="finger-grips">${grips.length?tr('Upravit výřezy'):tr('Přidat další výřez')}</button><button class="btn btn-light" data-action="finger-grips-auto">${legacy?tr('Přidat výřezy pro prsty'):tr('Automaticky umístit')}</button>${grips.length?`<button class="btn btn-light" data-action="finger-grips-clear">${tr('Smazat všechny')}</button>`:''}</div></section>`;
+  return `<section class="finger-grip-panel"><strong>${tr('Výřezy pro prsty')} <span>${grips.length}</span></strong>${fingerGripPreview(t)}<div class="grip-legend"><span>${tr('Kapsa včetně výřezů')}</span><span>${tr('Původní nástroj')}</span></div><p class="muted-note">${grips.length?tr('Stejná hloubka jako kapsa: {depth}.',{depth:fmtLen(t.depth,{unit:u})}):legacy?tr('Tento nástroj zatím výřezy nemá. Přidání změní výrobní kapsu.'):tr('Výřezy jsou vypnuté. Automatické rozložení je znovu nepřidá.')}</p>${grips.length?`<ul class="grip-summary">${grips.map((g,i)=>`<li>${i+1}. X ${fmtLen(g.x,{unit:u,suffix:false})} · Y ${fmtLen(g.y,{unit:u,suffix:false})} · ${fingerGripSizeLabel(g,u)}</li>`).join('')}</ul>`:''}<div class="selected-actions"><button class="btn btn-light" data-action="finger-grips">${grips.length?tr('Upravit výřezy'):tr('Přidat další výřez')}</button><button class="btn btn-light" data-action="finger-grips-auto">${legacy?tr('Přidat výřezy pro prsty'):tr('Automaticky umístit')}</button>${grips.length?`<button class="btn btn-light" data-action="finger-grips-clear">${tr('Smazat všechny')}</button>`:''}</div></section>`;
 }
 function fingerGripCandidate(id,grips){
   const next=clone(project),t=next.tools.find(t=>t.id===id);if(!t)throw i18nError('Nástroj už není v sestavě.');
@@ -387,30 +393,13 @@ function editPocketMagnets(){
 }
 function setFingerGrips(grips){const t=tool();if(!t)return;const next=fingerGripCandidate(t.id,grips);commit(()=>project=next,tr('Výřezy pro prsty uloženy.'));}
 function editFingerGrips(){
-  const t=tool();if(!t)return;let draft=clone(t.fingerGrips??[]);const u=toolUnit(t);
-  const modal=openModal({title:tr('Výřezy pro prsty'),subtitle:t.name,wide:true,body:'',footer:`<span class="footnote">${tr('Poloha ({unit}) se měří od levého horního rohu původního nástroje. Hloubka výřezů odpovídá kapse.',{unit:u})}</span><button class="btn btn-primary" data-grips-save>${tr('Uložit výřezy')}</button>`});
-  const numeric=el=>{const v=readLength(el);if(!Number.isFinite(v))throw i18nError('Zadejte platnou číselnou polohu a průměr výřezu.');return v;};
-  const readDraft=omitId=>[...modal.body.querySelectorAll('[data-grip-row]')].filter(row=>row.dataset.gripRow!==omitId).map(row=>({id:row.dataset.gripRow,x:numeric(row.querySelector('[data-field=fingerX]')),y:numeric(row.querySelector('[data-field=fingerY]')),radius:numeric(row.querySelector('[data-field=fingerDiameter]'))/2}));
-  const preview=()=>{
-    try{const candidate={...t,fingerGrips:validateFingerGrips(draft)};pocketOutline(candidate,project);modal.body.querySelector('[data-grip-preview]').innerHTML=fingerGripPreview(t,draft,true);modal.body.querySelector('[data-grip-error]').textContent='';}
-    catch(error){modal.body.querySelector('[data-grip-error]').textContent=errorText(error);}
-  };
-  const redraw=()=>{
-    modal.body.innerHTML=`<div class="grip-editor"><div><div data-grip-preview>${fingerGripPreview(t,draft,true)}</div><div class="grip-legend"><span>${tr('Kapsa včetně výřezů')}</span><span>${tr('Původní nástroj')}</span></div><p class="muted-note">${tr('Kruhy ukazují místo pro prsty. Průměr určuje jejich skutečnou velikost.')}</p></div><div><div class="grip-edit-actions"><button class="btn btn-light" data-grip-add ${draft.length>=12?'disabled':''}>${tr('Přidat další')}</button><button class="btn btn-light" data-grip-auto>${tr('Automaticky umístit')}</button><button class="btn btn-light" data-grip-clear ${draft.length?'':'disabled'}>${tr('Smazat všechny')}</button></div><div class="grip-rows">${draft.map((g,i)=>`<div class="grip-row" data-grip-row="${esc(g.id)}"><div class="grip-row-head"><strong>${tr('Výřez {n}',{n:i+1})}</strong><button class="icon-btn" data-grip-delete="${esc(g.id)}" aria-label="${tr('Smazat výřez {n}',{n:i+1})}">${icon('trash')}</button></div><div class="fields-row three">${input(tr('Poloha X'),g.x,'fingerX',{unit:u,scope:'grip',min:-6000,max:6000})}${input(tr('Poloha Y'),g.y,'fingerY',{unit:u,scope:'grip',min:-6000,max:6000})}${input(tr('Průměr'),g.radius*2,'fingerDiameter',{unit:u,scope:'grip',min:4,max:80})}</div></div>`).join('')||`<p class="muted-note">${tr('Žádné výřezy. Přidejte vlastní nebo je nechte automaticky umístit.')}</p>`}</div><p class="form-error" data-grip-error role="status"></p></div></div>`;preview();
-  };
-  const update=()=>{try{draft=readDraft();preview();}catch(error){modal.body.querySelector('[data-grip-error]').textContent=errorText(error);}};
-  modal.body.addEventListener('input',update);modal.body.addEventListener('change',update);
-  modal.body.addEventListener('click',e=>{
-    try{
-      const remove=e.target.closest('[data-grip-delete]');
-      if(remove){draft=readDraft(remove.dataset.gripDelete);redraw();}
-      if(e.target.closest('[data-grip-clear]')){draft=[];redraw();}
-      if(e.target.closest('[data-grip-auto]')){draft=automaticFingerGrips(t,{radius:9});redraw();}
-      if(e.target.closest('[data-grip-add]')){draft=readDraft();const p=t.points[Math.floor(t.points.length*((draft.length+1)*.381966%1))];draft.push({id:uid(),x:p.x,y:p.y,radius:9});redraw();}
-    }catch(error){modal.body.querySelector('[data-grip-error]').textContent=errorText(error);}
+  const t=tool();if(!t)return;
+  const source=same(project),unchanged=()=>{if(same(project)!==source)throw i18nError('Projekt se mezitím změnil. Zavřete výřezy a otevřete je znovu.');};
+  return openFingerGripEditor({tool:t,unit:toolUnit(t),pocketMargin:effectivePocketMargin(t,project),
+    autoPlace:()=>automaticFingerGrips(t,{radius:9}),
+    validate:grips=>{unchanged();return fingerGripCandidate(t.id,grips);},
+    onSave:(_grips,next)=>{unchanged();commit(()=>project=next,tr('Výřezy pro prsty uloženy.'));}
   });
-  modal.el.querySelector('[data-grips-save]').onclick=()=>{try{const next=fingerGripCandidate(t.id,readDraft());commit(()=>project=next,tr('Výřezy pro prsty uloženy.'));modal.close();}catch(error){modal.body.querySelector('[data-grip-error]').textContent=errorText(error);}};
-  redraw();
 }
 function showDrawerDimensions(){inspectorTab='drawer';if(isMobileScreen())setMobilePanel('settings');render();$('#drawer-settings')?.scrollIntoView?.({block:'start',behavior:'smooth'});}
 function moduleSizing(m){const u=moduleUnit(m),count=project.tools.filter(t=>t.moduleId===m.id).length;return `<div class="module-sizing"><strong>${m.sizeMode==='manual'?tr('Rozměry modulu · ruční'):tr('Rozměry modulu · automatické')}${unitBadge(m.unit)}</strong><small>${tr('Jmenovité {size}',{size:fmtSize(m.width,m.height,{unit:u})})}<br>${tr('Vnější {size}',{size:fmtSize(m.width-.5,m.height-.5,{unit:u})})}${count>1?`<br>${tr('Nástrojů ve společném modulu: {n}',{n:count})}`:''}</small><div class="fields-row module-position">${input(tr('X · poloha v šuplíku'),m.x,'moduleX',{unit:u,min:0,max:3000,scope:'module'})}${input(tr('Y · poloha v šuplíku'),m.y,'moduleY',{unit:u,min:0,max:3000,scope:'module'})}</div>${unitSelect(tr('Jednotky modulu'),m.unit,'module')}${pocketMarginField('module',m)}${moduleStepControls(m)}<div class="selected-actions"><button class="btn btn-soft module-resize-button" data-action="resize-module">${icon('ruler')}${tr('Změnit velikost')}</button>${project.tools.some(t=>t.moduleId===m.id)?`<button class="btn btn-light" data-action="size-module-auto">${tr('Podle nástroje')}</button>`:''}${count>1?`<button class="btn btn-light" data-action="split-module">${tr('Rozdělit modul')}</button>`:''}<button class="btn btn-light" data-action="rotate-module">${icon('rotate')}${tr('Otočit modul o 90°')}</button><button class="btn btn-light" data-action="duplicate-module">${icon('copy')}${tr('Kopie modulu')}</button></div></div>`;}

@@ -58,6 +58,43 @@ function circle(grip){
   return Array.from({length:segments},(_,i)=>{const angle=i*Math.PI*2/segments;return{x:grip.x+Math.cos(angle)*grip.radius,y:grip.y+Math.sin(angle)*grip.radius};});
 }
 
+const gripShapes=new Set(['ellipse','rectangle','rounded-rect']);
+const shapeNumeric=(value,min,max,label,length=true)=>{
+  if(typeof value==='object')throw i18nError('Neplatná hodnota: {label}.',{label:t(label)});
+  return numeric(value,min,max,label,length);
+};
+const gripRotation=value=>{
+  const angle=shapeNumeric(value===undefined?0:value,-1000000,1000000,'otočení výřezu pro prsty',false);
+  return((angle%360)+360)%360;
+};
+function shapedOutline(grip){
+  const width=grip.width,height=grip.height,halfX=width/2,halfY=height/2;
+  let points;
+  if(grip.shape==='ellipse'){
+    // Scaling a unit circle by the larger semiaxis bounds ellipse chord error too.
+    const radius=Math.max(halfX,halfY),segments=Math.max(32,Math.ceil(Math.PI/Math.acos(1-.01/radius)/4)*4);
+    points=Array.from({length:segments},(_,i)=>{const angle=i*Math.PI*2/segments;return{x:Math.cos(angle)*halfX,y:Math.sin(angle)*halfY};});
+  }else if(grip.shape==='rounded-rect'&&grip.cornerRadius>0){
+    const radius=grip.cornerRadius,steps=Math.max(1,Math.ceil(Math.PI/2/(2*Math.acos(Math.max(-1,1-.01/radius)))));
+    const corners=[{x:halfX-radius,y:-halfY+radius,angle:-Math.PI/2},{x:halfX-radius,y:halfY-radius,angle:0},{x:-halfX+radius,y:halfY-radius,angle:Math.PI/2},{x:-halfX+radius,y:-halfY+radius,angle:Math.PI}];
+    points=clean(corners.flatMap(corner=>Array.from({length:steps+1},(_,i)=>{const angle=corner.angle+i/steps*Math.PI/2;return{x:corner.x+Math.cos(angle)*radius,y:corner.y+Math.sin(angle)*radius};})));
+  }else points=[{x:-halfX,y:-halfY},{x:halfX,y:-halfY},{x:halfX,y:halfY},{x:-halfX,y:halfY}];
+  const angle=grip.rotation*Math.PI/180,c=Math.cos(angle),s=Math.sin(angle);
+  return points.map(point=>({x:grip.x+point.x*c-point.y*s,y:grip.y+point.x*s+point.y*c}));
+}
+
+/** Finger-cutout polygon in raw local millimetres, including its own rotation. */
+export function fingerGripOutline(grip){
+  const valid=validateFingerGrips([grip])[0];
+  return valid.shape?shapedOutline(valid):circle(valid);
+}
+
+/** Physical unrotated dimensions, independent of the tool's placement or clearance. */
+export function fingerGripDimensions(grip){
+  const valid=validateFingerGrips([grip])[0];
+  return valid.shape?{width:valid.width,height:valid.height,rotation:valid.rotation,cornerRadius:valid.cornerRadius??0}:{width:valid.radius*2,height:valid.radius*2,rotation:0,cornerRadius:0};
+}
+
 /** A traced outline as one simple polygon: pixel contours can touch themselves in tight notches, which later pocket operations reject. */
 export function simpleOutline(points){
   const paths=combine([points]);
@@ -72,7 +109,16 @@ export function validateFingerGrips(grips,{minX=0,minY=0}={}){
     if(!grip||typeof grip!=='object'||typeof grip.id!=='string'||!grip.id.trim()||grip.id.length>100)throw i18nError('Výřez pro prsty musí mít platný identifikátor.');
     if(ids.has(grip.id))throw i18nError('Duplicitní identifikátor výřezu pro prsty.');ids.add(grip.id);
     const x=numeric(grip.x,-6000,6000,'X výřezu pro prsty')-dx,y=numeric(grip.y,-6000,6000,'Y výřezu pro prsty')-dy;
-    return{id:grip.id,x:numeric(x,-6000,6000,'X výřezu pro prsty'),y:numeric(y,-6000,6000,'Y výřezu pro prsty'),radius:numeric(grip.radius,2,40,'poloměr výřezu pro prsty')};
+    const center={id:grip.id,x:numeric(x,-6000,6000,'X výřezu pro prsty'),y:numeric(y,-6000,6000,'Y výřezu pro prsty')};
+    if(grip.shape===undefined||grip.shape==='circle'){
+      if(['width','height','cornerRadius'].some(key=>Object.hasOwn(grip,key)))throw i18nError('Rozměry výřezu pro prsty neodpovídají zvolenému tvaru.');
+      if(Object.hasOwn(grip,'rotation'))gripRotation(grip.rotation);
+      return{...center,radius:numeric(grip.radius,2,40,'poloměr výřezu pro prsty')};
+    }
+    if(!gripShapes.has(grip.shape))throw i18nError('Výřez pro prsty má neplatný tvar.');
+    if(Object.hasOwn(grip,'radius')||grip.shape!=='rounded-rect'&&Object.hasOwn(grip,'cornerRadius'))throw i18nError('Rozměry výřezu pro prsty neodpovídají zvolenému tvaru.');
+    const width=shapeNumeric(grip.width,4,80,'šířka výřezu pro prsty'),height=shapeNumeric(grip.height,4,80,'výška výřezu pro prsty');
+    return{...center,shape:grip.shape,width,height,rotation:gripRotation(grip.rotation),...(grip.shape==='rounded-rect'?{cornerRadius:shapeNumeric(grip.cornerRadius===undefined?Math.min(width,height)/4:grip.cornerRadius,0,Math.min(width,height)/2,'zaoblení výřezu pro prsty')}:{})};
   });
 }
 
@@ -95,12 +141,14 @@ export function pocketOutline(tool,context=0){
   const base=offset(points.map(world),numeric(clearance,0,6000,'vůle kapsy'));
   const grips=Object.hasOwn(tool,'fingerGrips')?validateFingerGrips(tool.fingerGrips):[];
   if(!grips.length)return base;
-  const circles=grips.map(grip=>circle({...grip,...world(grip)}));
-  for(const polygon of circles){
+  // Circles retain their legacy world-aligned tessellation exactly. Non-circular
+  // shapes transform every vertex, composing cutout rotation with tool rotation.
+  const cutouts=grips.map(grip=>grip.shape?shapedOutline(grip).map(world):circle({...grip,...world(grip)}));
+  for(const polygon of cutouts){
     const intersection=combine([base],[polygon],Clipper.ClipType.ctIntersection);
     if(intersection.reduce((sum,path)=>sum+Math.abs(area(path)),0)<.0001)throw i18nError('Výřez pro prsty musí plošně navazovat na kapsu nástroje. Posuňte jej blíž k obrysu.');
   }
-  const result=combine([base,...circles]);
+  const result=combine([base,...cutouts]);
   if(result.length!==1)throw i18nError('Výřezy pro prsty nevytvářejí jednu jednoznačnou spojenou kapsu. Upravte jejich polohu nebo poloměr.');
   return result[0];
 }

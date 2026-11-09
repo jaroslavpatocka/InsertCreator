@@ -1,11 +1,11 @@
 {
   "version": 1,
-  "sourceCommit": "aacd4ff5e637255d86225ef43e92d37835e8d683",
+  "sourceCommit": "7556cbed578ff23308f36a4c34d611aa022cc932",
   "files": [
     {
       "path": "app.js",
-      "sha256": "5718624F0AFDF36B2FD65C35441CB683B83DEF936DB14CFC282AA59144D269E6",
-      "bytes": 242594
+      "sha256": "20E5E1056FA8537280D45CD609F59B97D6F9DF44C35282C2504DB7D9D07C43B1",
+      "bytes": 239267
     },
     {
       "path": "auto-trace.js",
@@ -318,9 +318,19 @@
       "bytes": 4106
     },
     {
+      "path": "finger-grip-editor.css",
+      "sha256": "15D5A0A27641022CA1EF55CCEE991B82251557E5D8722E78FF1EC9D7857F3B8F",
+      "bytes": 3566
+    },
+    {
+      "path": "finger-grip-editor.js",
+      "sha256": "41A9B4BA3A91D20109087475B1B515E14BE85C684010B3C44D4F26A8F5EBCB14",
+      "bytes": 22353
+    },
+    {
       "path": "finger-grip.js",
-      "sha256": "A27184E05BBF0EB3C70C95A2D313C563D5355E166F00723F35A93E2F4AF6DC8E",
-      "bytes": 11257
+      "sha256": "7EFDA3352E18AC81457F2EA932D06815EF05A5A54660A1466F6AD6BF1F25394D",
+      "bytes": 14863
     },
     {
       "path": "fit-sheet.js",
@@ -394,8 +404,8 @@
     },
     {
       "path": "index.html",
-      "sha256": "3DF4039FCA315A34358E80F8A9F1862D03202B227B6B443A3B316B462CB42F99",
-      "bytes": 7856
+      "sha256": "258A0846A2D887FF37CB7FA69F77E7193BB8BBEADDA4B8BA60BB5587A611EA53",
+      "bytes": 7911
     },
     {
       "path": "joint-fit.js",
@@ -434,8 +444,8 @@
     },
     {
       "path": "locales/en-app.js",
-      "sha256": "DA3EC7834F7163C4135A6C35BA34C25B1B818A72C6209467B69DED79A07E71D3",
-      "bytes": 91682
+      "sha256": "554FE883B321162183FF3A16D5006D420C7D7F40E9400488D85864D3A6399CCD",
+      "bytes": 93147
     },
     {
       "path": "locales/en-capture.js",
@@ -709,8 +719,8 @@
     },
     {
       "path": "set-module.js",
-      "sha256": "A0DB0C44D7EC974676787942E1798A69457B8D99D1B19BEA2815173D4368C51E",
-      "bytes": 35478
+      "sha256": "EBB5EC30BD4012FC0309EF6D776D234CE37AF3FE67DB2B2B28D44A84016ED160",
+      "bytes": 35764
     },
     {
       "path": "size-label-ui.js",
@@ -734,8 +744,8 @@
     },
     {
       "path": "smart-layout.js",
-      "sha256": "4B65A54A88A831B41A9DFF64CC35275DD836B052EE02F29C19985949BD9EA68A",
-      "bytes": 46031
+      "sha256": "9FFE5ED3179AD6F8AF05AA4AB9D2672BC52DD816C8F6F671A70AB71E11646236",
+      "bytes": 46363
     },
     {
       "path": "space-layout.js",
@@ -759,8 +769,8 @@
     },
     {
       "path": "sw.js",
-      "sha256": "17528E495A1C2A0FAF1DF7D4A10CE202AA86054CA1BF4549C16F248CEED2FD04",
-      "bytes": 4899
+      "sha256": "8EF6B824DC7883EEF1F0017CB178E8C4B3593DFD2B6D85E2D5EBFCB08F5B2BDA",
+      "bytes": 4962
     },
     {
       "path": "three-mf.js",

@@ -17,7 +17,7 @@ const angle=value=>{const r=((value%360)+360)%360;return Math.round(r*1e6)/1e6;}
 const box=points=>{let minX=Infinity,minY=Infinity,maxX=-Infinity,maxY=-Infinity;for(const p of points){minX=Math.min(minX,p.x);minY=Math.min(minY,p.y);maxX=Math.max(maxX,p.x);maxY=Math.max(maxY,p.y);}return{minX,minY,maxX,maxY,width:maxX-minX,height:maxY-minY};};
 const intersects=(a,b,e=.001)=>a.x<b.x+b.width-e&&a.x+a.width>b.x+e&&a.y<b.y+b.height-e&&a.y+a.height>b.y+e;
 
-/** Uniformly scale a tool outline about its local origin. Grip centres move with the outline, grip radii stay finger-sized. */
+/** Uniformly scale a tool outline about its local origin. Grip centres move with the outline; their physical shape and size stay finger-sized. */
 export function scaleTool(tool,factor,opts={}){
   const f=Number(factor);
   if(typeof factor==='boolean'||factor===null||factor===''||!Number.isFinite(f)||f<.2||f>5)throw i18nError('Měřítko nástroje musí být mezi {min}× a {max}×.',{min:.2,max:5});
@@ -30,7 +30,12 @@ export function scaleTool(tool,factor,opts={}){
   if(Array.isArray(tool.fingerGrips)&&tool.fingerGrips.length){
     next.fingerGrips=tool.fingerGrips.map(g=>({...g,x:num(g.x)*f,y:num(g.y)*f}));
     try{pocketOutline(next,0);}
-    catch{next.fingerGrips=automaticFingerGrips(next,{radius:num(tool.fingerGrips[0].radius,9)});}
+    catch(error){
+      // Explicit shaped grips are user geometry. A scale that detaches them must
+      // fail atomically rather than silently replacing them with circular bays.
+      if(tool.fingerGrips.some(grip=>grip.shape&&grip.shape!=='circle'))throw error;
+      next.fingerGrips=automaticFingerGrips(next,{radius:num(tool.fingerGrips[0].radius,9)});
+    }
   }
   return next;
 }
