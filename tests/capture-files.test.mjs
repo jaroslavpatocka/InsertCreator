@@ -18,7 +18,7 @@ function actual(element){
 win.HTMLCanvasElement.prototype.getContext=function(type){
   if(type!=='2d')return null;
   const element=this,ctx=actual(element).getContext('2d');
-  return new Proxy(ctx,{get:(target,key)=>key==='drawImage'?((image,...args)=>{draws.push({width:element.width,height:element.height});return target.drawImage(image instanceof win.HTMLCanvasElement?actual(image):image,...args);}):typeof target[key]==='function'?target[key].bind(target):target[key],set:(target,key,value)=>(target[key]=value,true)});
+  return new Proxy(ctx,{get:(target,key)=>key==='drawImage'?((image,...args)=>{draws.push({width:element.width,height:element.height,sourceWidth:image.width,sourceHeight:image.height});return target.drawImage(image instanceof win.HTMLCanvasElement?actual(image):image,...args);}):typeof target[key]==='function'?target[key].bind(target):target[key],set:(target,key,value)=>(target[key]=value,true)});
 };
 const {setLang}=await import('../dist/i18n.js'),{setAppUnit}=await import('../dist/units.js');setLang('cs',{save:false});setAppUnit('mm',{save:false});
 const {openCapture}=await import('../dist/capture.js');
@@ -43,7 +43,7 @@ test('photo file handling attempts native HEIC and validates the decoded image',
     globalThis.Image=class{constructor(){fallbackCalls++;throw Error('Native HEIC should succeed first');}};
     await submit(file('CAMERA.HEIC',''));
     assert.equal(nativeCalls,1);assert.equal(fallbackCalls,0);assert.equal(closed,1);
-    assert.ok($('#retake-missing'),'Decoded white photo should reach paper calibration, not a codec error');
+    assert.ok($('#calibration-canvas')&&$('#a4-orientation'),'Decoded white photo should reach manual A4 calibration, not a codec error');
     assert.doesNotMatch($('.modal-body').textContent,/nedokáže otevřít HEIC/);modal.close();
   });
   await t.test('HEIC falls back to the browser image decoder when ImageBitmap cannot read it',async()=>{
@@ -51,7 +51,7 @@ test('photo file handling attempts native HEIC and validates the decoded image',
     globalThis.createImageBitmap=async()=>{throw Error('ImageBitmap codec unavailable');};
     globalThis.Image=class{constructor(){const bitmap=whiteBitmap();bitmap.decode=async()=>{fallbackCalls++;};return bitmap;}};
     await submit(file('camera.heif','image/heif'));
-    assert.equal(fallbackCalls,1);assert.ok($('#retake-missing'));assert.deepEqual(revoked,['blob:capture-file-test']);modal.close();
+    assert.equal(fallbackCalls,1);assert.ok($('#calibration-canvas')&&$('#a4-orientation'));assert.deepEqual(revoked,['blob:capture-file-test']);modal.close();
   });
   await t.test('unsupported HEIC gives a concrete JPG fallback after both native attempts',async()=>{
     const modal=setup();let first=0,second=0;
@@ -73,7 +73,9 @@ test('photo file handling attempts native HEIC and validates the decoded image',
     const modal=setup(),bitmap=whiteBitmap(2800,2100);let closed=0;bitmap.close=()=>closed++;
     globalThis.createImageBitmap=async()=>bitmap;
     await submit(file('drawer.jpg'));
-    assert.deepEqual(draws,[{width:1400,height:1050}]);assert.equal(closed,1);assert.ok($('#retake-missing'));modal.close();
+    assert.deepEqual(draws.filter(draw=>draw.sourceWidth===2800),[{width:1400,height:1050,sourceWidth:2800,sourceHeight:2100}],'camera bitmap is downsampled exactly once');
+    assert.ok(draws.length>=2&&draws.slice(1).every(draw=>draw.width===1400&&draw.height===1050&&draw.sourceWidth===1400&&draw.sourceHeight===1050),'manual A4 preview uses the already resized photo at the same scale');
+    assert.equal(closed,1);assert.ok($('#calibration-canvas')&&$('#a4-orientation'));modal.close();
   });
   await t.test('non-images and oversized files are rejected before decoding',async()=>{
     const modal=setup();let calls=0;globalThis.createImageBitmap=async()=>{calls++;return whiteBitmap();};

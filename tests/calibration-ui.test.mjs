@@ -144,7 +144,7 @@ test('ruler calibration uses visible open crosshairs, accessible points and safe
   await t.test('a failed A4 result can return to manual rulers on the same original photograph',async()=>{
     posted.length=0;const modal=openCapture({onAdd:()=>assert.fail('returning to calibration must not add tools')});try{
       respond=(worker,message)=>{if(worker.url.includes('neural-worker'))worker.onmessage?.({data:{type:'error',id:message.id,message:'test uses measured contours'}});else worker.onmessage?.({data:{result:{contours:[],quality:{status:'retake',reasons:[]},mask:new Uint8Array(message.image.width*message.image.height)}}});};
-      $('#sample-scan').click();await waitFor(()=>$('#capture-calibration-back'));assert.ok($('#trace-canvas'));$('#capture-calibration-back').click();sizeCanvas();assert.ok($('#ruler-distance'));assert.equal($('#calibration-canvas').width,1000);assert.equal($('#calibration-canvas').height,900);
+      $('#sample-scan').click();await waitFor(()=>$('#capture-calibration-back'));assert.ok($('#trace-canvas'));$('#capture-calibration-back').click();sizeCanvas();assert.ok($('#a4-orientation'));assert.equal($('#ruler-distance'),null);$('#use-ruler').click();sizeCanvas();assert.ok($('#ruler-distance'));assert.equal($('#calibration-canvas').width,1000);assert.equal($('#calibration-canvas').height,900);
       respond=null;const previousRuns=posted.filter(p=>p.url.includes('recognize-worker')).length;$('#capture-continue').click();await waitFor(()=>posted.filter(p=>p.url.includes('recognize-worker')).length>previousRuns);assert.equal(posted.filter(p=>p.url.includes('recognize-worker')).at(-1).message.options.kind,'reference');$('#cancel-processing').click();
     }finally{respond=null;modal.close();}
   });

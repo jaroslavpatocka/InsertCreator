@@ -36,7 +36,18 @@ globalThis.Worker=class{
     if(this.terminated)return;
     if(this.url.endsWith('/neural-worker.js'))return this.onmessage?.({data:{type:'error',id:message.id,message:'Independent fixed-pixel calibration fixture'}});
     posted.push({width:message.image.width,height:message.image.height,pxPerMm:message.options.pxPerMm});
-    this.onmessage?.({data:{result:{contours:[{points:structuredClone(currentContour)}],mask:new Uint8Array(message.image.width*message.image.height),quality:{status:'ready',reasons:[]}}}});
+    let points=structuredClone(currentContour);
+    if(!points){
+      // Read the actual rectified raster; no contour coordinate uses pxPerMm.
+      let x0=Infinity,y0=Infinity,x1=-Infinity,y1=-Infinity;
+      for(let y=0;y<message.image.height;y++)for(let x=0;x<message.image.width;x++){
+        const offset=(y*message.image.width+x)*4;
+        if(Math.max(...message.image.data.subarray(offset,offset+3))<80){x0=Math.min(x0,x);y0=Math.min(y0,y);x1=Math.max(x1,x+1);y1=Math.max(y1,y+1);}
+      }
+      assert.ok(Number.isFinite(x0),'physical tool is present in the rectified photo');
+      points=[{x:x0,y:y0},{x:x1,y:y0},{x:x1,y:y1},{x:x0,y:y1}];
+    }
+    this.onmessage?.({data:{result:{contours:[{points}],mask:new Uint8Array(message.image.width*message.image.height),quality:{status:'ready',reasons:[]}}}});
   });}
   terminate(){this.terminated=true;}
 };
@@ -54,7 +65,7 @@ async function waitFor(predicate,message){
 function click(selector){assert.ok($(selector),selector);$(selector).click();}
 function typed(selector,value){const input=$(selector);assert.ok(input,selector);input.value=value;input.dispatchEvent(new win.Event('input',{bubbles:true}));}
 function changed(selector,value){const input=$(selector);assert.ok(input,selector);input.value=value;input.dispatchEvent(new win.Event('change',{bubbles:true}));}
-function closeTo(actualValue,expected,message){assert.ok(Math.abs(actualValue-expected)<.003,`${message}: ${actualValue}, expected ${expected}`);}
+function closeTo(actualValue,expected,message,tolerance=.003){assert.ok(Math.abs(actualValue-expected)<tolerance,`${message}: ${actualValue}, expected ${expected}`);}
 function size(points,angle=0){const c=Math.cos(angle),s=Math.sin(angle),x=points.map(p=>p.x*c+p.y*s),y=points.map(p=>-p.x*s+p.y*c);return{width:Math.max(...x)-Math.min(...x),height:Math.max(...y)-Math.min(...y)};}
 function placePoint(index,x,y){
   click(`[data-ruler-point="${index}"]`);
@@ -75,6 +86,15 @@ function photo(angle=0){
   context.fillRect(198,1598,5,5);context.fillRect(698,1598,5,5);
   return bitmap;
 }
+function a4Photo(){
+  // Independent physical truth at 5 px/mm: 210 x 297 mm paper and 100 x 20 mm tool.
+  const bitmap=createCanvas(1800,2100),context=bitmap.getContext('2d');
+  context.fillStyle='#8c725a';context.fillRect(0,0,1800,2100);
+  const light=context.createLinearGradient(200,200,1250,1685);light.addColorStop(0,'#969696');light.addColorStop(1,'#f5f5f5');
+  context.fillStyle=light;context.fillRect(200,200,1050,1485);
+  context.fillStyle='#222';context.fillRect(400,700,500,100);
+  return bitmap;
+}
 function projectFor(tool,margin){
   return validateProject({...blankProject(),id:'capture-scale',width:210,height:126,printMode:'solid',bottomMode:'plain',limitToBed:false,
     modules:[{id:'capture-module',x:0,y:0,width:210,height:126,sizeMode:'manual',pocketMargin:margin}],
@@ -88,33 +108,40 @@ function exportedSize(project,angle=0){
   assert.ok(points.length>=4);return{svg,size:size(points,angle)};
 }
 
-test('fixed photo pixels retain independent physical truth through ruler UI, capture and SVG export',{timeout:30000},async t=>{
+test('fixed photo pixels retain independent physical truth through ruler/A4 UI, capture and SVG export',{timeout:30000},async t=>{
   t.after(async()=>{delete globalThis.Worker;if(originalBitmap)globalThis.createImageBitmap=originalBitmap;else delete globalThis.createImageBitmap;setLang('cs',{save:false});setAppUnit('mm',{save:false});setProjectUnit('');await win.happyDOM.close();});
   const cases=[
     {name:'measured millimetres after large-photo resize',display:'mm',distance:'100 mm',mode:'measured',margin:'0 mm',tool:[100,20],pocket:[100,20]},
     {name:'equivalent inches and repeated calibration do not compound scale',display:'in',distance:'3.937007874015748 in',mode:'measured',margin:'0.8 mm',tool:[100,20],pocket:[101.6,21.6],recalibrate:true},
     {name:'ideal reserve and the normal per-side margin are each added once',display:'mm',distance:'100 mm',mode:'ideal',margin:'0.8 mm',tool:[102,20.4],pocket:[103.6,22]},
-    {name:'oblique photo keeps physical length and width instead of its camera-axis bounding box',angle:37,display:'mm',distance:'100 mm',mode:'measured',margin:'0.8 mm',tool:[100,20],pocket:[101.6,21.6]}
+    {name:'oblique photo keeps physical length and width instead of its camera-axis bounding box',angle:37,display:'mm',distance:'100 mm',mode:'measured',margin:'0.8 mm',tool:[100,20],pocket:[101.6,21.6]},
+    {name:'A4 lighting gradient preserves independent physical dimensions through automatic calibration',a4:true,display:'mm',mode:'measured',margin:'0.8 mm',tool:[100,20],pocket:[101.6,21.6],tolerance:.6}
   ];
   for(const example of cases)await t.test(example.name,async()=>{
     setLang('cs',{save:false});setProjectUnit('');setAppUnit(example.display,{save:false});posted.length=0;
     const angle=(example.angle||0)*Math.PI/180,c=Math.cos(angle),s=Math.sin(angle);
-    currentContour=fixedContour.map(p=>({x:300+(p.x-300)*c-(p.y-300)*s,y:300+(p.x-300)*s+(p.y-300)*c}));
+    currentContour=example.a4?null:fixedContour.map(p=>({x:300+(p.x-300)*c-(p.y-300)*s,y:300+(p.x-300)*s+(p.y-300)*c}));
     let added,options,bitmapClosed=0;
-    const bitmap=photo(angle);bitmap.close=()=>bitmapClosed++;
+    const bitmap=example.a4?a4Photo():photo(angle);bitmap.close=()=>bitmapClosed++;
     globalThis.createImageBitmap=async()=>bitmap;
     const modal=openCapture({onAdd:(tools,configuration)=>{added=tools;options=configuration;}});
     try{
-      changed('#photo-reference','ruler');
+      changed('#photo-reference',example.a4?'a4':'ruler');
       const input=$('#gallery-file');Object.defineProperty(input,'files',{configurable:true,value:[new win.File(['fixed-pixel photo'],'scale.jpg',{type:'image/jpeg'})]});
-      await input.onchange();await waitFor(()=>$('#calibration-canvas'),'ruler calibration');
-      const canvas=calibrationCanvas();assert.equal(bitmapClosed,1,'decoded camera bitmap is released after resize');
-      const row=actual(canvas).getContext('2d').getImageData(0,325,1400,1).data;
-      const darkPixels=Array.from({length:1400},(_,x)=>x).filter(x=>row[x*4]<60);
-      if(!angle)assert.deepEqual([darkPixels[0],darkPixels.at(-1),darkPixels.length],[300,549,250],'actual resized photo agrees with the fixed worker pixel truth');
-      else{const centre={x:300+125*c-25*s,y:300+125*s+25*c};assert.ok(actual(canvas).getContext('2d').getImageData(Math.round(centre.x),Math.round(centre.y),1,1).data[0]<60,'rotated bitmap agrees with independent pixel truth');}
-      placePoint(0,100,800);placePoint(1,350,800);typed('#ruler-distance',example.distance);
-      click('#capture-continue');await waitFor(()=>$('#capture-pocket-shape'),'fixed-pixel recognition');
+      await input.onchange();
+      if(!example.a4){
+        await waitFor(()=>$('#calibration-canvas'),'ruler calibration');
+        const canvas=calibrationCanvas();assert.equal(bitmapClosed,1,'decoded camera bitmap is released after resize');
+        const row=actual(canvas).getContext('2d').getImageData(0,325,1400,1).data;
+        const darkPixels=Array.from({length:1400},(_,x)=>x).filter(x=>row[x*4]<60);
+        if(!angle)assert.deepEqual([darkPixels[0],darkPixels.at(-1),darkPixels.length],[300,549,250],'actual resized photo agrees with the fixed worker pixel truth');
+        else{const centre={x:300+125*c-25*s,y:300+125*s+25*c};assert.ok(actual(canvas).getContext('2d').getImageData(Math.round(centre.x),Math.round(centre.y),1,1).data[0]<60,'rotated bitmap agrees with independent pixel truth');}
+        placePoint(0,100,800);placePoint(1,350,800);typed('#ruler-distance',example.distance);
+        click('#capture-continue');await waitFor(()=>$('#capture-pocket-shape'),'fixed-pixel recognition');
+      }else{
+        await waitFor(()=>$('#capture-pocket-shape'),'automatic A4 recognition');
+        assert.equal(bitmapClosed,1);assert.equal($('#calibration-canvas'),null);
+      }
       if(example.recalibrate){
         const initialRuns=posted.length;click('#capture-calibration-back');calibrationCanvas();
         // Keep the same original pixel marks through a second complete recognition.
@@ -123,22 +150,24 @@ test('fixed photo pixels retain independent physical truth through ruler UI, cap
       }
       changed('#capture-pocket-shape',example.mode);typed('#capture-pocket-margin',example.margin);typed('#capture-depth','8 mm');
       $('[data-name="0"]').focus();
-      assert.equal($('[data-trace-index="0"] span:last-child').textContent,fmtSize(100,20),'list keeps the independently measured tool size in every pocket mode');
+      if(!example.a4)assert.equal($('[data-trace-index="0"] span:last-child').textContent,fmtSize(100,20),'list keeps the independently measured tool size in every pocket mode');
       const summary=$('#capture-size-summary');assert.ok(summary,'tool and final pocket sizes are visible together');
-      assert.ok(summary.textContent.includes(fmtSize(100,20)),`summary measured size: ${summary.textContent}`);
-      assert.ok(summary.textContent.includes(fmtSize(...example.pocket)),`summary final cavity size: ${summary.textContent}`);
+      if(!example.a4){
+        assert.ok(summary.textContent.includes(fmtSize(100,20)),`summary measured size: ${summary.textContent}`);
+        assert.ok(summary.textContent.includes(fmtSize(...example.pocket)),`summary final cavity size: ${summary.textContent}`);
+      }
       click('#capture-add');await waitFor(()=>added,'captured millimetre tool');await waitFor(()=>!$('#trace-canvas'),'capture closes');
       assert.equal(added.length,1);assert.equal(added[0].depth,8);
-      closeTo(size(added[0].points,angle).width,example.tool[0],'captured physical length');closeTo(size(added[0].points,angle).height,example.tool[1],'captured physical width');
-      assert.ok(posted.length>0);for(const request of posted){assert.equal(request.width,1400);assert.equal(request.height,1050);closeTo(request.pxPerMm,2.5,'independent 250 px / 100 mm calibration');}
+      closeTo(size(added[0].points,angle).width,example.tool[0],'captured physical length',example.tolerance);closeTo(size(added[0].points,angle).height,example.tool[1],'captured physical width',example.tolerance);
+      assert.ok(posted.length>0);for(const request of posted){assert.equal(request.width,example.a4?778:1400);assert.equal(request.height,example.a4?1100:1050);closeTo(request.pxPerMm,example.a4?1100/297:2.5,'independent physical calibration');}
       let project=projectFor(added[0],options.pocketMargin),previous;
       for(let roundtrip=0;roundtrip<3;roundtrip++){
         const before=structuredClone(project),exported=exportedSize(project,angle);
-        closeTo(exported.size.width,example.pocket[0],'actual SVG cavity length');closeTo(exported.size.height,example.pocket[1],'actual SVG cavity width');
+        closeTo(exported.size.width,example.pocket[0],'actual SVG cavity length',example.tolerance);closeTo(exported.size.height,example.pocket[1],'actual SVG cavity width',example.tolerance);
         assert.deepEqual(project,before,'export does not change stored scale or reserve');if(previous)assert.equal(exported.svg,previous,'JSON reload cannot add reserve or margin again');
         previous=exported.svg;project=validateProject(JSON.parse(JSON.stringify({schemaVersion:1,project})));
       }
-      t.diagnostic(`${example.mode}; ${example.distance}; captured ${example.tool.join(' x ')} mm; SVG ${example.pocket.join(' x ')} mm`);
+      t.diagnostic(`${example.mode}; ${example.a4?'A4 210 x 297 mm':example.distance}; captured ${example.tool.join(' x ')} mm; SVG ${example.pocket.join(' x ')} mm`);
     }finally{modal.close();}
   });
 });
