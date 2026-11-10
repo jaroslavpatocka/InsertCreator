@@ -43,7 +43,7 @@ export function mountCaptureGuide({
   }
 
   function syncBusy() {
-    host.querySelectorAll('button,input,select').forEach(control => control.disabled = blocked());
+    host.querySelectorAll('button,input,select').forEach(control => {if(!control.closest('.capture-contour-palette'))control.disabled = blocked();});
     const previous = find('#capture-guide-prev');
     if (previous) previous.disabled = blocked() || current === 0;
     host.setAttribute('aria-busy', String(busy || resizing));

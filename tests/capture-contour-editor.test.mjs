@@ -59,11 +59,11 @@ test('Bézier action exposes draggable handles and width/length actions focus ac
   assert.ok(f.item.editedPoints.length>5);assert.equal(f.item.name,'Klíč');assert.equal(f.item.depth,'8');
 });
 
-test('Escape, pointer cancellation and an invalid crossing each roll back the whole gesture',t=>{
+test('Escape and pointer cancellation roll back a gesture, while inward movement stops at the original tool edge',t=>{
   const f=fixture(t);f.click({x:350,y:150});f.action('move');const before=structuredClone(f.item.editedPoints);
   f.pointer('pointerdown',{x:350,y:150});f.pointer('pointermove',{x:350,y:110});f.key('Escape');assert.deepEqual(f.item.editedPoints,before);
   f.pointer('pointerdown',{x:350,y:150});f.pointer('pointermove',{x:350,y:110});f.pointer('pointercancel',{x:350,y:110});assert.deepEqual(f.item.editedPoints,before);
-  f.pointer('pointerdown',{x:350,y:150});f.pointer('pointermove',{x:350,y:420});f.pointer('pointerup',{x:350,y:420});assert.deepEqual(f.item.editedPoints,before);assert.ok(f.errors.some(message=>message.includes('křížit')));
+  f.pointer('pointerdown',{x:350,y:150});f.pointer('pointermove',{x:350,y:420});f.pointer('pointerup',{x:350,y:420});assert.deepEqual(f.item.editedPoints,before,'a crossing request cannot move the boundary into the original tool');assert.match(f.win.document.querySelector('.capture-contour-status').textContent,/Dosažena hrana nástroje/);
 });
 
 test('dragging away from the profile pans a zoomed view and never inserts a contour point',t=>{
@@ -100,10 +100,10 @@ test('the point action menu stays within a narrow phone viewport',t=>{
 
 for(const selection of ['profile','external'])test(`a pending length belongs to its original tool across ${selection} selection and late native blur`,async t=>{
   const f=fixture(t,{two:true});f.click({x:350,y:150});f.action('move');
-  const input=f.win.document.querySelector('[data-contour-field="length"]');input.focus();input.value='200 mm';input.dispatchEvent(new f.win.Event('input',{bubbles:true}));input.addEventListener('blur',()=>input.dispatchEvent(new f.win.Event('change',{bubbles:true})),{once:true});
+  const input=f.win.document.querySelector('[data-contour-field="length"]');input.focus();input.value='300 mm';input.dispatchEvent(new f.win.Event('input',{bubbles:true}));input.addEventListener('blur',()=>input.dispatchEvent(new f.win.Event('change',{bubbles:true})),{once:true});
   if(selection==='profile'){f.pointer('pointerdown',{x:350,y:400});f.pointer('pointerup',{x:350,y:400});}
   else{f.select(1);f.canvas.focus();}
-  await Promise.resolve();assert.equal(captureItemDimensions(f.items[0],2).length,200);assert.equal(captureItemDimensions(f.items[1],2).length,250,'the second tool never receives the first tool’s pending value');assert.equal(f.active(),1);
+  await Promise.resolve();assert.equal(captureItemDimensions(f.items[0],2).length,300);assert.equal(captureItemDimensions(f.items[1],2).length,250,'the second tool never receives the first tool’s pending value');assert.equal(f.active(),1);
 });
 
 test('a pending coordinate retains its original point when a different tool is selected before blur',t=>{
@@ -130,7 +130,7 @@ for(const selection of ['profile','external'])test(`an invalid owned draft survi
   const input=f.win.document.querySelector('[data-contour-field="length"]');input.focus();input.value='0 mm';input.dispatchEvent(new f.win.Event('input',{bubbles:true}));input.addEventListener('blur',()=>input.dispatchEvent(new f.win.Event('change',{bubbles:true})),{once:true});
   if(selection==='profile'){f.pointer('pointerdown',{x:350,y:400});f.pointer('pointerup',{x:350,y:400});}else{f.select(1);f.canvas.focus();}
   assert.equal(f.editor.validate(),false);assert.equal(f.active(),0,'validation returns focus and selection to the owner of the invalid draft');assert.equal(input.value,'0 mm');assert.equal(captureItemDimensions(f.items[1],2).length,250);
-  input.value='200 mm';input.dispatchEvent(new f.win.Event('input',{bubbles:true}));input.dispatchEvent(new f.win.Event('change',{bubbles:true}));assert.equal(f.editor.validate(),true);assert.equal(captureItemDimensions(f.items[0],2).length,200);assert.equal(captureItemDimensions(f.items[1],2).length,250);
+  input.value='300 mm';input.dispatchEvent(new f.win.Event('input',{bubbles:true}));input.dispatchEvent(new f.win.Event('change',{bubbles:true}));assert.equal(f.editor.validate(),true);assert.equal(captureItemDimensions(f.items[0],2).length,300);assert.equal(captureItemDimensions(f.items[1],2).length,250);
 });
 
 for(const pocketShape of ['ideal','hybrid','functional'])test(`starting a manual ${pocketShape} correction preserves the displayed profile without a mode-change jump`,t=>{

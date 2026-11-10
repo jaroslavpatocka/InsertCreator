@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "sourceCommit": "10423720d6a15cbadefa33c31fb1432a4cd53e9a",
+  "sourceCommit": "1b532a8347511b54d67f5d3a65a2ab285431414e",
   "files": [
     {
       "path": "alpha-contrast.js",
@@ -34,28 +34,38 @@
     },
     {
       "path": "capture-contour-edit.js",
-      "sha256": "932FE52629A4C4EDC6546E3EF94BCD4FBF365CBB9F3A384F912536144A30EF53",
-      "bytes": 9505
+      "sha256": "07414594CB74F7CC57B0920343FF363561417CFAAB35D735D367027398E96628",
+      "bytes": 25285
     },
     {
       "path": "capture-contour-editor.css",
-      "sha256": "BE8F4EBA0ECDD7102EB501D2F79BB93BE2CCA93E85CA76D5E78BA604AF711B68",
-      "bytes": 1608
+      "sha256": "B3F256E7DBE37677C6802462A61DE6DB12B47ADF37407E82954357795404E4C2",
+      "bytes": 4307
     },
     {
       "path": "capture-contour-editor.js",
-      "sha256": "A5B70F50C3A777A8B417F453F8DA7B8F91F1E0E883D6C963A2F0014C4EF0B6A5",
-      "bytes": 22512
+      "sha256": "C57B4A3B0F5EBB6ED1E771D32184E1FED6433579CC1120CA7BA0B2DC04F4FB72",
+      "bytes": 35722
+    },
+    {
+      "path": "capture-contour-safety.js",
+      "sha256": "F70C9E44E5018D0245C2FBF451ADB832B581205EABC23E35B0EEE520C8DA68D5",
+      "bytes": 6347
+    },
+    {
+      "path": "capture-freehand.js",
+      "sha256": "F224064A12B8CBC0FC4CB13A7D2555382930DE951E5E37DBD6F5675C6C7BFDF4",
+      "bytes": 5172
     },
     {
       "path": "capture-guide.css",
-      "sha256": "1ED9127CA054212349319D7136ED992688020EC6779BC7EF3726CC87621B2783",
-      "bytes": 5756
+      "sha256": "A81DC559057449616529F349EC7140A49BF451152FAC6E22F5F48A140FD7371B",
+      "bytes": 5768
     },
     {
       "path": "capture-guide.js",
-      "sha256": "30C8DAE4F4FD9F6C7CEBAB2D0B8593A65CDAF455D0B355F5DD071F136531A2AA",
-      "bytes": 15999
+      "sha256": "9A0D283E281BE0C0BD17EB1D4FE9B95CFD695552C6935B0AC1EDD5496ED2EC5E",
+      "bytes": 16050
     },
     {
       "path": "capture-preview.js",
@@ -79,8 +89,8 @@
     },
     {
       "path": "capture-tools.js",
-      "sha256": "8B6246EC4CA044FBBD88B41FBEE30D74EA73BCF81EB5AD3ACB9EB1E5BEB85D6C",
-      "bytes": 8364
+      "sha256": "9AA65AB3644620987B8CE5990C2657522BE03F6B8C65B06FAFFB5CCD72A490D6",
+      "bytes": 9770
     },
     {
       "path": "capture-view.js",
@@ -89,8 +99,8 @@
     },
     {
       "path": "capture.js",
-      "sha256": "84E4837CE44D321E582B7C2E8A7A3E12D9510BC441B02012D2431BA5DE8DA582",
-      "bytes": 80269
+      "sha256": "A85FF2264719C0AD6D8FB77A08CC82B2A95F236523FE49D2B6A1587F5F7BCF59",
+      "bytes": 82407
     },
     {
       "path": "catalog-ui.js",
@@ -474,8 +484,8 @@
     },
     {
       "path": "locales/en-capture.js",
-      "sha256": "F82D7EA7439F1791615909D84CC00A32BAC8D38E3AA684A6ADAAF7232BE522D0",
-      "bytes": 43164
+      "sha256": "CC86ACA403CDDD8B6BE455D1EC96DB38CFCE230695D16A1EEAB9DF6E3F7C17A3",
+      "bytes": 45689
     },
     {
       "path": "locales/en-core.js",
@@ -854,8 +864,8 @@
     },
     {
       "path": "sw.js",
-      "sha256": "1CF0BF8D92BADECEDA282DE82D26698C56417BF9BF61F1BCE72962BA0FEF7B86",
-      "bytes": 5508
+      "sha256": "51253A4367E19E3B3167E76B800E27230A637AFEEFF06B8A1B6C232A1602E68E",
+      "bytes": 5570
     },
     {
       "path": "three-mf.js",

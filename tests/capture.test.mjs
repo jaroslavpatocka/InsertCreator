@@ -45,14 +45,14 @@ const pause=ms=>new Promise(resolve=>setTimeout(resolve,ms));
 async function waitFor(fn,message='capture state',timeout=30000){const started=performance.now();while(!fn()){if(performance.now()-started>timeout)throw new Error('Timed out: '+message+'; '+($('.modal-body')?.textContent||''));await pause(3);}}
 const bounds=tool=>({width:Math.max(...tool.points.map(p=>p.x))-Math.min(...tool.points.map(p=>p.x)),height:Math.max(...tool.points.map(p=>p.y))-Math.min(...tool.points.map(p=>p.y))});
 
-test('capture A4 flow uses real neural workers without user calibration or contour controls',{timeout:45000},async t=>{
+test('capture A4 flow uses real neural workers without user calibration or segmentation tuning',{timeout:45000},async t=>{
   let added=[];
   t.after(async()=>{await Promise.all([...workers].map(worker=>worker.terminate()));delete globalThis.Worker;await win.happyDOM.close();});
   await t.test('actual complex sample raster is automatically calibrated and added in mm',async()=>{
     openCapture({onAdd:tools=>{added.push(...tools);}});click('#sample-scan');
     await waitFor(()=>$('#trace-items input[type=checkbox]'),'automatic ready result');
     assert.ok(neuralPhases.includes('inference'),'genuine neural worker must run');assert.equal(win.document.querySelectorAll('#trace-items input[type=checkbox]').length,2);assert.equal($('#capture-add').disabled,false);assert.match($('.recognition-status').textContent,/Rozpoznáno automaticky/);
-    assert.ok($('#calibration-canvas')===null);assert.ok(win.document.querySelector('input[type=range]')===null);assert.ok($('#trace-threshold')===null);assert.ok($('#trace-smoothing')===null);assert.ok($('#contour-svg')===null);
+    assert.ok($('#calibration-canvas')===null);assert.ok(win.document.querySelector('input[type=range]:not([data-contour-brush="radius"])')===null);assert.ok($('#trace-threshold')===null);assert.ok($('#trace-smoothing')===null);assert.ok($('#contour-svg')===null);
     assert.equal($('#capture-layout').querySelector('option[selected]').value,'auto','space decides by default');assert.equal($('#capture-layout-field').hidden,false);
     const first=$('#trace-items input[type=checkbox]');first.checked=false;first.dispatchEvent(new win.Event('change',{bubbles:true}));assert.equal($('#capture-layout-field').hidden,true,'one tool has nothing to choose');
     first.checked=true;first.dispatchEvent(new win.Event('change',{bubbles:true}));assert.equal($('#capture-layout-field').hidden,false);

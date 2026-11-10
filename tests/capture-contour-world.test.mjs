@@ -48,7 +48,7 @@ test('one-sided manual movement preserves every untouched photo/world vertex eve
 });
 
 test('numeric resizing before a manual correction freezes the resized photo frame rather than recentering the edit', () => {
-  const item = draft(), raw = structuredClone(item.contour);
+  const item = draft(2, {shape:[{x:0,y:0},{x:30,y:0},{x:30,y:60},{x:0,y:60}]}), raw = structuredClone(item.contour);
   resizeCaptureItem(item, 2, { length: 80 });
   const opening = capturePhotoGeometry(item, 2).points, model = getCaptureEditModel(item, 2);
   const index = model.nodes.findIndex(p => p.x === Math.min(...model.nodes.map(q => q.x)));
@@ -65,8 +65,8 @@ test('numeric resizing before a manual correction freezes the resized photo fram
 
 test('numeric resizing after manual changes retains their current photo centre and invalidates stale curve handles', () => {
   const item = draft(2, { shape: [{ x: 0, y: 0 }, { x: 30, y: 0 }, { x: 30, y: 60 }, { x: 0, y: 60 }] });
-  const curved = curveContourNode(getCaptureEditModel(item, 2), 0);
-  applyCaptureEdit(item, 2, moveContourNode(curved, 0, { x: -5, y: -3 }));
+  const inserted=insertContourNode(getCaptureEditModel(item,2),{x:15,y:0}),curved=curveContourNode(inserted.model,inserted.index);
+  applyCaptureEdit(item, 2, moveContourNode(curved, inserted.index, { x: 15, y: -3 }));
   const previous = center(capturePhotoGeometry(item, 2).points), dimensions = captureItemDimensions(item, 2);
   resizeCaptureItem(item, 2, { length: dimensions.length * 1.2 });
   const current = center(capturePhotoGeometry(item, 2).points);

@@ -7,9 +7,15 @@ import {fitIdealPocket} from './ideal-pocket.js';
 import {pocketFitSignature} from './pocket-fit-meta.js';
 import {effectivePocketMargin,optionalPocketMargin} from './pocket-margin.js';
 import {simple} from './contour-smoothing.js';
+import {checkCaptureContourSafety} from './capture-contour-safety.js';
 
 const categories=new Set(CATEGORIES.map(category=>category.id));
 const geometryCache=new WeakMap();
+
+function requireCaptureToolSpace(item,scale,reference=item){
+  const visible=capturePhotoGeometry(item,scale).points,check=checkCaptureContourSafety(reference,scale,{origin:{x:0,y:0},points:visible.map(p=>({x:p.x/scale,y:p.y/scale}))});
+  if(!check.safe){const error=i18nError('Úprava by zasáhla do nástroje. Obrys se zastavil na jeho původní hraně.');error.code='CAPTURE_TOOL_EDGE';throw error;}
+}
 
 /** Measured millimetre outline. Pocket fitting never overwrites this source. */
 function sourcePoints(item,scale){
@@ -78,9 +84,11 @@ export function prepareCaptureFit(item,scale,{pocketMargin=0,geometry=capturePoc
   try{
     geometry(next,scale,{pocketMargin});
     const fitted=capturePocketGeometry(next,scale);
+    if(next.editedPoints)requireCaptureToolSpace(next,scale,item);
     if(fitted.fallback==='source-offset')next.pocketFitNotice={type:'source-offset',filledOffsetHoles:fitted.filledOffsetHoles||0,filledOffsetHoleAreaRatio:fitted.filledOffsetHoleAreaRatio||0};
     return next;
   }catch(error){
+    if(error.code==='CAPTURE_TOOL_EDGE')throw error;
     const requestedShape=next.pocketShape||'measured';
     if(requestedShape==='measured')throw error;
     const source=sourcePoints(next,scale),dimensions=captureItemDimensions(next,scale);
@@ -89,6 +97,7 @@ export function prepareCaptureFit(item,scale,{pocketMargin=0,geometry=capturePoc
     // The measured alternative is checked independently, never through a
     // failing or externally supplied fitting callback.
     capturePocketDimensions(next,scale,{pocketMargin});
+    if(next.editedPoints)requireCaptureToolSpace(next,scale,item);
     next.pocketFitIssue={requestedShape,reason:String(error?.message||error)};
     return next;
   }
@@ -100,6 +109,12 @@ export function resizeCaptureItem(item,scale,dimensions){
   const photoCenter=editedPhoto?{x:(Math.min(...editedPhoto.map(p=>p.x))+Math.max(...editedPhoto.map(p=>p.x)))/2,y:(Math.min(...editedPhoto.map(p=>p.y))+Math.max(...editedPhoto.map(p=>p.y)))/2}:null;
   const next=resizeToolDimensions({points:sourcePoints(item,scale),x:0,y:0,rotation:0},dimensions);
   const measured=getToolDimensions(next);
+  // Guide resizing shares the immutable photo-space boundary of direct edits.
+  // Check the displayed fitted result before mutating any capture field.
+  const proposal={...item,editedPoints:next.points};
+  if(photoCenter){proposal.contourEditOrigin={x:photoCenter.x-(Math.min(...next.points.map(p=>p.x))+Math.max(...next.points.map(p=>p.x)))*scale/2,y:photoCenter.y-(Math.min(...next.points.map(p=>p.y))+Math.max(...next.points.map(p=>p.y)))*scale/2};delete proposal.contourEdit;}
+  requireCaptureToolSpace(proposal,scale,item);
+  if(proposal.pocketShape&&proposal.pocketShape!=='measured')requireCaptureToolSpace({...proposal,pocketShape:'measured'},scale,item);
   item.editedPoints=next.points;
   if(photoCenter){
     item.contourEditOrigin={x:photoCenter.x-(Math.min(...next.points.map(p=>p.x))+Math.max(...next.points.map(p=>p.x)))*scale/2,y:photoCenter.y-(Math.min(...next.points.map(p=>p.y))+Math.max(...next.points.map(p=>p.y)))*scale/2};
@@ -111,6 +126,7 @@ export function resizeCaptureItem(item,scale,dimensions){
 /** Photo positions use the outline's bounds anchor, matching the editor's transforms.
  *  A corrected outline stays centred on its original photograph, including after repeated resizes. */
 export function toolFromCaptureItem(item,{scale,depth,id,preservePosition=false}){
+  if(item.editedPoints)requireCaptureToolSpace(item,scale);
   const metadata={};
   const margin=optionalPocketMargin(item.pocketMargin);if(margin!==undefined)metadata.pocketMargin=margin;
   if(item.category!=null&&item.category!==''){

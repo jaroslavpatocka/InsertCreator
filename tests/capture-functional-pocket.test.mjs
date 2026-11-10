@@ -5,10 +5,11 @@ import {drawCaptureContours,drawCaptureToolPreview} from '../dist/capture-previe
 import {transformedPoints} from '../dist/geometry.js';
 import {blankProject,validateProject} from '../dist/model.js';
 
-function fixture(angle=0,pocketShape='functional'){
+function fixture(angle=0,pocketShape='functional',shape=null){
   const points=[{x:0,y:0},{x:12,y:0},{x:12,y:22},{x:7,y:22}];
   for(let y=24;y<65;y+=2)points.push({x:7+.18*Math.sin(y),y});
   points.push({x:15,y:65},{x:15,y:100},{x:-3,y:100},{x:-3,y:65},{x:2,y:65},{x:2,y:22},{x:0,y:22});
+  if(shape)points.splice(0,points.length,...shape);
   const c=Math.cos(angle),s=Math.sin(angle),photo=points.map(p=>({x:250+2.5*(p.x*c-p.y*s),y:175+2.5*(p.x*s+p.y*c)}));
   const xs=photo.map(p=>p.x),ys=photo.map(p=>p.y);
   return{name:'Ráčna',checked:true,pocketShape,contour:{points:photo},info:{minX:Math.min(...xs),minY:Math.min(...ys),center:{x:(Math.min(...xs)+Math.max(...xs))/2,y:(Math.min(...ys)+Math.max(...ys))/2}}};
@@ -49,7 +50,7 @@ test('photo positions and model normalization preserve the exact fitted frame at
 
 test('resizing changes the measured source once and fitting cannot accumulate across switching or export',()=>{
   for(const mode of ['ideal','hybrid','functional']){
-  const draft=fixture(.31,mode),photo=structuredClone(draft.contour),before=captureItemDimensions(draft,2.5);
+  const draft=fixture(.31,mode,[{x:0,y:0},{x:12,y:0},{x:12,y:100},{x:0,y:100}]),photo=structuredClone(draft.contour),before=captureItemDimensions(draft,2.5);
   resizeCaptureItem(draft,2.5,{length:before.length*1.2});
   const source=structuredClone(draft.editedPoints),once=captureToolPoints(draft,2.5);
   near(captureItemDimensions(draft,2.5).length,before.length*1.2);
@@ -59,6 +60,13 @@ test('resizing changes the measured source once and fitting cannot accumulate ac
   }
   assert.deepEqual(draft.editedPoints,source);assert.deepEqual(draft.contour,photo);
   samePoints(transformedPoints(convert(draft)),capturePhotoGeometry(draft,2.5).points.map(p=>({x:p.x/2.5,y:p.y/2.5})));
+  }
+});
+
+test('enlarging the ratchet length cannot move its real shoulders into the protected tool',()=>{
+  for(const mode of ['ideal','hybrid','functional']){
+    const draft=fixture(.31,mode),before=structuredClone(draft),dimensions=captureItemDimensions(draft,2.5);
+    assert.throws(()=>resizeCaptureItem(draft,2.5,{length:dimensions.length*1.2}),error=>error.code==='CAPTURE_TOOL_EDGE');assert.deepEqual(draft,before);
   }
 });
 

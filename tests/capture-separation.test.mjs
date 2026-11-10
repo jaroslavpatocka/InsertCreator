@@ -108,7 +108,7 @@ test('uploaded A4 photos add complete, separate tools through real ONNX recognit
     assert.equal($('#capture-add')?.disabled,false,diagnostic);
     assert.equal(win.document.querySelectorAll('#trace-items input[type=checkbox]:checked').length,count,diagnostic);
     assert.ok($('#calibration-canvas')===null);
-    assert.ok(win.document.querySelector('input[type=range]')===null);
+    assert.ok(win.document.querySelector('input[type=range]:not([data-contour-brush="radius"])')===null);
     assert.ok($('#trace-threshold')===null);assert.ok($('#trace-smoothing')===null);
     $('#capture-add').click();
     await waitFor(()=>!$('#modal-root').children.length,'capture must close after adding');
