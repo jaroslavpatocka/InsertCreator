@@ -2,9 +2,9 @@
 // The project itself drives the guide: photo, catalogue and module flows stay untouched, and the
 // guide advances only when something really arrived in the drawer, so a cancelled flow changes nothing.
 import {esc,icon,toast} from './ui.js';
-import {t as tr,plural,getLang} from './i18n.js';
+import {t as tr,plural,getLang,LANGS,LANG_NAMES} from './i18n.js';
 import {readLocal,writeLocal} from './model.js';
-import {fmtLen,getAppUnit,inputValue,parseLength} from './units.js';
+import {UNITS,fmtLen,getAppUnit,inputValue,parseLength} from './units.js';
 
 const KEY='suplik-studio-start-guide';
 const STEPS=['welcome','drawer','tools','arrange','check','export'];
@@ -48,8 +48,12 @@ const skipButton=()=>`<button type="button" class="start-guide-skip" data-guide=
 const choice=(action,glyph,title,text,primary=false)=>`<button type="button" class="start-guide-choice${primary?' is-primary':''}" data-guide="${action}"><span class="start-guide-choice-icon">${icon(glyph)}</span><span><strong>${esc(tr(title))}</strong><small>${esc(tr(text))}</small></span>${icon('chevron')}</button>`;
 const heading=(title,text)=>`<h2 id="start-guide-title" tabindex="-1">${esc(tr(title))}</h2><p class="start-guide-lead">${esc(tr(text))}</p>`;
 
-function welcomeStep(){
-  return `<div class="start-guide-body">${heading('Vítejte v InsertCreatoru','Za pár minut navrhnete vložku do šuplíku přesně na své nářadí. Máte už něco hotového?')}<div class="start-guide-choices">${choice('start','plus','Začínám od začátku','Provedeme vás krok za krokem.',true)}${choice('open-json','upload','Mám uložený projekt','Otevřete soubor JSON a pokračujte v práci.')}</div></div><div class="start-guide-foot"><span></span>${skipButton()}</div>`;
+// Language comes first and keeps both names, so someone who cannot read the current one still finds it.
+const segment=(kind,label,options,current)=>`<div class="start-guide-pref"><span class="start-guide-pref-label" id="start-guide-${kind}">${esc(label)}</span><div class="start-guide-segment" role="group" aria-labelledby="start-guide-${kind}">${options.map(([value,text,lang])=>`<button type="button" data-guide="${kind}" data-value="${value}" aria-pressed="${value===current}"${lang?` lang="${lang}"`:''}>${esc(text)}</button>`).join('')}</div></div>`;
+const UNIT_NAMES={mm:'Milimetry (mm)',in:'Palce (in)'};
+function welcomeStep(hasProjects){
+  const prefs=segment('lang','Jazyk / Language',LANGS.map(lang=>[lang,LANG_NAMES[lang],lang]),getLang())+segment('unit',tr('Jednotky'),UNITS.map(u=>[u,tr(UNIT_NAMES[u])]),getAppUnit());
+  return `<div class="start-guide-body">${heading('Vítejte v InsertCreatoru','Za pár minut navrhnete vložku do šuplíku přesně na své nářadí. Nejdřív si nastavte jazyk a jednotky, obojí půjde později změnit.')}<div class="start-guide-prefs">${prefs}</div><p class="start-guide-question">${esc(tr('Co chcete udělat?'))}</p><div class="start-guide-choices">${choice('start','plus','Vytvořit nový šuplík','Provedeme vás krok za krokem: rozměry, nástroje a výroba.',true)}${choice('open-existing','upload','Upravit existující šuplík',hasProjects?'Otevřete uložený šuplík nebo soubor JSON.':'Otevřete uložený projekt ze souboru JSON.')}</div></div><div class="start-guide-foot"><span></span>${skipButton()}</div>`;
 }
 function drawerStep(project){
   const u=getAppUnit(),field=(label,key,value)=>`<label class="field"><span>${esc(tr(label))} (${u})</span><input type="text" inputmode="decimal" autocomplete="off" spellcheck="false" name="${key}" data-mm="${value}" value="${esc(inputValue(value,{unit:u}))}"></label>`;
@@ -81,14 +85,14 @@ export function createStartGuide(host){
   };
   function paint(){
     const project=host.project(),active=state?.status==='active',full=isOpen(),issues=active&&!full?host.issues():0;
-    const key=active?[state.step,getLang(),...(full?[contentCount(project)>0]:[project.tools.length,project.modules.length,issues])].join('|'):'';
+    const key=active?[state.step,getLang(),...(full?[contentCount(project)>0,getAppUnit(),host.hasWork()]:[project.tools.length,project.modules.length,issues])].join('|'):'';
     document.documentElement.classList.toggle('start-guide-open',full);document.querySelector('#app')?.toggleAttribute('inert',full);
     if(key===painted)return;
     const stepChanged=key.split('|')[0]!==painted.split('|')[0];painted=key;
     const target=ensureRoot();
     if(!active){target.innerHTML='';return;}
     if(full){
-      const body=state.step==='welcome'?welcomeStep():state.step==='drawer'?drawerStep(project):toolsStep(project);
+      const body=state.step==='welcome'?welcomeStep(host.hasWork()):state.step==='drawer'?drawerStep(project):toolsStep(project);
       target.innerHTML=`<div class="start-guide" role="dialog" aria-modal="true" aria-labelledby="start-guide-title"><section class="start-guide-card">${body}</section></div>`;
       if(stepChanged&&!modalOpen())(target.querySelector('input')||target.querySelector('h2'))?.focus();
       return;
@@ -103,7 +107,11 @@ export function createStartGuide(host){
     const action=button.dataset.guide,step=state?.step;
     if(action==='skip')return finish({skipped:true});
     if(action==='start')return go('drawer');
-    if(action==='open-json')return host.run('import-json');
+    if(action==='lang'||action==='unit'){
+      const value=button.dataset.value;host.run(action==='lang'?'set-lang':'set-unit',value);paint();
+      root?.querySelector(`[data-guide="${action}"][data-value="${value}"]`)?.focus();return;
+    }
+    if(action==='open-existing')return host.run(host.hasWork()?'projects':'import-json');
     if(action==='later')return go('tools');
     if(action==='add-photo')return host.run('capture');
     if(action==='add-catalog')return host.run('catalog');

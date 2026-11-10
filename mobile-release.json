@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "sourceCommit": "21991f7f8d20bafefb6950b1addcef7183628641",
+  "sourceCommit": "10423720d6a15cbadefa33c31fb1432a4cd53e9a",
   "files": [
     {
       "path": "alpha-contrast.js",
@@ -9,8 +9,8 @@
     },
     {
       "path": "app.js",
-      "sha256": "20E5E1056FA8537280D45CD609F59B97D6F9DF44C35282C2504DB7D9D07C43B1",
-      "bytes": 239267
+      "sha256": "84F6F6A4B6F9F483F60D8499EB9573930AE0F51345CAEBEA0C9D1CB30277B0FB",
+      "bytes": 239280
     },
     {
       "path": "auto-trace.js",
@@ -484,8 +484,8 @@
     },
     {
       "path": "locales/en-guide.js",
-      "sha256": "D3B234CCE889977DB826AE6D94A789741EBDCC71CC1F88AA411A22CD09C44E43",
-      "bytes": 3051
+      "sha256": "4D0148DD02418C8CB21699222BCD1F7DE0291EDE52125403D12F96E948291598",
+      "bytes": 3411
     },
     {
       "path": "locales/en-magnet.js",
@@ -544,8 +544,8 @@
     },
     {
       "path": "mobile.css",
-      "sha256": "3AD03011A67A3C26A119DD0B747EDEF632E3473DF733553A5515F6A0FE7F6C2A",
-      "bytes": 30853
+      "sha256": "0990CAD2959F0C98E95C0146DFF295BFE9287E81E329ACA24E21CC716828EC4B",
+      "bytes": 31010
     },
     {
       "path": "model.js",
@@ -839,13 +839,13 @@
     },
     {
       "path": "start-guide.css",
-      "sha256": "BB562C4C0E5A29EA472F36520B50ADAC29633B0B7328488DF472538AB3228D61",
-      "bytes": 4980
+      "sha256": "B4A06DF5DF8CA09F352B510101D859D1486E185889CDD902948B228AB4B55800",
+      "bytes": 5911
     },
     {
       "path": "start-guide.js",
-      "sha256": "2AEA7CB546A8A9942641F778A49271588D8C406F60268DB53933D7ACBC5E5952",
-      "bytes": 13937
+      "sha256": "5C9E2B3C88946E9CB5252B10E44161EA80857C825AC57EBD87CAC2F794DA953A",
+      "bytes": 15347
     },
     {
       "path": "style.css",
@@ -854,8 +854,8 @@
     },
     {
       "path": "sw.js",
-      "sha256": "FC6DAFDFB430DD99E55C54A82F5CCCE95B4E7EE6E69940B525A4A098A4969184",
-      "bytes": 5513
+      "sha256": "1CF0BF8D92BADECEDA282DE82D26698C56417BF9BF61F1BCE72962BA0FEF7B86",
+      "bytes": 5508
     },
     {
       "path": "three-mf.js",

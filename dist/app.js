@@ -1860,7 +1860,7 @@ window.addEventListener('scroll',scheduleEditorViewport,{passive:true});
 window.visualViewport?.addEventListener('resize',scheduleEditorViewport);
 document.fonts?.ready?.then(scheduleEditorViewport);
 onLangChange(()=>{labelJob=null;analysisClient.cancel();previewClient.cancel();previewSequence++;applyDocumentText();render();if(exportSession)openExport();});
-startGuide=createStartGuide({project:()=>project,hasWork:()=>projects.some(p=>p.tools.length||p.modules.length),issues:()=>errors().length,applyDrawer:({name,width,height,insertHeight})=>commit(()=>{if(name)project.name=name;project.width=width;project.height=height;project.insertHeight=insertHeight;}),run:name=>{try{if(name==='catalog'){openLibrary();$('#library-tab-catalog')?.click();}else actions[name]?.();}catch(error){toast(errorText(error));}}});
+startGuide=createStartGuide({project:()=>project,hasWork:()=>projects.some(p=>p.tools.length||p.modules.length),issues:()=>errors().length,applyDrawer:({name,width,height,insertHeight})=>commit(()=>{if(name)project.name=name;project.width=width;project.height=height;project.insertHeight=insertHeight;}),run:(name,value)=>{try{if(name==='catalog'){openLibrary();$('#library-tab-catalog')?.click();}else actions[name]?.(value);}catch(error){toast(errorText(error));}}});
 applyDocumentText();persist();render();
 if(project.sizeLabels)await ensureLabels();
 window.addEventListener('pagehide',()=>{closeModal();window.clearTimeout(manufacturingTimer);manufacturingJob?.controller.abort();manufacturingJob=null;connectorJob?.controller.abort();connectorJob=null;settingsClient.cancel();connectorClient.cancel();labelJob=null;analysisClient.cancel();previewClient.cancel();fileClient.cancel();});
