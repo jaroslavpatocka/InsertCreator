@@ -2,6 +2,11 @@
 // Keep {placeholders} identical in both languages.
 // Worker progress messages, quality reasons and worker errors travel as Czech text and are translated in capture.js.
 export default {
+  "Původní rozlišení {width} × {height} px. Celá fotografie se zpracuje po částech bez zmenšení.":"Original resolution: {width} × {height} px. The entire photo is processed in sections without downscaling.",
+  "Fotografie přesahuje 64 megapixelů. Vyberte menší oblast; rozlišení se automaticky nesnižuje.":"The photo exceeds 64 megapixels. Select a smaller region; resolution is never reduced automatically.",
+  "Zařízení nedokáže otevřít tuto fotografii v plném rozlišení. Použijte počítač nebo menší výřez.":"This device cannot open the photo at full resolution. Use a computer or a smaller crop.",
+  "Narovnání v plném rozlišení přesahuje paměťový limit. Vyberte menší oblast; fotografie se automaticky nezmenšuje.":"Full-resolution rectification exceeds the memory limit. Select a smaller region; the photo is never reduced automatically.",
+  "Maska a kalibrace nemají stejné souřadnice.":"The mask and calibration do not share the same coordinates.",
   "Nejdřív odstranit pozadí a stíny":"Remove background and shadows first",
   "Fotka se pro odstranění pozadí předá serveru této aplikace na vašem PC. Neposílá se Liftu ani jiné externí službě.":"For background removal, the photo is sent to this app’s server on your PC. It is not sent to Lift or another external service.",
   "Náhled bez pozadí":"Preview without background",

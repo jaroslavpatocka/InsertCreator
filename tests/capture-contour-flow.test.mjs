@@ -41,7 +41,15 @@ test('the actual capture flow supports profile insertion, a movable point and im
       $('#capture-add').click();await waitFor(()=>added,'edited import');assert.equal(added.length,1);
       const photo=added[0].points.map(p=>({x:p.x*scale+200,y:p.y*scale+160}));
       assert.ok(photo.some(p=>Math.abs(p.x-350)<1e-4&&Math.abs(p.y-160)<1e-4),'added manufacturing polygon contains the moved point');
-      for(const p of original)assert.ok(photo.some(q=>Math.hypot(q.x-p.x,q.y-p.y)<1e-4),'import retains untouched source corners');
+      // The measured profile uses four decimal millimetres before editing.
+      // Native calibration can make that fixed physical precision exceed 1e-4px.
+      const precisionMm=1e-4,pixelTolerance=precisionMm*scale,expected=[...original,{x:350,y:160}];
+      assert.equal(photo.length,expected.length,'import retains every original corner and the one added point without extra vertices');
+      const matches=expected.map(p=>photo.map((q,index)=>({index,errorPx:Math.hypot(q.x-p.x,q.y-p.y)})).sort((a,b)=>a.errorPx-b.errorPx)[0]);
+      assert.equal(new Set(matches.map(match=>match.index)).size,expected.length,'all four original corners and the added point retain distinct imported vertices');
+      for(let i=0;i<original.length;i++)assert.ok(matches[i].errorPx<=pixelTolerance,'import retains each untouched source corner within the fixed millimetre precision');
+      const maxErrorMm=Math.max(...matches.map(match=>match.errorPx/scale));
+      assert.ok(maxErrorMm<=precisionMm,`all five imported vertices remain within 0.0001mm; actual ${maxErrorMm}mm`);
     }finally{modal.close();}
   });
   await t.test('review contours remain honestly labelled editable drafts and can be added explicitly after correction',async()=>{

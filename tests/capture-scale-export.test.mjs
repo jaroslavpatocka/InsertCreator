@@ -26,10 +26,10 @@ win.HTMLCanvasElement.prototype.getContext=function(type){
   return new Proxy(context,{get:(target,key)=>key==='drawImage'?((source,...args)=>target.drawImage(source instanceof win.HTMLCanvasElement?actual(source):source,...args)):typeof target[key]==='function'?target[key].bind(target):target[key],set:(target,key,value)=>(target[key]=value,true)});
 };
 
-// Independent pixel truth: the source photo is 5 px/mm. Loading halves it,
-// leaving a 250 x 50 px tool and a 250 px ruler segment representing 100 mm.
+// Independent pixel truth: the source photo remains at 5 px/mm.
+// A 500 x 100 px tool and a 500 px ruler segment both represent 100 mm.
 // Never derive these contours, or expected dimensions, from the runtime scale.
-const fixedContour=[{x:300,y:300},{x:550,y:300},{x:550,y:350},{x:300,y:350}];
+const fixedContour=[{x:600,y:600},{x:1100,y:600},{x:1100,y:700},{x:600,y:700}];
 let currentContour=fixedContour;
 globalThis.Worker=class{
   constructor(url){this.url=String(url);this.terminated=false;}
@@ -76,8 +76,8 @@ function placePoint(index,x,y){
 }
 function calibrationCanvas(){
   const canvas=$('#calibration-canvas');assert.ok(canvas);
-  assert.equal(canvas.width,1400,'large input is resized before ruler placement');assert.equal(canvas.height,1050);
-  canvas.getBoundingClientRect=()=>({left:80,top:40,width:700,height:525,right:780,bottom:565});
+  assert.equal(canvas.width,2800,'large input keeps native pixels before ruler placement');assert.equal(canvas.height,2100);
+  canvas.getBoundingClientRect=()=>({left:80,top:40,width:1400,height:1050,right:1480,bottom:1090});
   return canvas;
 }
 function photo(angle=0){
@@ -112,7 +112,7 @@ function exportedSize(project,angle=0){
 test('fixed photo pixels retain independent physical truth through ruler/A4 UI, capture and SVG export',{timeout:30000},async t=>{
   t.after(async()=>{delete globalThis.Worker;if(originalBitmap)globalThis.createImageBitmap=originalBitmap;else delete globalThis.createImageBitmap;setLang('cs',{save:false});setAppUnit('mm',{save:false});setProjectUnit('');await win.happyDOM.close();});
   const cases=[
-    {name:'measured millimetres after large-photo resize',display:'mm',distance:'100 mm',mode:'measured',margin:'0 mm',tool:[100,20],pocket:[100,20]},
+    {name:'measured millimetres at full native photo resolution',display:'mm',distance:'100 mm',mode:'measured',margin:'0 mm',tool:[100,20],pocket:[100,20]},
     {name:'equivalent inches and repeated calibration do not compound scale',display:'in',distance:'3.937007874015748 in',mode:'measured',margin:'0.8 mm',tool:[100,20],pocket:[101.6,21.6],recalibrate:true},
     {name:'ideal reserve and the normal per-side margin are each added once',display:'mm',distance:'100 mm',mode:'ideal',margin:'0.8 mm',tool:[102,20.4],pocket:[103.6,22]},
     {name:'oblique photo keeps physical length and width instead of its camera-axis bounding box',angle:37,display:'mm',distance:'100 mm',mode:'measured',margin:'0.8 mm',tool:[100,20],pocket:[101.6,21.6]},
@@ -121,7 +121,7 @@ test('fixed photo pixels retain independent physical truth through ruler/A4 UI, 
   for(const example of cases)await t.test(example.name,async()=>{
     setLang('cs',{save:false});setProjectUnit('');setAppUnit(example.display,{save:false});posted.length=0;
     const angle=(example.angle||0)*Math.PI/180,c=Math.cos(angle),s=Math.sin(angle);
-    currentContour=example.a4?null:fixedContour.map(p=>({x:300+(p.x-300)*c-(p.y-300)*s,y:300+(p.x-300)*s+(p.y-300)*c}));
+    currentContour=example.a4?null:fixedContour.map(p=>({x:600+(p.x-600)*c-(p.y-600)*s,y:600+(p.x-600)*s+(p.y-600)*c}));
     let added,options,bitmapClosed=0;
     const bitmap=example.a4?a4Photo():photo(angle);bitmap.close=()=>bitmapClosed++;
     globalThis.createImageBitmap=async()=>bitmap;
@@ -132,12 +132,12 @@ test('fixed photo pixels retain independent physical truth through ruler/A4 UI, 
       await input.onchange();
       if(!example.a4){
         await waitFor(()=>$('#calibration-canvas'),'ruler calibration');
-        const canvas=calibrationCanvas();assert.equal(bitmapClosed,1,'decoded camera bitmap is released after resize');
-        const row=actual(canvas).getContext('2d').getImageData(0,325,1400,1).data;
-        const darkPixels=Array.from({length:1400},(_,x)=>x).filter(x=>row[x*4]<60);
-        if(!angle)assert.deepEqual([darkPixels[0],darkPixels.at(-1),darkPixels.length],[300,549,250],'actual resized photo agrees with the fixed worker pixel truth');
-        else{const centre={x:300+125*c-25*s,y:300+125*s+25*c};assert.ok(actual(canvas).getContext('2d').getImageData(Math.round(centre.x),Math.round(centre.y),1,1).data[0]<60,'rotated bitmap agrees with independent pixel truth');}
-        placePoint(0,100,800);placePoint(1,350,800);typed('#ruler-distance',example.distance);
+        const canvas=calibrationCanvas();assert.equal(bitmapClosed,1,'decoded camera bitmap is released after lossless pixel extraction');
+        const row=actual(canvas).getContext('2d').getImageData(0,650,2800,1).data;
+        const darkPixels=Array.from({length:2800},(_,x)=>x).filter(x=>row[x*4]<60);
+        if(!angle)assert.deepEqual([darkPixels[0],darkPixels.at(-1),darkPixels.length],[600,1099,500],'actual native photo agrees with the fixed worker pixel truth');
+        else{const centre={x:600+250*c-50*s,y:600+250*s+50*c};assert.ok(actual(canvas).getContext('2d').getImageData(Math.round(centre.x),Math.round(centre.y),1,1).data[0]<60,'rotated bitmap agrees with independent pixel truth');}
+        placePoint(0,200,1600);placePoint(1,700,1600);typed('#ruler-distance',example.distance);
         click('#capture-continue');await waitFor(()=>$('#capture-pocket-shape'),'fixed-pixel recognition');
       }else{
         await waitFor(()=>$('#capture-pocket-shape'),'automatic A4 recognition');
@@ -160,7 +160,7 @@ test('fixed photo pixels retain independent physical truth through ruler/A4 UI, 
       click('#capture-add');await waitFor(()=>added,'captured millimetre tool');await waitFor(()=>!$('#trace-canvas'),'capture closes');
       assert.equal(added.length,1);assert.equal(added[0].depth,8);
       closeTo(size(added[0].points,angle).width,example.tool[0],'captured physical length',example.tolerance);closeTo(size(added[0].points,angle).height,example.tool[1],'captured physical width',example.tolerance);
-      assert.ok(posted.length>0);for(const request of posted){assert.equal(request.width,example.a4?778:1400);assert.equal(request.height,example.a4?1100:1050);closeTo(request.pxPerMm,example.a4?1100/297:2.5,'independent physical calibration');}
+      assert.ok(posted.length>0);for(const request of posted){if(example.a4){closeTo(request.width,1050,'native width follows independently photographed 210mm paper at5px/mm',5);closeTo(request.height,1485,'native height follows independently photographed 297mm paper at5px/mm',6);closeTo(request.pxPerMm,5,'independent native A4 pixel density',.03);}else{assert.equal(request.width,2800);assert.equal(request.height,2100);closeTo(request.pxPerMm,5,'independent physical calibration');}}
       let project=projectFor(added[0],options.pocketMargin),previous;
       for(let roundtrip=0;roundtrip<3;roundtrip++){
         const before=structuredClone(project),exported=exportedSize(project,angle);

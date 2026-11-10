@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import {Window} from 'happy-dom';
 import {createCanvas,ImageData} from '@napi-rs/canvas';
-import {calibrateRulers} from '../dist/ruler-calibration.js';
+import {calibrateRulersNative} from '../dist/ruler-calibration.js';
 import {instanceWorkerReply} from './fixtures/instance-worker-reply.mjs';
 
 const win=new Window({url:'http://localhost:5173'});
@@ -44,6 +44,10 @@ function wheel({x=500,y=450,deltaY=-300,deltaMode=0}={}){const event=new win.Whe
 function view(){return rasters.get($('#calibration-canvas'));}
 function visible(p,m=view()){return{x:m.a*p.x+m.c*p.y+m.e,y:m.b*p.x+m.d*p.y+m.f};}
 function closePoint(actual,expected,message){assert.ok(Math.abs(actual.x-expected.x)<1e-7&&Math.abs(actual.y-expected.y)<1e-7,`${message}: ${JSON.stringify(actual)} vs ${JSON.stringify(expected)}`);}
+function metricReferences(calibration,source,distances){
+  for(let pair=0;pair<2;pair++){const a=calibration.points[pair*2],b=calibration.points[pair*2+1];assert.ok(Math.abs(Math.hypot(b.x-a.x,b.y-a.y)/calibration.pxPerMm-distances[pair])<1e-7,'each photographed reference retains its independently entered physical length');}
+  for(let i=0;i<source.length;i++){const p=calibration.points[i],m=calibration.inverse;closePoint({x:m.a*p.x+m.c*p.y+m.e,y:m.b*p.x+m.d*p.y+m.f},source[i],'native output point returns to the original source reference');}
+}
 function fit(){$('[data-calibration-view="fit"]').click();}
 function pan(button=2,{from={x:450,y:450},to={x:500,y:480},end='pointerup'}={}){const buttons=button===2?2:button===1?4:1;pointer('pointerdown',{...from,button,buttons});pointer('pointermove',{...to,button,buttons});pointer(end,{...to,button,buttons:0});}
 
@@ -120,8 +124,8 @@ test('ruler calibration uses visible open crosshairs, accessible points and safe
     assert.equal(win.document.querySelectorAll('[data-ruler-point]').length,4);assert.match($('.capture-sidebar').textContent,/fyzicky kolmý/);assert.match($('.capture-sidebar').textContent,/plnou perspektivu nenahrazují/);
     const refs=[{x:100,y:100},{x:500,y:100},{x:600,y:100},{x:600,y:500}];refs.forEach((p,i)=>place(i+1,p.x,p.y));
     key('4');assert.equal($('[data-ruler-point="3"]').getAttribute('aria-pressed'),'true');input($('#ruler-distance'),'4 in');input($('#ruler-second-distance'),'2 in');
-    const expected=calibrateRulers({width:1000,height:900},refs,[101.6,50.8]);$('#capture-continue').click();await waitFor(()=>posted.some(p=>p.url.includes('recognize-worker')));
-    const sent=posted.find(p=>p.url.includes('recognize-worker')).message;assert.equal(sent.image.width,expected.width);assert.equal(sent.image.height,expected.height);assert.equal(sent.options.pxPerMm,expected.pxPerMm);assert.notEqual(sent.image.height,900,'the second reference changes the actual recognition raster');
+    const expected=calibrateRulersNative({width:1000,height:900},refs,[101.6,50.8]);metricReferences(expected,refs,[101.6,50.8]);$('#capture-continue').click();await waitFor(()=>posted.some(p=>p.url.includes('recognize-worker')));
+    const sent=posted.find(p=>p.url.includes('recognize-worker')).message;assert.equal(sent.image.width,expected.width);assert.equal(sent.image.height,expected.height);assert.equal(sent.options.pxPerMm,expected.pxPerMm);assert.notEqual(sent.image.width,1000,'the second reference changes the actual recognition raster');assert.ok(Math.abs(sent.options.pxPerMm-400/50.8)<1e-9,'the dense physical axis is 400 source pixels per two inches, independent of output-size helpers');assert.equal(sent.image.width,1999);assert.equal(sent.image.height,900,'native calibration retains the dense source axis instead of shrinking it to the legacy1400 cap');
     $('#cancel-processing').click();modal.close();
   });
   await t.test('parallel second ruler and invalid distance stay on calibration with a translated error',async()=>{
@@ -138,7 +142,7 @@ test('ruler calibration uses visible open crosshairs, accessible points and safe
       $('#capture-continue').click();await waitFor(()=>$('#capture-calibration-back'));assert.equal(additions,0);$('#capture-calibration-back').click();sizeCanvas();pointer('pointermove',{x:500,y:450});
       assert.equal($('#calibration-canvas').width,1000);assert.equal($('#calibration-canvas').height,900);assert.deepEqual(view(),originalView);assert.equal($('#ruler-second').checked,true);assert.equal($('#ruler-distance').value,'100');assert.equal($('#ruler-second-distance').value,'50');assert.deepEqual(sources.get($('#calibration-canvas')).getContext('2d').getImageData(0,0,1000,900).data,original);
       fit();refs.forEach((p,i)=>closePoint(marked(i+1),p,'back retains ruler positions in original photograph'));
-      place(2,500,200);input($('#ruler-distance'),'125');const updated=[refs[0],{x:500,y:200},refs[2],refs[3]],expected=calibrateRulers({width:1000,height:900},updated,[125,50]);respond=null;const previousRuns=posted.filter(p=>p.url.includes('recognize-worker')).length;
+      place(2,500,200);input($('#ruler-distance'),'125');const updated=[refs[0],{x:500,y:200},refs[2],refs[3]],expected=calibrateRulersNative({width:1000,height:900},updated,[125,50]);metricReferences(expected,updated,[125,50]);respond=null;const previousRuns=posted.filter(p=>p.url.includes('recognize-worker')).length;
       $('#capture-continue').click();await waitFor(()=>posted.filter(p=>p.url.includes('recognize-worker')).length>previousRuns);const sent=posted.filter(p=>p.url.includes('recognize-worker')).at(-1).message;assert.equal(sent.image.width,expected.width);assert.equal(sent.image.height,expected.height);assert.equal(sent.options.pxPerMm,expected.pxPerMm);assert.equal(additions,0);$('#cancel-processing').click();
     }finally{respond=null;modal.close();}
   });
@@ -172,7 +176,7 @@ test('ruler calibration uses visible open crosshairs, accessible points and safe
   await t.test('after rewarp both photographed rulers remain excluded from adding tools',async()=>{
     let added=[];const modal=await openRuler(tools=>{added=tools;});$('#ruler-second').checked=true;$('#ruler-second').dispatchEvent(new win.Event('change'));sizeCanvas();
     const refs=[{x:100,y:100},{x:500,y:100},{x:600,y:100},{x:600,y:500}];refs.forEach((p,i)=>place(i+1,p.x,p.y));input($('#ruler-distance'),'100');input($('#ruler-second-distance'),'50');
-    const calibrated=calibrateRulers({width:1000,height:900},refs,[100,50]);
+    const calibrated=calibrateRulersNative({width:1000,height:900},refs,[100,50]);metricReferences(calibrated,refs,[100,50]);assert.equal(calibrated.pxPerMm,8,'400 source pixels per50mm is retained; the other axis is rewarped to the same metric');
     const box=(x0,y0,x1,y1)=>({points:[{x:x0,y:y0},{x:x1,y:y0},{x:x1,y:y1},{x:x0,y:y1}]});
     const around=(a,b)=>box(Math.min(a.x,b.x)-8,Math.min(a.y,b.y)-8,Math.max(a.x,b.x)+8,Math.max(a.y,b.y)+8);
     const contours=[around(...calibrated.points.slice(0,2)),around(...calibrated.points.slice(2)),box(30,30,80,80)];

@@ -1,7 +1,7 @@
 /** Bounded photometric analysis copy. No resampling, inpainting or learned model. */
 const clamp=(value,low,high)=>Math.max(low,Math.min(high,value));
 export function validateSelectionImage(image){
- if(!image||!Number.isInteger(image.width)||!Number.isInteger(image.height)||image.width<2||image.height<2||image.width*image.height>16000000||image.data?.length!==image.width*image.height*4)throw new Error('Fotografie nemá platná pixelová data.');
+ if(!image||!Number.isInteger(image.width)||!Number.isInteger(image.height)||image.width<2||image.height<2||image.width*image.height>64000000||image.data?.length!==image.width*image.height*4)throw new Error('Fotografie nemá platná pixelová data.');
 }
 export function selectionAbort(signal){if(signal?.aborted)throw new DOMException('Výběr byl zrušen.','AbortError');}
 export async function selectionYield(signal){selectionAbort(signal);await new Promise(resolve=>setTimeout(resolve,0));selectionAbort(signal);}

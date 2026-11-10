@@ -1,7 +1,7 @@
-import { detectPaper, rectifyImage, calibrateSegment } from './trace.js';
-import { calibrateRulers, rectifyRulers } from './ruler-calibration.js';
+import { detectPaper, rectifyImageNative, calibrateSegment } from './trace.js';
+import { calibrateRulers, rectifyRulersNative } from './ruler-calibration.js';
 import { recognizeTools } from './recognize.js';
-import {removePhotoBackground} from './background-client.js';
+import {removePhotoBackground,MAX_BACKGROUND_PIXELS} from './background-client.js';
 import {traceAlphaPhoto} from './photo-alpha.js';
 import {mountPhotoSelection} from './capture-selection.js';
 import {captureSelectionItem,captureSelectionMask,mergeCaptureCutout} from './capture-selection-result.js';
@@ -123,7 +123,7 @@ export function openCapture({onAdd,toast=()=>{},maxDepth=()=>MAX_DEPTH}){
     // Parallel recognisers report unrelated stage fractions. There is no shared
     // denominator, so explain the current work without claiming a total percent.
     const value=event.progress;
-    state.progress=null;
+    state.progress=event.stage==='matting'&&Number.isInteger(event.completed)&&Number.isInteger(event.total)&&event.total>0?{value:event.completed,max:event.total}:null;
     if(event.message)state.message=value>=1?'Dokončuji rozpoznávání a ověřuji rozměry…':event.message;
     updateLoading(modal.body,{message:t(state.message),progress:state.progress});
   }
@@ -158,10 +158,12 @@ export function openCapture({onAdd,toast=()=>{},maxDepth=()=>MAX_DEPTH}){
       const w=bitmap.width||bitmap.naturalWidth,h=bitmap.height||bitmap.naturalHeight;
       if(!Number.isFinite(w)||!Number.isFinite(h)||w<=0||h<=0)throw i18nError('Fotografie nemá platné rozlišení. Zkuste jinou fotku.');
       if(w<100||h<100)throw i18nError('Fotografie je příliš malá. Vyfoťte nástroj znovu blíž a ostřeji.');
-      const ratio=Math.min(1,1400/Math.max(w,h)),canvas=document.createElement('canvas');canvas.width=Math.round(w*ratio);canvas.height=Math.round(h*ratio);
+      if(w*h>MAX_BACKGROUND_PIXELS)throw i18nError('Fotografie přesahuje 64 megapixelů. Vyberte menší oblast; rozlišení se automaticky nesnižuje.');
+      const canvas=document.createElement('canvas');canvas.width=w;canvas.height=h;
       if(canvas.width<16||canvas.height<16)throw i18nError('Fotografie má příliš úzký výřez. Vyfoťte celý papír a nástroje.');
-      const ctx=canvas.getContext('2d',{willReadFrequently:true});ctx.drawImage(bitmap,0,0,canvas.width,canvas.height);
+      const ctx=canvas.getContext('2d',{willReadFrequently:true});if(!ctx)throw i18nError('Zařízení nedokáže otevřít tuto fotografii v plném rozlišení. Použijte počítač nebo menší výřez.');ctx.drawImage(bitmap,0,0);
       const pixels=ctx.getImageData(0,0,canvas.width,canvas.height);
+      canvas.width=1;canvas.height=1; // Release only the temporary decode surface, never resize source pixels.
       // Release the full camera bitmap before recognition allocates its working data.
       bitmap?.close?.();bitmap=null;if(url){URL.revokeObjectURL(url);url=null;}
       updateLoading(modal.body,{message:t('Hledám měřítko a připravuji nástroje k rozpoznání…')});
@@ -193,26 +195,39 @@ export function openCapture({onAdd,toast=()=>{},maxDepth=()=>MAX_DEPTH}){
     try{
       await frame();await frame();if(!current())return;
       if(state.mode==='ruler'){
-        if(state.rulerSecond){const calibrated=rectifyRulers(state.image,state.ruler,[state.rulerMm,state.rulerSecondMm]);state.work=calibrated.imageData;state.scale=calibrated.pxPerMm;state.referencePoints=calibrated.points;}
+        if(state.rulerSecond){const calibrated=rectifyRulersNative(state.image,state.ruler,[state.rulerMm,state.rulerSecondMm]);state.work=calibrated.imageData;state.scale=calibrated.pxPerMm;state.referencePoints=calibrated.points;}
         else{state.scale=calibrateSegment(state.ruler[0],state.ruler[1],state.rulerMm);state.work=state.image;state.referencePoints=state.ruler.slice(0,2);}
       }
-      else{const r=rectifyImage(state.image,state.corners,state.mode==='portrait'?210:297,state.mode==='portrait'?297:210,1100);state.work=r.imageData;state.scale=r.pxPerMm;}
+      else{const r=rectifyImageNative(state.image,state.corners,state.mode==='portrait'?210:297,state.mode==='portrait'?297:210);state.work=r.imageData;state.scale=r.pxPerMm;}
       if(state.outlineMode==='manual'){
         state.result={contours:[],mask:new Uint8Array(state.work.width*state.work.height),quality:{status:'review',reasons:[]}};state.busy=false;state.step=4;selectionIndex=null;render();return;
       }
       let recognitionImage=state.work,background=null;
       if(state.outlineMode==='background'&&!traceAlphaPhoto(state.work)){
-        background=await removePhotoBackground(state.work,{signal:run.signal,onProgress:event=>{if(current())progress(event);}});
-        if(!current())return;recognitionImage=background.image;
+        // NN always receives the full, unrectified source at its decoded size.
+        background=await removePhotoBackground(state.image,{signal:run.signal,onProgress:event=>{if(current())progress(event);}});
+        if(!current())return;
+        if(state.mode!=='ruler'){
+          const r=rectifyImageNative(background.image,state.corners,state.mode==='portrait'?210:297,state.mode==='portrait'?297:210);
+          if(r.imageData.width!==state.work.width||r.imageData.height!==state.work.height||r.pxPerMm!==state.scale)throw new Error('Maska a kalibrace nemají stejné souřadnice.');
+          background={...background,image:r.imageData};
+        }else if(state.rulerSecond){
+          const r=rectifyRulersNative(background.image,state.ruler,[state.rulerMm,state.rulerSecondMm]);
+          if(r.imageData.width!==state.work.width||r.imageData.height!==state.work.height||r.pxPerMm!==state.scale)throw new Error('Maska a kalibrace nemají stejné souřadnice.');
+          background={...background,image:r.imageData};
+        }
+        recognitionImage=background.image;
       }
-      const result=await recognizeTools(recognitionImage,{pxPerMm:state.scale,kind:state.mode==='ruler'?'reference':'paper',signal:run.signal,onProgress:event=>{if(current())progress(event);}});
+      // A verified server alpha remains authoritative even when entirely opaque;
+      // it must never silently start the legacy downsampled browser NN.
+      const result=background?traceAlphaPhoto(recognitionImage,{force:true}):await recognizeTools(recognitionImage,{pxPerMm:state.scale,kind:state.mode==='ruler'?'reference':'paper',signal:run.signal,onProgress:event=>{if(current())progress(event);}});
       if(!current())return;state.result=result;
       if(background){state.showCutout=true;state.backgroundCutout=background.image;state.result.backgroundRemoval={model:background.model,execution:background.execution,elapsedMs:background.elapsedMs};state.result.engine='background-server';state.result.neuralModel=background.model;state.result.neuralDisabled=false;}
       else if(result.engine==='alpha'){state.showCutout=true;state.backgroundCutout=state.work;}
       state.items=state.result.contours.map((contour,i)=>{
         const isReference=state.mode==='ruler'&&state.reference!=='tool'&&[0,2].some(j=>state.referencePoints[j]&&state.referencePoints.slice(j,j+2).every(p=>inside(p,contour.points)));
         return {contour,info:info(contour,state.scale),pocketShape:lastPocketShape,isReference,checked:!isReference,name:t('Nástroj {n}',{n:i+1})};
-      }).filter(item=>item.info.width>=2&&item.info.height>=2);
+      }); // Keep small contours visible; downstream physical validation reports unsupported dimensions explicitly.
       state.step=2;state.busy=false;state.showMask=false;render();
     }catch(error){
       if(!current()||error.name==='AbortError')return;
@@ -233,9 +248,9 @@ export function openCapture({onAdd,toast=()=>{},maxDepth=()=>MAX_DEPTH}){
     modal.footer.querySelector('#capture-cancel').onclick=modal.close;
   }
   function renderProcessing(){
-    modal.body.innerHTML=steps()+`<div class="capture-grid"><div class="capture-canvas"><canvas id="processing-canvas" aria-label="${esc(t('Zpracovávaná fotografie'))}"></canvas><div class="auto-photo-sweep" aria-hidden="true"></div></div><div class="capture-sidebar auto-sidebar">${loadingMarkup({title:t('Automatické rozpoznávání'),message:t(state.message),detail:t('Hledám předměty, odděluji je od pozadí a zpřesňuji hrany. Kontrast ani body nemusíte nastavovat.'),progress:state.progress,hooks:{message:{id:'auto-progress-message'},progress:{id:'auto-progress-bar'}}})}<p class="muted-note">${t('Automatický návrh můžete opravit přímo na fotografii. Vlastní výběr funguje i bez neuronové sítě.')}</p></div></div>`;
-    modal.footer.innerHTML=`<span class="footnote">${t('Fotografie zůstává ve vašem zařízení.')}</span><button class="btn btn-light" id="cancel-processing">${t('Zrušit')}</button>`;
-    const canvas=modal.body.querySelector('#processing-canvas');canvas.width=state.image.width;canvas.height=state.image.height;canvas.getContext('2d').putImageData(state.image,0,0);
+    modal.body.innerHTML=steps()+`<div class="capture-grid"><div class="capture-canvas"><canvas id="processing-canvas" aria-label="${esc(t('Zpracovávaná fotografie'))}"></canvas><div class="auto-photo-sweep" aria-hidden="true"></div></div><div class="capture-sidebar auto-sidebar">${loadingMarkup({title:t('Automatické rozpoznávání'),message:t(state.message),detail:state.outlineMode==='background'?t('Původní rozlišení {width} × {height} px. Celá fotografie se zpracuje po částech bez zmenšení.',{width:state.image.width,height:state.image.height}):t('Hledám předměty, odděluji je od pozadí a zpřesňuji hrany. Kontrast ani body nemusíte nastavovat.'),progress:state.progress,hooks:{message:{id:'auto-progress-message'},progress:{id:'auto-progress-bar'}}})}<p class="muted-note">${t('Automatický návrh můžete opravit přímo na fotografii. Vlastní výběr funguje i bez neuronové sítě.')}</p></div></div>`;
+    modal.footer.innerHTML=`<span class="footnote">${privacyText()}</span><button class="btn btn-light" id="cancel-processing">${t('Zrušit')}</button>`;
+    const canvas=modal.body.querySelector('#processing-canvas'),displayScale=Math.min(1,1400/Math.max(state.image.width,state.image.height));canvas.width=Math.round(state.image.width*displayScale);canvas.height=Math.round(state.image.height*displayScale);canvas.getContext('2d').drawImage(state.imageCanvas,0,0,canvas.width,canvas.height); // Display only; NN receives state.image without resampling.
     modal.footer.querySelector('#cancel-processing').onclick=reset;
   }
   function renderCalibration(){

@@ -1,3 +1,21 @@
+## 10. 11. 2026 – původní rozlišení pro NN a oddělené měřítko
+
+Na výslovný požadavek uživatele byla odstraněna nevratná redukce fotografie na1400px při načtení. Nový background režim posílá lokálnímu serveru celé původní dekódované RGBA, ještě před A4/dvojpravítkovým převzorkováním. Model s pevným vstupem1024×1024 dostane všechny původní pixely1:1 v překrývajících se výřezech, krok768px. Menší výřez se doplní bílou pouze mimo zdroj; žádný resize/stretch/interpolace vstupu do této NN. Jedna ONNX session pro všechny výřezy. Alpha se skládá váženými přesahy do původních rozměrů a přesných souřadnic; RGB zůstává soukromou kopií originálu. Pomocný scripts/background_tiles.py je nutná součást backendu.
+
+Měřítko plyne výhradně z původních kalibračních bodů a skutečné referenční délky. Modelových1024px ani počet dlaždic se do mm nepřenáší. Kalibrace A4 a dvou pravítek v capture používá ve všech režimech nové native funkce bez pevných1100/1400px výstupů; původní RGB a serverová alpha dostanou totožnou transformaci a stejný pxPerMm. Tím je opravená i ověřená regrese slité2pxmezery mezi dvěma šroubováky ve staré automatické cestě. Samotný starší prohlížečový rozpoznávač zůstává samostatná volba; tvrzení o NN vstupu1:1 platí pro nový nativní background režim. Ověřená serverová alpha se vždy zpracuje přímo, i pokud je zcela neprůhledná; nesmí tiše spustit starší prohlížečovou síť. Drobný obrys z nové alpha cesty se nemaže jen kvůli rozměru pod2mm.
+
+Limit je explicitních64milionů pixelů a20MB zdrojového souboru, nikoli automatické snížení rozlišení. Nedostatek paměti, větší zdroj či příliš velká plná rektifikace se hlásí; menší kopie se potichu nepoužije. Prohlížeč uchovává plný raster, takže zejména telefon může narazit na paměťový limit. Zdrojový guard pro interaktivní ROI byl sjednocen na64M; vlastní oblast výběru má stále samostatný paměťový limit. Čistě statický hosting nativní službu nenahradí.
+
+Klient vyžaduje native-tiles marker, přesné source rozměry a shodný jednorázový jobId v odpovědi; starý zmenšující server odmítne. Průběh completed/total pochází jen z tohoto konkrétního výpočtu. Upload timeout180s, jednotlivá inference180s, celková úloha dle počtu výřezů nejvýše30min; zrušení zastaví pouze vlastní proces. API stále nevystavuje fotografie třetím stranám ani je neukládá.
+
+Ověření: celá finální sada desktop **1637/1637**, mobil **1695/1695**, fail/skip/cancel0. Nové transportní a metrologické sady **15/15 v každé aplikaci** zahrnují9 případů100×20mm při1000×700,2000×1400 a4000×2800px, známou délku/A4/dvě pravítka, dotyk sCSSoffsetem,2%rezervu právějednou a skutečné STL dutiny se samostatnou0.8mm vůlí. Maxdigitální rozměrová odchylkaSTL **0.203999mm** pochází z jednoho zdrojového pixelu přiA4 převzorkování; nejde o fyzickou přesnost fotoaparátu/výtisku.11/11 skutečných fullsource HTTPpayloadhash a11/11 skutečně stažených PNGalpha souhlasí s analytickými transportními fixtures. Nejde o skutečnouNN v těchto metrologických případech. Samostatný >16M test skutečného ROI výběru zachoval37×11px a přesné source souřadnice bezWorkeru.
+
+Skutečné nové NN běhy jsou oddělené: rucni naradi.png1261×860→2 native výřezy,31.028s; 2kleště.jpeg1542×2047→6 výřezů,76.693s. Byte-exact RGBA vstupy, nezměněný caller/RGB, stejné source rozměry a0browserNNworkerů. **Raw kvalita není univerzálně vyřešená:** první foto má28 návrhů proti27 fyzickým sestavám; horní černá lišta nože se obnovila, ale tyč pistole, poutko a hlava prvního šroubu mají stále chybějící maskové body. Druhá fotka má kromě kleští i nesprávně ponechaný kus papíru nahoře. To není úspěšný automatický výrobní obvod a nenazýváme to vyřešením všech malých nástrojů. Stav musí zůstat REVIEW; originál a opravy jsou dostupné. Obě raw masky, průběhy a PNG jsou v ../artifacts/native-resolution/actual/. Starší27/27STL důkaz po jedné opravě patří předchozí globální masce, nikoli této nové masce.
+
+Finální protokol a přesné SHA: ../artifacts/native-resolution/release-result.json. Měření: ../artifacts/native-resolution/final-report.json. Fyzický telefon, nativní prohlížeč a nový výtisk v této změně neověřeny. Vše zůstává lokální; žádný push/deploy.
+
+---
+
 # Lokální rozpoznávání fyzických nástrojů
 
 ## Automatická maska před obrysem – lokální server

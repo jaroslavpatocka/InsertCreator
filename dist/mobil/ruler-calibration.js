@@ -5,7 +5,7 @@ const apply = (matrix, point) => ({x:matrix.a*point.x+matrix.c*point.y+matrix.e,
 /** Pixel-to-pixel transform with one uniform output pxPerMm and no image reflection. */
 export function calibrateRulers(imageSize, points, distancesMm, maxSize = 1400) {
   const {width:sw,height:sh}=imageSize||{};
-  if(!Number.isInteger(sw)||!Number.isInteger(sh)||sw<2||sh<2||sw*sh>16000000||!Number.isInteger(maxSize)||maxSize<32||maxSize>2048)throw invalid();
+  if(!Number.isInteger(sw)||!Number.isInteger(sh)||sw<2||sh<2||sw*sh>64000000||!Number.isInteger(maxSize)||maxSize<32||maxSize>2048)throw invalid();
   if(!Array.isArray(points)||points.length!==4||points.some(p=>!p||!Number.isFinite(p.x)||!Number.isFinite(p.y)||p.x<0||p.y<0||p.x>sw-1||p.y>sh-1)||!Array.isArray(distancesMm)||distancesMm.length!==2||distancesMm.some(d=>!Number.isFinite(d)||d<1||d>5000))throw invalid();
   const u={x:points[1].x-points[0].x,y:points[1].y-points[0].y},v={x:points[3].x-points[2].x,y:points[3].y-points[2].y};
   const lu=Math.hypot(u.x,u.y),lv=Math.hypot(v.x,v.y),cross=u.x*v.y-u.y*v.x;
@@ -34,7 +34,11 @@ export function calibrateRulers(imageSize, points, distancesMm, maxSize = 1400) 
 /** Bilinear rewarp before recognition; both references genuinely change the resulting geometry. */
 export function rectifyRulers(image, points, distancesMm, maxSize = 1400) {
   if(!image?.data||image.data.length!==image.width*image.height*4)throw new Error('Obrázek nemá platná pixelová data.');
-  const result=calibrateRulers(image,points,distancesMm,maxSize),{width,height,inverse}=result;
+  return rewarpRulers(image,calibrateRulers(image,points,distancesMm,maxSize));
+}
+
+function rewarpRulers(image,result){
+  const {width,height,inverse}=result;
   const data=new Uint8ClampedArray(width*height*4),sw=image.width,sh=image.height,source=image.data;
   let transparent=false;for(let p=3;p<source.length;p+=4)if(source[p]<250){transparent=true;break;}
   for(let y=0;y<height;y++)for(let x=0;x<width;x++){
@@ -44,4 +48,22 @@ export function rectifyRulers(image, points, distancesMm, maxSize = 1400) {
     for(let k=0;k<4;k++)data[out+k]=source[(y0*sw+x0)*4+k]*(1-fx)*(1-fy)+source[(y0*sw+x1)*4+k]*fx*(1-fy)+source[(y1*sw+x0)*4+k]*(1-fx)*fy+source[(y1*sw+x1)*4+k]*fx*fy;
   }
   return {...result,imageData:typeof ImageData==='function'?new ImageData(data,width,height):{data,width,height}};
+}
+
+/** Full-density affine calibration: no fixed raster-size cap and one physical
+ * px/mm scale. Original reference points, not NN dimensions, define the metric. */
+export function calibrateRulersNative(imageSize,points,distancesMm){
+  const base=calibrateRulers(imageSize,points,distancesMm,2048);
+  const {a,b,c,d}=base.inverse,trace=a*a+b*b+c*c+d*d,det=a*d-b*c;
+  const density=base.pxPerMm*Math.sqrt((trace+Math.sqrt(Math.max(0,trace*trace-4*det*det)))/2);
+  const ratio=density/base.pxPerMm,width=Math.max(2,Math.ceil(base.widthMm*density)+1),height=Math.max(2,Math.ceil(base.heightMm*density)+1);
+  if(!Number.isFinite(density)||width*height>64000000||Math.max(width,height)>16384)throw new Error('Narovnání v plném rozlišení přesahuje paměťový limit. Vyberte menší oblast; fotografie se automaticky nezmenšuje.');
+  const transform=Object.fromEntries(Object.entries(base.transform).map(([key,value])=>[key,value*ratio]));
+  const inverse={...base.inverse,a:base.inverse.a/ratio,b:base.inverse.b/ratio,c:base.inverse.c/ratio,d:base.inverse.d/ratio};
+  return{...base,width,height,pxPerMm:density,transform,inverse,points:points.map(point=>apply(transform,point))};
+}
+
+export function rectifyRulersNative(image,points,distancesMm){
+  if(!image?.data||image.data.length!==image.width*image.height*4)throw new Error('Obrázek nemá platná pixelová data.');
+  return rewarpRulers(image,calibrateRulersNative(image,points,distancesMm));
 }

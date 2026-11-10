@@ -4,7 +4,7 @@ import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import http from 'node:http';
-import {createBackgroundServer,resolveBackgroundConfig,BACKGROUND_MODEL,MAX_PIXELS,BACKGROUND_SERVICE_MARKER} from '../scripts/background-server.mjs';
+import {createBackgroundServer,resolveBackgroundConfig,BACKGROUND_MODEL,MAX_PIXELS,BACKGROUND_SERVICE_MARKER,nativeTileCount,nativeJobTimeout,MAX_JOB_MS} from '../scripts/background-server.mjs';
 
 async function fixture(t,options={}){
  const root=await fs.mkdtemp(path.join(os.tmpdir(),'insertcreator-background-test-'));await fs.mkdir(path.join(root,'mobil'));await fs.writeFile(path.join(root,'index.html'),'local desktop');await fs.writeFile(path.join(root,'mobil/index.html'),'local mobile');await fs.writeFile(path.join(root,'app.js'),'export const local=true;');
@@ -25,7 +25,7 @@ test('RGBA binary input retains source dimensions/order and response is exact al
 });
 test('invalid dimensions, byte lengths, media and oversized images never invoke model',async t=>{
  let calls=0;const{url}=await fixture(t,{jobRunner:async()=>{calls++;return{alpha:new Uint8Array(1)};}});
- for(const[w,h,body,status]of [[0,1,new Uint8Array(0),400],[-1,1,new Uint8Array(0),400],['1.5',2,new Uint8Array(0),400],[2001,2000,new Uint8Array(0),413],[2,2,new Uint8Array(12),400]])assert.equal((await fetch(url+'/api/background/remove',{method:'POST',headers:headers(w,h),body})).status,status);
+ for(const[w,h,body,status]of [[0,1,new Uint8Array(0),400],[-1,1,new Uint8Array(0),400],['1.5',2,new Uint8Array(0),400],[8001,8000,new Uint8Array(0),413],[2,2,new Uint8Array(12),400]])assert.equal((await fetch(url+'/api/background/remove',{method:'POST',headers:headers(w,h),body})).status,status);
  assert.equal((await fetch(url+'/api/background/remove',{method:'POST',headers:{...headers(1,1),'Content-Type':'image/png'},body:new Uint8Array(4)})).status,415);assert.equal(calls,0);
 });
 test('same-origin guard rejects cross-site requests and hostile host before inference',async t=>{
@@ -77,4 +77,26 @@ test('available local service marks root and mobile app HTML before startup with
 test('unavailable service leaves original app HTML bytes and initial mode untouched',async t=>{
  const{url,root}=await fixture(t,{config:{available:false}}),original='<!doctype html><html><head><title>Žádný model</title></head><body>auto</body></html>';
  await fs.writeFile(path.join(root,'index.html'),original);const response=await fetch(url+'/'),body=await response.text();assert.equal(body,original);assert.equal(Number(response.headers.get('content-length')),Buffer.byteLength(original));assert.equal(body.includes('insertcreator-background-service'),false);
+});
+test('native tile count and deadlines grow without reducing input and have explicit30minute ceiling',()=>{
+ assert.equal(MAX_PIXELS,64000000);for(const[w,h,total]of [[1,1,1],[1024,1024,1],[1025,1024,2],[1261,860,2],[1792,1792,4],[8000,8000,121]])assert.equal(nativeTileCount(w,h),total);
+ assert.equal(nativeJobTimeout(1024,1024),180000);assert.equal(nativeJobTimeout(1261,860),360000);assert.equal(nativeJobTimeout(8000,8000),MAX_JOB_MS);assert.equal(MAX_JOB_MS,1800000);
+});
+test('active progress is source-sized, monotonic and tied to caller job nonce',async t=>{
+ let update,release,started=false;const width=1261,height=2,id='native-source-job-123';
+ const{url}=await fixture(t,{jobRunner:async({onProgress,width:w,height:h})=>{assert.equal(w,width);assert.equal(h,height);update=onProgress;started=true;await new Promise(resolve=>release=resolve);return{alpha:new Uint8Array(w*h).fill(201)};}});
+ const pending=fetch(url+'/api/background/remove',{method:'POST',headers:{...headers(width,height),'X-Background-Job':id},body:new Uint8Array(width*height*4)});await waitUntil(()=>started);
+ let status=await(await fetch(url+'/api/background/status')).json();assert.equal(status.jobId,id);assert.deepEqual(status.progress,{completed:0,total:2,width,height});
+ update({completed:1,total:2,width,height});update({completed:0,total:2,width,height});update({completed:2,total:999,width,height});update({completed:2,total:2,width:999,height});update({completed:3,total:2,width,height});
+ status=await(await fetch(url+'/api/background/status')).json();assert.deepEqual(status.progress,{completed:1,total:2,width,height});release();const response=await pending;
+ assert.equal(response.status,200);assert.equal(response.headers.get('x-background-job'),id);assert.equal(response.headers.get('x-background-method'),'native-tiles');assert.equal(response.headers.get('x-image-width'),String(width));assert.equal(response.headers.get('x-image-height'),String(height));assert.equal((await response.arrayBuffer()).byteLength,width*height);
+ status=await(await fetch(url+'/api/background/status')).json();assert.equal(status.busy,false);assert.equal(status.progress,undefined);assert.equal(status.jobId,undefined);
+});
+test('source larger than previous4M limit is forwarded without resizing',async t=>{
+ const width=2500,height=1700,source=new Uint8Array(width*height*4);source[0]=7;source[source.length-1]=231;let calls=0;
+ const{url}=await fixture(t,{jobRunner:async({width:w,height:h,rgba})=>{calls++;assert.equal(w,width);assert.equal(h,height);assert.equal(rgba.byteLength,source.length);assert.equal(rgba[0],7);assert.equal(rgba[rgba.length-1],231);return{alpha:new Uint8Array(w*h)};}});
+ const response=await fetch(url+'/api/background/remove',{method:'POST',headers:headers(width,height),body:source});assert.equal(response.status,200);assert.equal((await response.arrayBuffer()).byteLength,width*height);assert.equal(calls,1);
+});
+test('invalid job nonce is rejected before model invocation',async t=>{
+ let called=false;const{url}=await fixture(t,{jobRunner:async()=>{called=true;}});const response=await fetch(url+'/api/background/remove',{method:'POST',headers:{...headers(1,1),'X-Background-Job':'unsafe job'},body:new Uint8Array(4)});assert.equal(response.status,400);assert.equal(called,false);
 });

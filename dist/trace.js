@@ -5,7 +5,7 @@ function validateImage(image) {
   if (!image || !Number.isInteger(image.width) || !Number.isInteger(image.height) || image.width < 2 || image.height < 2 || !image.data || image.data.length !== image.width * image.height * 4) {
     throw new Error('Obrázek nemá platná pixelová data.');
   }
-  if (image.width * image.height > 16000000) throw new Error('Pro zpracování zmenšete fotografii na nejvýše 16 megapixelů.');
+  if (image.width * image.height > 64000000) throw new Error('Fotografie přesahuje 64 megapixelů. Vyberte menší oblast; rozlišení se automaticky nesnižuje.');
 }
 
 function luminance(image) {
@@ -193,7 +193,7 @@ export function traceImage(imageData, { threshold = null, invert = false, minAre
 
 /** Trace measured binary pixel edges without blurring away gaps or closing thin shafts. */
 export function traceMask(mask, width, height, { minArea = .001, smoothing = 1.3, barriers = null, includeLabels = false, minComponentPixels = 12, keepBorder = false } = {}) {
-  if (!Number.isInteger(width) || !Number.isInteger(height) || width < 2 || height < 2 || width * height > 16000000 || mask?.length !== width * height) throw new Error('Maska nemá platná pixelová data.');
+  if (!Number.isInteger(width) || !Number.isInteger(height) || width < 2 || height < 2 || width * height > 64000000 || mask?.length !== width * height) throw new Error('Maska nemá platná pixelová data.');
   if (barriers && barriers.length !== mask.length) throw new Error('Mapa hran má jiný rozměr než maska.');
   const count = width * height;
   const { labels, components } = labelComponents(mask, width, height, barriers);
@@ -348,9 +348,10 @@ function quadTransform(corners) {
 /** Perspective-correct A4/reference rectangle using bilinear source sampling. */
 export function rectifyImage(imageData, corners, widthMm = 210, heightMm = 297, maxSize = 1100) {
   validateImage(imageData);
-  if (!(widthMm > 0) || !(heightMm > 0) || !Number.isFinite(widthMm + heightMm) || !(maxSize >= 16 && maxSize <= 4096)) throw new Error('Zadejte platné rozměry měřítka.');
+  if (!(widthMm > 0) || !(heightMm > 0) || !Number.isFinite(widthMm + heightMm) || !(maxSize >= 16 && maxSize <= 16384)) throw new Error('Zadejte platné rozměry měřítka.');
   const transform = quadTransform(corners), pxPerMm = maxSize / Math.max(widthMm, heightMm);
   const width = Math.max(2, Math.round(widthMm * pxPerMm)), height = Math.max(2, Math.round(heightMm * pxPerMm));
+  if(width*height>64000000)throw new Error('Narovnání v plném rozlišení přesahuje paměťový limit. Vyberte menší oblast; fotografie se automaticky nezmenšuje.');
   const data = new Uint8ClampedArray(width * height * 4), source = imageData.data, sw = imageData.width, sh = imageData.height;
   let transparent=false;for(let p=3;p<source.length;p+=4)if(source[p]<250){transparent=true;break;}
   for (let y = 0; y < height; y++) for (let x = 0; x < width; x++) {
@@ -371,4 +372,24 @@ export function calibrateSegment(a, b, distanceMm) {
   const distance = Math.hypot(b.x - a.x, b.y - a.y);
   if (distance < 12) throw new Error('Značky pravítka jsou příliš blízko. Použijte delší úsek alespoň 12 pixelů.');
   return distance / distanceMm;
+}
+
+/** Native calibration retains the source sampling density. The model receives
+ * the unrectified source; this transform is applied equally to RGB and alpha. */
+export function rectifyImageNative(imageData,corners,widthMm=210,heightMm=297){
+  validateImage(imageData);
+  const q=quadTransform(corners);let density=0;
+  // Maximum source-pixels/mm singular value of the homography. Oversampling
+  // the metric plane avoids making one axis coarser to compensate the other.
+  for(let j=0;j<=8;j++)for(let i=0;i<=8;i++){
+    const u=i/8,v=j/8,n=q.g*u+q.h*v+1;
+    if(!(n>1e-8))throw new Error('Z této perspektivy nelze papír bezpečně narovnat.');
+    const sx=q.a*u+q.b*v+q.c,sy=q.d*u+q.e*v+q.f;
+    const a=(q.a*n-q.g*sx)/(n*n*widthMm),b=(q.d*n-q.g*sy)/(n*n*widthMm),c=(q.b*n-q.h*sx)/(n*n*heightMm),d=(q.e*n-q.h*sy)/(n*n*heightMm);
+    const sum=a*a+b*b+c*c+d*d,det=a*d-b*c;
+    density=Math.max(density,Math.sqrt((sum+Math.sqrt(Math.max(0,sum*sum-4*det*det)))/2));
+  }
+  const maxSize=Math.max(16,Math.ceil(density*Math.max(widthMm,heightMm)));
+  if(!Number.isFinite(maxSize)||maxSize>16384||Math.round(widthMm*maxSize/Math.max(widthMm,heightMm))*Math.round(heightMm*maxSize/Math.max(widthMm,heightMm))>64000000)throw new Error('Narovnání v plném rozlišení přesahuje paměťový limit. Vyberte menší oblast; fotografie se automaticky nezmenšuje.');
+  return rectifyImage(imageData,corners,widthMm,heightMm,maxSize);
 }
