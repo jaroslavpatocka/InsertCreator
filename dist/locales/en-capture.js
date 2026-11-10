@@ -2,6 +2,13 @@
 // Keep {placeholders} identical in both languages.
 // Worker progress messages, quality reasons and worker errors travel as Czech text and are translated in capture.js.
 export default {
+  "Nalezené oblasti nemají dostatečnou oporu ve skutečných hranách. Nejsou automaticky považované za nástroje.":"The detected regions do not have enough support from real image edges. They are not automatically treated as tools.",
+  "Některé oblasti nemají dostatečnou oporu ve skutečných hranách. Zůstaly oddělené pro výslovnou kontrolu.":"Some regions do not have enough support from real image edges. They remain separate for explicit review.",
+  "Nejisté oblasti ({n}) nejsou automaticky považované za nástroje. Původní fotografie a průhlednost zůstávají zachované.":"Uncertain regions ({n}) are not automatically treated as tools. The original photo and transparency are preserved.",
+  "Nejisté oblasti jsou zobrazené a nezaškrtnuté.":"Uncertain regions are visible and unchecked.",
+  "Zobrazit nejisté oblasti":"Show uncertain regions",
+  "Nejistá oblast {n}":"Uncertain region {n}",
+  "Tato oblast nemá potvrzenou hranu nástroje. Pro přidání ji nejprve ověřte podle fotografie a výslovně zaškrtněte.":"This region has no confirmed tool boundary. Check it against the photo and explicitly select it before adding.",
   "Naměřený obrys není platný. Vyberte jej znovu nebo upravte jeho body.":"The measured outline is invalid. Select it again or edit its points.",
   "Některé kapsy se nepodařilo připravit. Označené obrysy zkontrolujte nebo znovu vyberte.":"Some pockets could not be prepared. Check or reselect the marked outlines.",
   "{n} obrysů nelze bezpečně převést na kapsu. Ostatní nástroje můžete použít.":"{n} outlines cannot be converted safely into pockets. You can use the other tools.",

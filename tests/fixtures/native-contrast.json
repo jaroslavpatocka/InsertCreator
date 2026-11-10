@@ -1,0 +1,187 @@
+{
+  "scope": "Exact saved actual six-tile native matte + original JPEG transport/evaluation fixtures. Full1542x2047 resolution. Tests replay this prediction; they do not run NN or claim complete pixel-mask truth. The JPEG and visible cutout RGB contain user-provided local image data; no publication is implied.",
+  "source": "2kleště.jpeg",
+  "sourceSha256": "f93ce262eaff4f64bd74473d15ae26c60f0bc4fddd3c3c133b806a5e0468b056",
+  "width": 1542,
+  "height": 2047,
+  "physicalTools": 1,
+  "material": [
+    {
+      "id": "upper-handle-end",
+      "x": 548,
+      "y": 820,
+      "r": 3
+    },
+    {
+      "id": "upper-handle-middle",
+      "x": 720,
+      "y": 945,
+      "r": 3
+    },
+    {
+      "id": "upper-metal-neck",
+      "x": 809,
+      "y": 1063,
+      "r": 2
+    },
+    {
+      "id": "pivot",
+      "x": 878,
+      "y": 1114,
+      "r": 2
+    },
+    {
+      "id": "upper-jaw-shoulder",
+      "x": 940,
+      "y": 1074,
+      "r": 1
+    },
+    {
+      "id": "upper-jaw-tip",
+      "x": 987,
+      "y": 1064,
+      "r": 0
+    },
+    {
+      "id": "lower-jaw-tip",
+      "x": 977,
+      "y": 1178,
+      "r": 0
+    },
+    {
+      "id": "lower-metal-neck",
+      "x": 853,
+      "y": 1161,
+      "r": 2
+    },
+    {
+      "id": "lower-handle-middle",
+      "x": 620,
+      "y": 1315,
+      "r": 3
+    },
+    {
+      "id": "lower-handle-end",
+      "x": 517,
+      "y": 1360,
+      "r": 3
+    },
+    {
+      "id": "upper-thin-spring",
+      "x": 750,
+      "y": 1085,
+      "r": 0
+    },
+    {
+      "id": "lower-thin-spring",
+      "x": 755,
+      "y": 1130,
+      "r": 0
+    },
+    {
+      "id": "spring-loop",
+      "x": 687,
+      "y": 1105,
+      "r": 0
+    }
+  ],
+  "background": [
+    {
+      "id": "upper-paper-left",
+      "x": 250,
+      "y": 250,
+      "r": 5
+    },
+    {
+      "id": "upper-paper-middle",
+      "x": 600,
+      "y": 350,
+      "r": 5
+    },
+    {
+      "id": "upper-paper-right",
+      "x": 1100,
+      "y": 350,
+      "r": 5
+    },
+    {
+      "id": "upper-paper-far-right",
+      "x": 1350,
+      "y": 500,
+      "r": 5
+    },
+    {
+      "id": "upper-paper-lower-left",
+      "x": 300,
+      "y": 600,
+      "r": 5
+    },
+    {
+      "id": "upper-paper-lower-right",
+      "x": 1250,
+      "y": 760,
+      "r": 5
+    },
+    {
+      "id": "gap-between-spring-wires",
+      "x": 785,
+      "y": 1114,
+      "r": 1
+    },
+    {
+      "id": "open-jaw-gap",
+      "x": 950,
+      "y": 1121,
+      "r": 2
+    },
+    {
+      "id": "cast-shadow-left-of-tool",
+      "x": 550,
+      "y": 1195,
+      "r": 3
+    },
+    {
+      "id": "paper-left-of-tool",
+      "x": 250,
+      "y": 1200,
+      "r": 5
+    },
+    {
+      "id": "paper-right-of-tool",
+      "x": 1300,
+      "y": 1300,
+      "r": 5
+    },
+    {
+      "id": "lower-paper",
+      "x": 700,
+      "y": 1700,
+      "r": 5
+    },
+    {
+      "id": "table-top",
+      "x": 800,
+      "y": 50,
+      "r": 5
+    }
+  ],
+  "sourceFixture": "native-contrast-source.jpeg",
+  "cutoutFixture": "native-contrast-cutout.png",
+  "cutoutSha256": "75e46f784e4b0c9ebf7becaaf060581d3939653fda2541b73485a92a05cbd42a",
+  "alphaSha256": "8a45c525c9604f5d794b522c28bfbf3742173825824266e9649ee9e9f077ab1b",
+  "rawProposals": 2,
+  "calibration": {
+    "scope": "Declared known-length input for pipeline conservation, not a measured physical dimension of this tool.",
+    "points": [
+      {
+        "x": 548,
+        "y": 820
+      },
+      {
+        "x": 517,
+        "y": 1360
+      }
+    ],
+    "distanceMm": 100
+  }
+}

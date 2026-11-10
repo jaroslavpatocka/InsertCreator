@@ -1,3 +1,23 @@
+## 10. 11. 2026 – skutečný kontrast hran před automatickým výběrem nástroje
+
+Na uživatelově snímku2kleště nativní alpha obsahovala vedle kleští velkou oblast papíru. Dřívější průhledná cesta ji bez kontroly považovala za druhý nástroj. Nový alpha-contrast.js porovnává obvod každé komponenty se zachovaným RGB ve stejném kalibrovaném rámci. Měří skutečný lokální barevný kontrast po obvodu, ne kontrast šachovnicového náhledu. Používá již vytvořené source labels, ne další plný label raster. Nehýbe pixely, obrysy ani měřítkem.
+
+Pokud původní opaqueRGB chybí (už exportovanýPNG má všude pod alpha0 nulovéRGB), nepředstírá existující kontext. Kombinuje měřitelnou šířku alpha přechodu s vnitřním obrazovým detailem; široce rozmazaná plochá oblast zůstane pending. Ostrý plochý nástroj se tím automaticky nemaže. Pravidla neurčují sémanticky druh předmětu a nejsou zárukou libovolné fotografie. Region bez jakékoli měřitelné hranice, včetně zcela opaque servermasky celé fotografie, také není automaticky kapsa celé fotografie. Žádný případ nespouští skrytý prohlížečovýNN fallback.
+
+Na skutečné1542×2047fotografii má horní oblast asi46% sourcepodporovaného obvodu, kleště přes99%. JPEG+uloženáserveralpha i užprůhlednýPNG nyní dávají1předvolený nástroj a1oddělenou nejistou oblast. Tlačítko Zobrazit nejisté oblasti ji explicitně vrátí jako nezaškrtnutý návrh s vysvětlením. RawRGBA, původní alpha aPNG download jsou intaktní; horní papír v samotné rawmasce zůstává viditelný. Změna opravuje rozhodnutí co je automaticky přidaný nástroj, netvrdí bezchybnou novou masku pozadí. Ruční výběr/Přidat/Ubrat/body zůstávají dostupné.
+
+Všech13 nezávislých materiálových bodů kleští včetně pružiny je zachováno; body siluety a2%fit/mmvůle se nemění. Původní nářadí má stále28 sourceidentických obrysů (nikoli tvrzení o28fyzických nástrojích). Half/native/double analytické kontroly klasifikace jsou oddělené od skutečné nativní inference; v této opravě se žádný nový BiRefNet job nespouštěl. NN stále dostává všechny původní pixely1:1; limit64Mpx/20MB i NativeA4/rulers zůstaly bezezměn.
+
+Nezávislé review zachytilo a uzavřelo nulovou měřitelnou hranu ufullframealpha a mobilní cache verzi. Cache desktopv78/mobilev28-contrast-objects, nový asset v obou offline seznamech. Produkční mobilní kopie vzniká pouze oficiálním sync:mobile. Regresní test původní28alpha používá nově výslovný highcontrast RGBsilhouette transport control; alpha/geometry/metrologické assertions se neoslabily. Nejde o sourceRGB kvalitu NN; ta se ověřuje oddělenou skutečnou pliersfixturou. Fullopaque test zachováváPNG255/rozměry/sourcehash/0Workers a vyžaduje explicitpending místo obří automatické kapsy.
+
+Finální celé sady, příkazy runneru, neměnnéSHA, lokální commity a přesné HTTP bajty: ../artifacts/contrast-release/release-result.json. Kontroly: ../artifacts/contrast-components/result.json a scale-result.json, ../artifacts/contrast-validation/ s actual DOM/Canvas/STL. Fyzický telefon, nativní prohlížeč ani nový výtisk v této změně ověřeny nejsou. CizíAGENTS/app.test/.tmp/report zachované mimo commity, report z5.11.přečten bez nového relevantního nálezu. Bezpush/deploy. Ctrl+F5 a fotografii znovu zpracovat.
+
+Princip opory skutečných obrazových hran: https://docs.opencv.org/4.8.0/da/d22/tutorial_py_canny.html. Implementace je vlastní RGB/alpha diagnostika, ne integrace OpenCV ani nové neuronové sítě.
+
+Finální celé sady desktop1658/1658 a mobil1716/1716, exit0/fail0/skip0/cancel0, nad890 immutable runtime/test/backend soubory. Příkaz obou: npm.cmd test -- --test-concurrency=1 (všechny testy, jen dva procesy globálně; žádné oslabení limitů nebo tolerancí). Desktop zahrnuje dřívější cizí author-credit test, který není v našem commitu. Zdroj/test SHA jsou stejné před během i po něm. Finální lokální commity a oficiální201souborový mobilní snapshot uvádí release-result.json; přesné HTTP odpovědi ověřuje http-package-result.json.
+
+---
+
 ## 10. 11. 2026 – odstraněné pozadí nezmizí při chybě přípravy kapsy
 
 Screenshot s průhlednou fotografií a prázdným seznamem měl konkrétní aplikační příčinu: platný obrys posuvného měřítka vyvolal výjimku v hladkém fitu; vykreslení všech položek pak vstoupilo do společného catch a vymazalo celý seznam. Hláška o nečitelné fotografii byla zavádějící. Původní alpha, rozlišení, NN a kalibrace se touto opravou nemění.

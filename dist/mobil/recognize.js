@@ -60,7 +60,7 @@ export async function recognizeTools(image, { pxPerMm = 1, kind = 'paper', signa
   // Validate before touching bytes, then let genuine alpha bypass that NN.
   if(!image||!Number.isInteger(image.width)||!Number.isInteger(image.height)||image.width<2||image.height<2||image.width*image.height>64000000||!(image.data instanceof Uint8Array||image.data instanceof Uint8ClampedArray)||image.data.length!==image.width*image.height*4)throw new Error('Obrázek nemá platná pixelová data.');
   if (signal?.aborted) throw aborted();
-  const alpha=traceAlphaPhoto(image);if(alpha){try{onProgress?.({stage:'done',progress:1,message:'Používám průhlednost obrázku…'});}catch{}if(signal?.aborted)throw aborted();return alpha;}
+  const alpha=traceAlphaPhoto(image,{signal});if(alpha){try{onProgress?.({stage:'done',progress:1,message:'Používám průhlednost obrázku…'});}catch{}if(signal?.aborted)throw aborted();return alpha;}
   validateInstanceImage(image);
   let completed = 0;
   const progress = event => {
