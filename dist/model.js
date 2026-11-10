@@ -1,6 +1,6 @@
 import {normalizePocketWall,validatePocketWall} from './pocket-wall.js';
 import {materialConfig} from './print-material.js';
-import {validateFingerGrips} from './finger-grip.js';
+import {validateFingerGrips,contourProblem,CONTOUR_TOPOLOGY_WORK} from './finger-grip.js';
 import {optionalPocketMargin} from './pocket-margin.js';
 import {normalizeLabelStyle} from './label-style.js';
 import {validatePocketMagnets} from './tool-magnet.js';
@@ -8,6 +8,7 @@ import {validateToolSets} from './tool-sets.js';
 import {validateModuleFootprint} from './module-footprint.js';
 import {t,t as tr,i18nError} from './i18n.js';
 import {fmtLen} from './units.js';
+import {normalizeAttribution} from './asset-attribution.js';
 
 export const uid=()=>globalThis.crypto?.randomUUID?.()||`id-${Date.now()}-${Math.random().toString(36).slice(2)}`;
 export const clone=value=>JSON.parse(JSON.stringify(value));
@@ -17,10 +18,17 @@ const finite=(value,min,max,label,length=true)=>{const n=Number(value);if(!Numbe
 const text=(s,max=100)=>String(s??'').slice(0,max);
 // Helper metadata is never worth rejecting a project over: unusable values are dropped silently.
 const metaText=(s,max)=>typeof s==='string'?s.replace(/[\u0000-\u001f\u007f-\u009f]/g,'').trim().slice(0,max).trim():'';
-export function validateProject(input){
+// Imported files are untrusted: above the 12 MB file cap's real content, and
+// shared by all contours so a crafted file cannot multiply the per-contour budget.
+export const IMPORT_POINT_LIMIT=300000;
+const IMPORT_TOPOLOGY_WORK=4*CONTOUR_TOPOLOGY_WORK;
+/** strict: untrusted import - every contour must be one simple outline within a project-wide budget. */
+export function validateProject(input,{strict=false}={}){
   const p=input?.project||input;
   if(!p||typeof p!=='object'||!Array.isArray(p.tools)||!Array.isArray(p.modules))throw i18nError('Soubor neobsahuje projekt InsertCreator.');
   if(p.tools.length>3000||p.modules.length>4000)throw i18nError('Projekt je příliš velký. Limit je 3000 nástrojů a 4000 modulů.');
+  const meter=strict?{left:IMPORT_TOPOLOGY_WORK}:null;
+  if(strict&&p.tools.reduce((sum,tool)=>sum+(Array.isArray(tool?.points)?tool.points.length:0),0)>IMPORT_POINT_LIMIT)throw i18nError('Projekt má příliš mnoho bodů kontur. Limit je {max} bodů.',{max:IMPORT_POINT_LIMIT});
   const out={id:text(p.id||uid()),name:text(p.name||t('Nový šuplík')),width:finite(p.width,42,3000,'šířka'),height:finite(p.height,42,3000,'hloubka'),grid:finite(p.grid??42,10,100,'rastr'),gap:finite(p.gap??3,0,30,'mezera'),clearance:finite(p.clearance??.8,0,5,'vůle'),wall:finite(p.wall??2.4,1,15,'stěna'),base:finite(p.base??2.4,1,20,'dno'),insertHeight:finite(p.insertHeight??20,3,100,'výška inzertu'),tools:[],modules:[],updatedAt:text(p.updatedAt||new Date().toISOString())};
   out.printMode=['solid','light'].includes(p.printMode)?p.printMode:'solid';
   out.bottomMode=['plain','grid','magnet','adhesive'].includes(p.bottomMode)?p.bottomMode:'plain';
@@ -54,6 +62,8 @@ export function validateProject(input){
     const minX=Math.min(...points.map(p=>p.x)),minY=Math.min(...points.map(p=>p.y));points=points.map(p=>({x:p.x-minX,y:p.y-minY}));
     const width=Math.max(...points.map(p=>p.x)),height=Math.max(...points.map(p=>p.y));
     if(width<.1||height<.1)throw i18nError('Kontura nemá platnou plochu.');
+    const problem=strict?contourProblem(points,{meter}):null;
+    if(problem)throw i18nError(problem==='intersects'?'Kontura nástroje „{name}“ se kříží sama se sebou.':problem==='degenerate'?'Kontura nástroje „{name}“ nemá platnou plochu.':'Kontura nástroje „{name}“ je příliš složitá na bezpečné otevření.',{name:text(t.name||tr('Nástroj'))});
     if(width>3000||height>3000)throw i18nError('Kontura nesmí v žádném směru přesáhnout {max}.',{max:fmtLen(3000)});
     const sizeFields={};
     const pocketMargin=optionalPocketMargin(t.pocketMargin);if(pocketMargin!==undefined)sizeFields.pocketMargin=pocketMargin;
@@ -69,6 +79,7 @@ export function validateProject(input){
     const category=metaText(t.category,40);if(category)sizeFields.category=category;
     if(t.pocketFit&&['ideal','hybrid','functional'].includes(t.pocketFit.mode)&&typeof t.pocketFit.signature==='string'&&/^[a-f0-9]{8}$/.test(t.pocketFit.signature))sizeFields.pocketFit={mode:t.pocketFit.mode,signature:t.pocketFit.signature};
     if(Array.isArray(t.setNames)){const setNames=[...new Set(t.setNames.map(s=>metaText(s,100)).filter(Boolean))].slice(0,12);if(setNames.length)sizeFields.setNames=setNames;}
+    const attribution=normalizeAttribution(t.attribution);if(attribution)sizeFields.attribution=attribution;
     return{id,name:text(t.name||tr('Nástroj')),...(['mm','in'].includes(t.unit)?{unit:t.unit}:{}),...sizeFields,points,x:finite(t.x??0,-1000000,1000000,'X nástroje'),y:finite(t.y??0,-1000000,1000000,'Y nástroje'),rotation:finite(t.rotation??0,-3600,3600,'otočení',false),depth:finite(t.depth??12,.5,99,'hloubka kapsy'),locked:!!t.locked,moduleId:ids.has(t.moduleId)?t.moduleId:null,...(Object.hasOwn(t,'fingerGrips')?{fingerGrips:validateFingerGrips(t.fingerGrips,{minX,minY})}:{}),...(Object.hasOwn(t,'pocketMagnets')?{pocketMagnets:validatePocketMagnets(t.pocketMagnets,{minX,minY})}:{})};
   });
   if(Object.hasOwn(p,'toolSets'))out.toolSets=validateToolSets(p.toolSets,toolIds);

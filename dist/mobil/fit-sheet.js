@@ -3,6 +3,7 @@ import {moduleOutline} from './module-footprint.js';
 import {effectivePocketMargin} from './pocket-margin.js';
 import {t as tr,i18nError} from './i18n.js';
 import {fmtLen,fmtSize,unit} from './units.js';
+import {attributionCredit,attributionText,collectAttributions} from './asset-attribution.js';
 
 // A small vector PDF writer. Coordinates are millimetres; PDF's native unit is 1/72 inch.
 // Standard Helvetica keeps the template self-contained. Labels (Czech or English) are transliterated to ASCII.
@@ -31,6 +32,8 @@ export function exportFitPDF(project,options={}){
     let content='0.15 0.18 0.16 rg\n'+text(tr('InsertCreator / ZKOUŠKA VELIKOSTI 1:1'),10,13,13);
     content+=text(tr('{name} | {size} | vůle {clearance}',{name:String(m.name).slice(0,42),size:fmtSize(m.width-.5,m.height-.5),clearance:marginLabel}),10,21,9);
     content+=text(tr('Tisk: A4, skutečná velikost 100 %. Vypnout přizpůsobení stránce.'),10,28,9);
+    // LIC-02: third-party outlines on this module keep a visible credit (at most two lines above the drawing).
+    collectAttributions(project.tools.filter(t=>t.moduleId===m.id)).slice(0,2).forEach((group,line)=>{content+=text(tr('Obrys: {credit}',{credit:attributionCredit(group.attribution)}).slice(0,260),10,31.6+line*2.4,5);});
     content+=`q ${num(PT)} 0 0 ${num(-PT)} ${num(10*PT)} ${num((pageHeight-35)*PT)} cm\n0 0 190 240 re W n\n`;
     const shift=q=>({x:q.x-m.x-p.x,y:q.y-m.y-p.y});
     const outline=points=>points.map((q,i)=>{const s=shift(q);return `${num(s.x)} ${num(s.y)} ${i?'l':'m'}`;}).join('\n')+'\nh S\n';
@@ -50,9 +53,12 @@ export function exportFitPDF(project,options={}){
     const pageId=objects.length;pageIds.push(pageId);objects.push(`<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${num(pageWidth*PT)} ${num(pageHeight*PT)}] /Resources << /Font << /F1 3 0 R >> >> /Contents ${contentId} 0 R >>`);
   }
   objects[2]=`<< /Type /Pages /Kids [${pageIds.map(i=>`${i} 0 R`).join(' ')}] /Count ${pages.length} >>`;
+  // The full attribution text is also stored in the document information dictionary.
+  const credits=attributionText(project.tools.filter(t=>pages.some(p=>p.module.id===t.moduleId))),infoId=credits?objects.length:0;
+  if(credits)objects.push(`<< /Producer (InsertCreator) /Subject (${literal(credits.slice(0,15000))}) >>`);
   let pdf='%PDF-1.4\n',offsets=[0];
   for(let i=1;i<objects.length;i++){offsets.push(pdf.length);pdf+=`${i} 0 obj\n${objects[i]}\nendobj\n`;}
   const xref=pdf.length;
-  pdf+=`xref\n0 ${objects.length}\n0000000000 65535 f \n${offsets.slice(1).map(n=>`${String(n).padStart(10,'0')} 00000 n \n`).join('')}trailer\n<< /Size ${objects.length} /Root 1 0 R >>\nstartxref\n${xref}\n%%EOF\n`;
+  pdf+=`xref\n0 ${objects.length}\n0000000000 65535 f \n${offsets.slice(1).map(n=>`${String(n).padStart(10,'0')} 00000 n \n`).join('')}trailer\n<< /Size ${objects.length} /Root 1 0 R${infoId?` /Info ${infoId} 0 R`:''} >>\nstartxref\n${xref}\n%%EOF\n`;
   return new TextEncoder().encode(pdf);
 }

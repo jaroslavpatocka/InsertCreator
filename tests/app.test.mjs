@@ -89,6 +89,11 @@ function stlHeight(bytes){
 seedSample();
 await import('../dist/app.js');
 
+test('author credit appears directly below the logo',()=>{
+  assert.equal($('.brand').nextElementSibling,$('.author-credit'));
+  assert.equal($('.author-credit').textContent,'Created by Jaroslav Patočka · 2026');
+});
+
 test('rotation shortcut ignores Ctrl, Meta and Alt while plain R still rotates',()=>{
   const original=saved(),scratch=createDrawerFromUI('Otočení klávesou R',588,420);
   try{

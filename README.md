@@ -2,7 +2,7 @@
 
 Zdrojový repozitář: [InsertCreator](https://github.com/jaroslavpatocka/InsertCreator).
 
-Česká aplikace pro návrh modulárních inzertů do šuplíku. Fotografie se zpracovávají lokálně v prohlížeči. Aplikace nepotřebuje účet, placené API ani server pro výpočty.
+Česká aplikace pro návrh modulárních inzertů do šuplíku. Fotografie se běžně zpracovávají lokálně v prohlížeči. Aplikace nepotřebuje účet, placené API ani server pro výpočty. Výjimkou je volitelný režim odstranění pozadí: pokud na stejném původu běží volitelná služba (`scripts/background-server.mjs`, viz `LOCAL-BACKGROUND-SERVICE.md`), prohlížeč jí pošle dekódované RGBA pixely, rozměry a ID úlohy.
 
 Použité knihovny, fonty, model a katalogové podklady popisuje [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md). Pro uživatele webu je stejný přehled dostupný přes odkaz **Použité součásti a licence** v patičce aplikace: [česky](dist/licenses.html), [English](dist/licenses-en.html). Jednotlivé úplné licence zůstávají přibalené u příslušných součástí; přehled neuděluje licenci vlastnímu aplikačnímu kódu.
 
@@ -177,7 +177,7 @@ Kontrola exportu, příprava STL/3MF, SVG/DXF, zkušebních STL/PDF a základny 
 
 U velké sestavy se přesný objem automaticky nepočítá při každé změně. Použijte **Vypočítat objem modelu**, pokud jej chcete znát před exportem. Jednou vypočtené údaje se znovu používají, dokud se nezmění geometrie. Změna tiskové podložky nezpůsobuje nové rytí popisků ani nový výpočet stejného objemu.
 
-Náročný 3D náhled automaticky přejde na označené obrysy modulů a naměřených nástrojů. Výrobní export stále obsahuje úplné kapsy, popisky, magnety i spojky. Posun a zoom mění pouze zobrazení a znovu nesestavují model. Výpočty i fotografie zůstávají v zařízení. Bez podpory pracovních vláken se velké výpočty odmítnou s vysvětlením, aby se nezablokovala stránka; drobné projekty mají omezenou lokální variantu.
+Náročný 3D náhled automaticky přejde na označené obrysy modulů a naměřených nástrojů. Výrobní export stále obsahuje úplné kapsy, popisky, magnety i spojky. Posun a zoom mění pouze zobrazení a znovu nesestavují model. Výpočty 3D náhledu zůstávají v zařízení (fotky viz výjimka pro volitelné odstranění pozadí výše). Bez podpory pracovních vláken se velké výpočty odmítnou s vysvětlením, aby se nezablokovala stránka; drobné projekty mají omezenou lokální variantu.
 
 ## Šuplíky a soukromí
 

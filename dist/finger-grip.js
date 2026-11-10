@@ -22,6 +22,58 @@ function clean(points){
   }
   return out;
 }
+// Candidate pair checks allowed per contour; real traced outlines need a few
+// thousand, while a crafted crossing-heavy contour is stopped well under 1 s.
+export const CONTOUR_TOPOLOGY_WORK=3000000;
+let lastTopologyWork=0;
+const PAD=Math.sqrt(EPS)+EPS;
+/** Bounded self-intersection test with the same pair predicate as the former
+ * pairwise scan. Candidate pairs come from a uniform grid of segment boxes, so
+ * outlines with thousands of short edges stay near-linear and no contour costs
+ * more than maxWork checks. Returns 'simple', 'intersects' or 'too-complex'. */
+export function contourTopology(p,{maxWork=CONTOUR_TOPOLOGY_WORK,meter}={}){
+  // An optional shared meter ({left}) bounds the total work across many contours.
+  if(meter){const limit=Math.min(maxWork,meter.left),result=contourTopology(p,{maxWork:limit}),used=lastTopologyWork;meter.left-=used;return result;}
+  const n=p.length;lastTopologyWork=0;if(n<4)return'simple';
+  let minX=Infinity,minY=Infinity,maxX=-Infinity,maxY=-Infinity;
+  for(const q of p){if(q.x<minX)minX=q.x;if(q.x>maxX)maxX=q.x;if(q.y<minY)minY=q.y;if(q.y>maxY)maxY=q.y;}
+  const cells=Math.max(1,Math.min(1024,Math.ceil(2*Math.sqrt(n)))),size=Math.max(maxX-minX,maxY-minY,EPS)/cells;
+  const col=x=>Math.min(cells-1,Math.max(0,Math.floor((x-minX)/size))),row=y=>Math.min(cells-1,Math.max(0,Math.floor((y-minY)/size)));
+  const boxes=new Float64Array(n*4),buckets=new Map();let work=0;
+  for(let i=0;i<n;i++){
+    const a=p[i],b=p[(i+1)%n],x0=Math.min(a.x,b.x)-EPS,y0=Math.min(a.y,b.y)-EPS,x1=Math.max(a.x,b.x)+EPS,y1=Math.max(a.y,b.y)+EPS;
+    boxes[i*4]=x0;boxes[i*4+1]=y0;boxes[i*4+2]=x1;boxes[i*4+3]=y1;
+    // Register only the cells along the segment (column by column), padded so that every
+    // vertex the 'on' test can accept (|cross|<EPS implies a distance below sqrt(EPS)) shares a cell.
+    const lx=Math.min(a.x,b.x),hx=Math.max(a.x,b.x),dx=b.x-a.x,slope=Math.abs(dx)>EPS?(b.y-a.y)/dx:null;
+    for(let c=col(lx-PAD),c1=col(hx+PAD);c<=c1;c++){
+      let ylo=Math.min(a.y,b.y),yhi=Math.max(a.y,b.y);
+      if(slope!==null){
+        const ya=a.y+(Math.min(hx,Math.max(lx,minX+c*size-PAD))-a.x)*slope,yb=a.y+(Math.min(hx,Math.max(lx,minX+(c+1)*size+PAD))-a.x)*slope;
+        ylo=Math.min(ya,yb);yhi=Math.max(ya,yb);
+      }
+      for(let r=row(ylo-PAD),r1=row(yhi+PAD);r<=r1;r++){
+        if(++work>maxWork){lastTopologyWork=work;return'too-complex';}
+        const key=r*cells+c,list=buckets.get(key);if(list)list.push(i);else buckets.set(key,[i]);
+      }
+    }
+  }
+  const on=(a,b,c)=>Math.abs(cross(a,b,c))<EPS&&c.x>=Math.min(a.x,b.x)-EPS&&c.x<=Math.max(a.x,b.x)+EPS&&c.y>=Math.min(a.y,b.y)-EPS&&c.y<=Math.max(a.y,b.y)+EPS;
+  for(const list of buckets.values())for(let u=0;u<list.length;u++)for(let v=u+1;v<list.length;v++){
+    const i=list[u],j=list[v];if(j-i<2||(i===0&&j===n-1))continue;
+    if(++work>maxWork){lastTopologyWork=work;return'too-complex';}
+    const bi=i*4,bj=j*4;if(boxes[bi]>boxes[bj+2]||boxes[bj]>boxes[bi+2]||boxes[bi+1]>boxes[bj+3]||boxes[bj+1]>boxes[bi+3])continue;
+    const a=p[i],b=p[(i+1)%n],c=p[j],d=p[(j+1)%n];
+    if((cross(a,b,c)*cross(a,b,d)<-EPS&&cross(c,d,a)*cross(c,d,b)<-EPS)||on(a,b,c)||on(a,b,d)||on(c,d,a)||on(c,d,b)){lastTopologyWork=work;return'intersects';}
+  }
+  lastTopologyWork=work;return'simple';
+}
+/** Raw tool points as one usable outline: null, or 'degenerate' | 'intersects' | 'too-complex'. */
+export function contourProblem(points,options){
+  const out=clean(points);
+  if(out.length<3||Math.abs(area(out))<EPS)return'degenerate';
+  const topology=contourTopology(out,options);return topology==='simple'?null:topology;
+}
 function rawPoints(tool){
   if(!Array.isArray(tool?.points)||tool.points.length<3||tool.points.length>6000)throw i18nError('Nástroj nemá platnou konturu pro výřez pro prsty.');
   const points=clean(tool.points.map(p=>({x:numeric(p?.x,-1000000,1000000,'bod X'),y:numeric(p?.y,-1000000,1000000,'bod Y')})));
@@ -43,6 +95,8 @@ function combine(subject,clip=[],operation=Clipper.ClipType.ctUnion){
 }
 function offset(points,distance){
   if(!distance)return points;
+  // Clipper's offset cost grows with the number of crossings; a crossing contour has no valid pocket anyway.
+  if(contourTopology(points)!=='simple')throw i18nError('Kontura se kříží sama se sebou nebo je příliš složitá. Upravte ji před výpočtem kapsy.');
   const engine=new Clipper.ClipperOffset(2,.015*SCALE),result=new Clipper.PolyTree();
   engine.AddPath(toInt(points),Clipper.JoinType.jtRound,Clipper.EndType.etClosedPolygon);
   engine.Execute(result,distance*SCALE);

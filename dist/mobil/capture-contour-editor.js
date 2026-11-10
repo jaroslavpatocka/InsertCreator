@@ -67,6 +67,18 @@ export function bindCaptureContourEditor(canvas,{getItems,getActiveIndex,onSelec
   const stop=event=>{event.preventDefault();event.stopImmediatePropagation?.();};
   const clearSelection=()=>{selected=null;selectedItem=null;};
   const restoreHistory=(item,value)=>{const proposal={...item};restore(proposal,value);const scale=getPhotoScale(),points=capturePhotoGeometry(proposal,scale).points.map(p=>({x:p.x/scale,y:p.y/scale}));assertCaptureEditSafety(item,scale,{origin:{x:0,y:0}},points);restore(item,value);};
+  function edgeHitDistance(index,item,point,edge){
+    let distance=edge.distance;
+    // Both the green profile and the blue manufacturing boundary are editing
+    // targets, even when zoom makes the clearance wider than the hit radius.
+    const margin=getPocketMargin();
+    if(margin!==null&&(item.checked||index===getActiveIndex())){
+      const visible=capturePhotoGeometry(item,point.scale,{includeMargin:true,pocketMargin:margin}).points;
+      distance=Math.min(distance,nearestContourSegment({nodes:visible},point).distance/point.scale);
+    }
+    if(index===getActiveIndex()&&['ideal','hybrid','functional'].includes(item.pocketShape))distance=Math.min(distance,nearestContourSegment({nodes:item.contour.points},point).distance/point.scale);
+    return distance;
+  }
 
   function refresh(){
     if(disposed)return;
@@ -78,10 +90,10 @@ export function bindCaptureContourEditor(canvas,{getItems,getActiveIndex,onSelec
     for(const key of ['x','y'])if(document.activeElement!==inputs[key]&&!dirtyFields.has(key)&&!invalidFields.has(key))inputs[key].value=node?inputValue(node[key],{digits:5}):'';
     for(const key of ['length','width','x','y'])inputs[key].disabled=busy||!enabled||!model||(['x','y'].includes(key)&&(!node||tool!=='point'));
     for(const [key,input] of Object.entries(inputs)){input.title=unit();input.closest('label').querySelector('span').textContent=t({length:'Délka',width:'Šířka',x:'X bodu',y:'Y bodu'}[key])+` (${unit()})`;}
-    const instructions=!enabled?'Tažením posuňte fotografii. Kolečkem ji přiblížíte.':tool==='smooth'?'Vyhladit: držte levé tlačítko a přejíždějte hranu v kolečku. Více přejezdů zesílí úpravu. Zpět vrátí celý tah.':tool==='draw'?'Nový obrys: jedním tahem obkreslete celý nástroj. Uvolněním obrys uzavřete. Esc tah zruší.':tool==='redraw'?'Překreslit: jedním tahem nahraďte obrys vybraného nástroje. Uvolněním jej uzavřete. Esc tah zruší.':'Bod: kliknutím na hranu přidáte bod, tažením ho přesunete. Vyberte bod a použijte Křivka, Rovný bod nebo Smazat. Čtverečky mění zakřivení.';
+    const pointAction=['curve','straight','delete'].includes(tool),instructions=!enabled?'Tažením posuňte fotografii. Kolečkem ji přiblížíte.':pointAction?({'curve':'Křivka: klikněte na bod nebo hranu libovolného obrysu.','straight':'Rovný bod: klikněte na bod nebo hranu libovolného obrysu.','delete':'Smazat bod: klikněte na existující bod libovolného obrysu.'}[tool]):tool==='smooth'?'Vyhladit: držte levé tlačítko a přejíždějte hranu v kolečku. Více přejezdů zesílí úpravu. Zpět vrátí celý tah.':tool==='draw'?'Nový obrys: jedním tahem obkreslete celý nástroj. Uvolněním obrys uzavřete. Esc tah zruší.':tool==='redraw'?'Překreslit: jedním tahem nahraďte obrys vybraného nástroje. Uvolněním jej uzavřete. Esc tah zruší.':'Bod: kliknutím na hranu přidáte bod, tažením ho přesunete. Vyberte bod a použijte Křivka, Rovný bod nebo Smazat. Čtverečky mění zakřivení.';
     for(const {buttons,brush,radius,output,hint,container} of palettes){
-      for(const [action,button] of Object.entries(buttons)){button.disabled=busy||(['curve','straight','delete'].includes(action)&&(!model||!node))||(['smooth','redraw'].includes(action)&&!model)||(action==='draw'&&!onCreateContour);if(['point','smooth','draw','redraw','toggle'].includes(action))button.setAttribute('aria-pressed',String(action==='toggle'?!enabled:enabled&&tool===action));}
-      buttons.undo.disabled=busy||!h?.past.length;buttons.redo.disabled=busy||!h?.future.length;buttons.reset.disabled=busy||!active?.item.editedPoints;buttons.delete.disabled ||= (model?.nodes.length||0)<=3;
+      for(const [action,button] of Object.entries(buttons)){button.disabled=busy||(['curve','straight','delete','smooth','redraw'].includes(action)&&!getItems().length)||(action==='draw'&&!onCreateContour);if(['point','curve','straight','delete','smooth','draw','redraw','toggle'].includes(action))button.setAttribute('aria-pressed',String(action==='toggle'?!enabled:enabled&&tool===action));}
+      buttons.undo.disabled=busy||!h?.past.length;buttons.redo.disabled=busy||!h?.future.length;buttons.reset.disabled=busy||!active?.item.editedPoints;
       brush.hidden=tool!=='smooth'||!enabled;radius.value=String(brushRadius);radius.disabled=busy;output.value=`${brushRadius*2} px`;hint.textContent=t(instructions)+' '+t('Hrana nástroje je chráněná.');hint.dataset.contourSafety='enabled';
       for(const button of container.querySelectorAll('[data-shape]')){button.setAttribute('aria-pressed',String(button.dataset.shape===brushShape));button.disabled=busy;}
     }
@@ -140,6 +152,31 @@ export function bindCaptureContourEditor(canvas,{getItems,getActiveIndex,onSelec
     try{dab(point);}catch(error){cancel();fail(error);return;}notify(target.index);
   }
 
+  // A point action can be chosen before there is an active contour or a manual
+  // node. Resolve its target without changing geometry; commit on release so
+  // Escape, pinch and pointer cancellation still leave the contour untouched.
+  function pointActionDown(event,point,radius){
+    let nearest=null;
+    for(const [index,item] of getItems().entries()){
+      if(focusSurface!==canvas&&index!==getActiveIndex())continue;
+      const model=modelOf(item),p=inModel(point,model);
+      for(const [nodeIndex,node] of model.nodes.entries()){
+        const distance=Math.hypot(p.x-node.x,p.y-node.y);
+        if(distance<=radius&&(!nearest||!nearest.nodeHit||distance<nearest.distance))nearest={index,item,model,nodeIndex,distance,nodeHit:true};
+      }
+      if(tool!=='delete'&&!nearest?.nodeHit){
+        const edge=nearestContourSegment(model,p);
+        const distance=edge?edgeHitDistance(index,item,point,edge):Infinity;
+        if(distance<=radius&&(!nearest||distance<nearest.distance))nearest={index,item,model,distance,point:p};
+      }
+    }
+    if(!nearest)return;
+    const previousSelection=nearest.item===selectedItem?selected:null;
+    onSelect(nearest.index);selectedItem=nearest.item;selected=nearest.nodeIndex??null;
+    drag={kind:'point-action',action:tool,...nearest,id:event.pointerId,surface:focusSurface,before:snapshot(nearest.item),previousSelection};
+    suppressClick=true;stop(event);focusSurface.focus({preventScroll:true});try{focusSurface.setPointerCapture?.(event.pointerId);}catch{}onRedraw();
+  }
+
   function down(event){
     if(drag&&event.isPrimary===false){cancel();return;}
     if(disposed||!enabled||isBusy()||space||event.button!==0||event.isPrimary===false||drag||event.altKey)return;
@@ -147,11 +184,16 @@ export function bindCaptureContourEditor(canvas,{getItems,getActiveIndex,onSelec
     edgeLimited=false;
     closeMenu();focusSurface=surfaceOf(event);let active=current(),point=local(event),model=active?modelOf(active.item):null,hit=null;
     if(tool==='smooth'){smoothDown(event,point);return;}
+    const radius=(event.pointerType==='touch'?22:9)*cssScale(event)/point.scale;
+    if(['curve','straight','delete'].includes(tool)){pointActionDown(event,point,radius);return;}
     if(tool==='draw'||tool==='redraw'){
+      if(tool==='redraw'&&!active&&focusSurface===canvas){
+        let nearest=null;for(const [index,item] of getItems().entries()){const candidate=modelOf(item),distance=nearestContourSegment(candidate,inModel(point,candidate))?.distance??Infinity;if(!nearest||distance<nearest.distance)nearest={index,item,model:candidate,distance};}
+        if(nearest){active=nearest;model=nearest.model;onSelect(active.index);}
+      }
       if(tool==='draw'&&!onCreateContour||tool==='redraw'&&!active)return;
       beginStroke(event,{kind:tool,item:tool==='redraw'?active.item:null,index:tool==='redraw'?active.index:null,before:tool==='redraw'?snapshot(active.item):null,origin:model?.origin||{x:0,y:0},points:[{x:point.x,y:point.y}]});onRedraw();return;
     }
-    const radius=(event.pointerType==='touch'?22:9)*cssScale(event)/point.scale;
     if(model){
       const p=inModel(point,model),candidates=[];
       model.nodes.forEach((node,index)=>{if(node.manual||index===selected)candidates.push({index,point:node});if(index===selected)for(const handle of ['in','out'])if(node[handle])candidates.push({index,point:node[handle],handle});});
@@ -164,16 +206,7 @@ export function bindCaptureContourEditor(canvas,{getItems,getActiveIndex,onSelec
         if(focusSurface!==canvas&&index!==getActiveIndex())continue;
         const candidateModel=modelOf(item),edge=nearestContourSegment(candidateModel,inModel(point,candidateModel));
         if(!edge)continue;
-        let distance=edge.distance;
-        // Both the green profile and the blue manufacturing boundary are visible
-        // editing targets. At high zoom the clearance can be much wider than the
-        // hit radius; resolve a blue hit back to the un-offset editable profile.
-        const margin=getPocketMargin();
-        if(margin!==null&&(item.checked||index===getActiveIndex())){
-          const visible=capturePhotoGeometry(item,point.scale,{includeMargin:true,pocketMargin:margin}).points;
-          distance=Math.min(distance,nearestContourSegment({nodes:visible},point).distance/point.scale);
-        }
-        if(index===getActiveIndex()&&['ideal','hybrid','functional'].includes(item.pocketShape))distance=Math.min(distance,nearestContourSegment({nodes:item.contour.points},point).distance/point.scale);
+        const distance=edgeHitDistance(index,item,point,edge);
         if(distance<=radius&&(!nearest||distance<nearest.distance))nearest={index,item,model:candidateModel,edge,distance};
       }
       if(!nearest)return;
@@ -191,6 +224,7 @@ export function bindCaptureContourEditor(canvas,{getItems,getActiveIndex,onSelec
     if(enabled&&tool==='smooth'&&!space&&!event.altKey){const p=drag?strokePoint(event):local(event);hover={surface:surfaceOf(event),point:{x:p.x,y:p.y},radius:drag?.kind==='smooth'?drag.radius*drag.scale:brushRadius*cssScale(event)};if(!drag)onRedraw();}
     if(!drag||event.pointerId!==drag.id)return;
     stop(event);if(space||event.altKey||isBusy()||(drag.item&&getItems()[drag.index]!==drag.item)||event.pointerType!=='touch'&&!(event.buttons&1)){cancel();return;}
+    if(drag.kind==='point-action')return;
     if(drag.kind==='smooth'){
       const end=strokePoint(event),from=drag.last,dx=end.x-from.x,dy=end.y-from.y,distance=Math.hypot(dx,dy);let along=drag.spacing-drag.carry;
       try{while(along<=distance+1e-8){const fraction=Math.min(1,along/(distance||1));dab({x:from.x+dx*fraction,y:from.y+dy*fraction});along+=drag.spacing;}drag.carry=(drag.carry+distance)%drag.spacing;drag.last={x:end.x,y:end.y};notify(drag.index);}catch(error){cancel();fail(error);}return;
@@ -209,6 +243,16 @@ export function bindCaptureContourEditor(canvas,{getItems,getActiveIndex,onSelec
 
   function up(event){
     if(!drag||event.pointerId!==drag.id)return;stop(event);
+    if(drag.kind==='point-action'){
+      if(isBusy()||getItems()[drag.index]!==drag.item){cancel();return;}
+      const action=drag;drag=null;try{action.surface.releasePointerCapture?.(action.id);}catch{}
+      try{
+        let model=action.model,index=action.nodeIndex;
+        if(index===undefined){const inserted=insertContourNode(model,action.point);model=inserted.model;index=inserted.index;}
+        const next=action.action==='curve'?curveContourNode(model,index):action.action==='straight'?straightContourNode(model,index):deleteContourNode(model,index);
+        selected=action.action==='delete'?null:index;tool='point';enabled=true;commit(next,{target:action});
+      }catch(error){selected=action.previousSelection;fail(error);notify(action.index);}return;
+    }
     if(drag.kind==='smooth'||drag.kind==='draw'||drag.kind==='redraw'){
       // Include a final unreported pointer position, without an extra brush dab.
       move(event.pointerType==='touch'?event:{pointerId:event.pointerId,pointerType:event.pointerType,buttons:1,clientX:event.clientX,clientY:event.clientY,currentTarget:event.currentTarget,preventDefault:()=>{},stopImmediatePropagation:()=>{}});
@@ -251,6 +295,7 @@ export function bindCaptureContourEditor(canvas,{getItems,getActiveIndex,onSelec
     if(!validateFields())return;clearFields();edgeLimited=false;onError('');
     if(action==='toggle'){enabled=!enabled;hover=null;refresh();onUpdate(active?.index);return;}
     if(['point','smooth','draw','redraw'].includes(action)){tool=action;enabled=true;hover=null;if(action!=='point')clearSelection();refresh();onUpdate(active?.index);return;}
+    if(['curve','straight','delete'].includes(action)&&(!active||selected===null)){tool=action;enabled=true;hover=null;clearSelection();refresh();onUpdate(active?.index);return;}
     if(sessionHistory&&['undo','redo'].includes(action)){
       const from=action==='undo'?sessionHistory.past:sessionHistory.future,to=action==='undo'?sessionHistory.future:sessionHistory.past;if(!from.length)return;
       const step=from.at(-1);clearSelection();
@@ -323,7 +368,15 @@ export function bindCaptureContourEditor(canvas,{getItems,getActiveIndex,onSelec
       if(!enabled||isBusy())return;
       if(drag&&(drag.kind==='draw'||drag.kind==='redraw')&&drag.surface===target){ctx.save();ctx.lineWidth=2*scale;ctx.strokeStyle='#ce8713';ctx.setLineDash([5*scale,4*scale]);ctx.beginPath();drag.points.forEach((p,i)=>i?ctx.lineTo(p.x,p.y):ctx.moveTo(p.x,p.y));ctx.closePath();ctx.stroke();ctx.restore();}
       if(tool==='smooth'&&hover?.surface===target&&!space){ctx.save();ctx.lineWidth=1.5*scale;ctx.strokeStyle='#31594a';ctx.fillStyle='rgba(255,207,91,.12)';ctx.beginPath();ctx.arc(hover.point.x,hover.point.y,hover.radius,0,Math.PI*2);ctx.fill();ctx.stroke();ctx.restore();}
-      const active=current();if(tool!=='point'||!active||active.item!==selectedItem)return;
+      const pointAction=['curve','straight','delete'].includes(tool),active=current();
+      if(pointAction){
+        ctx.save();ctx.lineWidth=1.5*scale;ctx.fillStyle='#fff';ctx.strokeStyle='#273d32';
+        for(const [index,item] of getItems().entries()){
+          if(target!==canvas&&index!==getActiveIndex())continue;
+          const model=modelOf(item);for(const node of model.nodes){ctx.beginPath();ctx.arc(model.origin.x+node.x*getPhotoScale(),model.origin.y+node.y*getPhotoScale(),4*scale,0,Math.PI*2);ctx.fill();ctx.stroke();}
+        }ctx.restore();
+      }
+      if(tool!=='point'||!active||active.item!==selectedItem)return;
       const model=invalidModel||modelOf(active.item),photo=p=>({x:model.origin.x+p.x*getPhotoScale(),y:model.origin.y+p.y*getPhotoScale()});
       ctx.save();ctx.lineWidth=1.5*scale;
       if(invalidModel){let points;try{points=flattenContour(model.nodes).map(photo);}catch{points=model.nodes.map(photo);}ctx.beginPath();points.forEach((p,i)=>i?ctx.lineTo(p.x,p.y):ctx.moveTo(p.x,p.y));ctx.closePath();ctx.strokeStyle='#bd3e38';ctx.stroke();}

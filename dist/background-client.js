@@ -1,6 +1,10 @@
 import {getLang,i18nError} from './i18n.js';
 
 export const MAX_BACKGROUND_PIXELS=64000000;
+// Optional background removal (PRIV-01): only used when the user picks that mode. It sends the
+// decoded RGBA pixels, width, height and a generated job id to the same origin that served the app
+// (usually the optional local service from scripts/background-server.mjs). Same origin is not proof
+// that the server is the user's own device; the original file/EXIF and the project are never sent.
 const REMOVE_PATH='/api/background/remove',STATUS_PATH='/api/background/status';
 const NATIVE_METHOD='native-tiles',JOB_PATTERN=/^[A-Za-z0-9_-]{1,64}$/;
 let nextJob=0;

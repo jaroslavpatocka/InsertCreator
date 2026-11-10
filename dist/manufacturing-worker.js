@@ -10,6 +10,7 @@ import {validateProject} from './model.js';
 import {setLang,errorText,t} from './i18n.js';
 import {setAppUnit,setProjectUnit} from './units.js';
 import {materialConfig} from './print-material.js';
+import {attributionText} from './asset-attribution.js';
 
 const MAX_BYTES=128*1024*1024;
 const slug=value=>String(value||'modul').normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-zA-Z0-9]+/g,'-').replace(/^-|-$/g,'').toLowerCase();
@@ -19,6 +20,13 @@ export const createManufacturingTaskCache=()=>({key:null,labels:null,issues:null
 function selected(project,moduleIds){
   if(!moduleIds)return project;
   const ids=new Set(moduleIds);return{...project,modules:project.modules.filter(module=>ids.has(module.id)),tools:project.tools.filter(tool=>ids.has(tool.moduleId)),toolSets:[]};
+}
+const moduleTools=(project,moduleId)=>project.tools.filter(tool=>!moduleId||tool.moduleId===moduleId);
+const xmlText=value=>String(value).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+// LIC-02: a single SVG carries third-party outline credits as non-rendering metadata (geometry stays untouched).
+function withSvgAttribution(svg,tools){
+  const credits=attributionText(tools),at=svg.lastIndexOf('</svg>');
+  return credits&&at>=0?svg.slice(0,at)+`<metadata id="insertcreator-attribution">${xmlText(credits)}</metadata>`+svg.slice(at):svg;
 }
 function cacheKey(project,options){
   // Bed settings and timestamps never change plaques or geometric volume.
@@ -56,7 +64,8 @@ export async function executeManufacturingTask(operation,input={},options={},con
     const colorNote=result.manifest?.colors?'\n\n'+t('Vícebarevný tisk: otevřete soubory 3MF a nastavte filamenty podle čísel:')+'\n'+result.manifest.colors.filaments.map((color,index)=>`${index+1}: ${color} (${[...new Set(Object.entries(result.manifest.colors.zones).filter(([,slot])=>slot===index+1).map(([zone])=>t({body:'Tělo',floor:'Dno kapes'}[zone]||'Text')))].join(', ')})`).join('\n'):'';
     const gridfinity=result.manifest?.gridfinity,gridNote=gridfinity?'\n\n'+t('Gridfinity: složka gridfinity obsahuje základnu podle rozměru šuplíku včetně dilatačního kusu a zátku 1×1. Zátku vytiskněte {n}×, tolik polí zůstalo volných.',{n:gridfinity.plug.freeCells}):'';
     const jointNote=result.joints&&options.jointNote?'\n\n'+options.jointNote:'',unjoined=result.manifest?.joints?.unjoined?.length||0;
-    const readme=(options.readme??'InsertCreator\n\n'+t('Tiskové díly sestavte podle assembly.json. Souřadnice jsou v mm. Dělení je pouze pro tisk; rozvržení šuplíku zůstává původní.'))+gridNote+colorNote+jointNote+(unjoined?'\n'+t('Na {n} vnitřních hranách mezi díly není bezpečné místo pro spojku. Podrobnosti jsou v assembly.json.',{n:unjoined}):'');
+    const attributionNote=result.files.some(file=>file.name==='ATTRIBUTION.txt')?'\n\n'+t('Některé obrysy nástrojů pocházejí z cizích 3D modelů. Autory, zdroje a licence najdete v ATTRIBUTION.txt; při sdílení souborů je ponechte.'):'';
+    const readme=(options.readme??'InsertCreator\n\n'+t('Tiskové díly sestavte podle assembly.json. Souřadnice jsou v mm. Dělení je pouze pro tisk; rozvržení šuplíku zůstává původní.'))+gridNote+colorNote+jointNote+(unjoined?'\n'+t('Na {n} vnitřních hranách mezi díly není bezpečné místo pro spojku. Podrobnosti jsou v assembly.json.',{n:unjoined}):'')+attributionNote;
     return packageResult(result,{...options,package:true,extraFiles:[...(options.extraFiles||[]),{name:'projekt.json',data:JSON.stringify({schemaVersion:1,app:'InsertCreator',project:input},null,2)},{name:'README.txt',data:readme}]},progress);
   }
   if(operation==='connectors'){
@@ -70,7 +79,7 @@ export async function executeManufacturingTask(operation,input={},options={},con
     files.push({name:'assembly.json',data:JSON.stringify(manifest,null,2)});progress({stage:'complete',progress:1});return packageResult({files,manifest,plan},options,progress);
   }
   const source=validateProject(selected(input,options.moduleIds));
-  if(operation==='svg')return{data:new TextEncoder().encode(exportSVG(source,{moduleId:options.moduleId??null}))};
+  if(operation==='svg')return{data:new TextEncoder().encode(withSvgAttribution(exportSVG(source,{moduleId:options.moduleId??null}),moduleTools(source,options.moduleId)))};
   if(operation==='dxf')return{data:new TextEncoder().encode(exportDXF(source,{moduleId:options.moduleId??null}))};
   if(operation==='fit-pdf')return{data:exportFitPDF(source,{moduleId:options.moduleId??null})};
   if(operation==='fit-stl'){
@@ -79,6 +88,7 @@ export async function executeManufacturingTask(operation,input={},options={},con
       progress({stage:'cutting',progress:index/modules.length,completed:index,total:modules.length});await pause();aborted(signal);
       files.push({name:`${String(index+1).padStart(2,'0')}-${slug(module.name)}-zkouska.stl`,data:exportFitSTL(source,{moduleId:module.id})});
     }
+    const credits=options.package?attributionText(moduleTools(source,options.moduleId)):'';if(credits)files.push({name:'ATTRIBUTION.txt',data:credits});
     return packageResult({files},options,progress);
   }
   if(operation!=='analyze'&&operation!=='labels')throw new Error('Neznámý výrobní výpočet.');

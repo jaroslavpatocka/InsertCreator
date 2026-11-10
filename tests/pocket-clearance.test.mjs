@@ -54,7 +54,7 @@ test('sealed recesses work with either winding, rotation and translated placemen
 
 test('clearance still rejects malformed outlines producing separate outer components',()=>{
   const source={...tool(),points:[[0,0],[40,40],[0,40],[40,0],[50,20]].map(([x,y])=>({x,y}))};
-  assert.throws(()=>pocketOutline(source,.8),/Vůle nevytvořila jednu jednoznačnou kapsu nástroje/);
+  assert.throws(()=>pocketOutline(source,.8),/Vůle nevytvořila jednu jednoznačnou kapsu nástroje|Kontura se kříží sama se sebou/);
 });
 
 test('sealed-recess pockets pass layout validation and export closed printable meshes',()=>{

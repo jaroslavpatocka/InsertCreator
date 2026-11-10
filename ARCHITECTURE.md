@@ -4,7 +4,7 @@ Mapa projektu aktualizovaná 4. 11. 2026. Dokument popisuje hranice editoru, fot
 
 ## Základ aplikace
 
-InsertCreator je český editor modulárních organizérů. Běží na zařízení uživatele jako statická webová aplikace v čistém JavaScriptu s ES moduly. Nemá aplikační backend, databázový server, framework ani build krok. Adresář `dist/` obsahuje přímo editované zdrojové soubory i soubory určené k nasazení.
+InsertCreator je český editor modulárních organizérů. Běží na zařízení uživatele jako statická webová aplikace v čistém JavaScriptu s ES moduly. Nemá povinný aplikační backend, databázový server, framework ani build krok. Jedinou výjimkou je volitelná služba pro odstranění pozadí (`scripts/background-server.mjs`, `LOCAL-BACKGROUND-SERVICE.md`): když běží na stejném původu a uživatel zvolí tento režim, prohlížeč jí pošle dekódované RGBA pixely, rozměry a ID úlohy. Stejný původ nemusí být zařízení uživatele. Adresář `dist/` obsahuje přímo editované zdrojové soubory i soubory určené k nasazení.
 
 Aktivní projekt je v tomto adresáři. ZIP se zdroji a dva deployment archivy v nadřazeném adresáři jsou samostatné balíčky; nejsou vstupem pro běh nebo testování pracovního stromu.
 

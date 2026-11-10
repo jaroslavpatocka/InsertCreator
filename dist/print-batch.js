@@ -7,6 +7,7 @@ import {planJoints,planCutJoints,JOINT_BED_RESERVE,jointClearance} from './modul
 import {buildColorZones,buildPrintTriangles,encodeSTL,printConfig,trianglesVolume,validatePrintMesh,weldPrintVertices,finalizePrintTriangles} from './print-geometry.js';
 import {FLOOR_RESERVE,labelColors,materialConfig,materialSlots,zoneColor} from './print-material.js';
 import {encodeColor3MF} from './three-mf.js';
+import {attributionText,collectAttributions} from './asset-attribution.js';
 import {i18nError,t} from './i18n.js';
 import {layoutMeshToPhysical} from './manufacturing-coordinates.js';
 import {exportBaseplateSTL,gridfinityFreeCells,planBaseplateTiles} from './gridfinity-baseplate.js';
@@ -183,7 +184,7 @@ export async function preparePrintBatch(project,{moduleIds,signal,onProgress}={}
       let file=base+'.stl',data,colorFiles=null;
       if(zones){
         // The 3MF keeps the colours together; the STLs share its coordinates for slicers that ignore them.
-        file=base+'.3mf';data=encodeColor3MF(zones.map(zone=>({name:zoneName(zone.zone),color:zoneColor(zone.zone,colors),filament:slots.zones[zone.zone],triangles:zone.mesh})),{title:module.name||module.id,position:{x:Math.max(0,(bedWidth-(rotation?box.height:box.width))/2),y:Math.max(0,(bedHeight-(rotation?box.width:box.height))/2)}});
+        file=base+'.3mf';data=encodeColor3MF(zones.map(zone=>({name:zoneName(zone.zone),color:zoneColor(zone.zone,colors),filament:slots.zones[zone.zone],triangles:zone.mesh})),{title:module.name||module.id,attribution:attributionText(own),position:{x:Math.max(0,(bedWidth-(rotation?box.height:box.width))/2),y:Math.max(0,(bedHeight-(rotation?box.width:box.height))/2)}});
         colorFiles={};
         for(const zone of zones){const name=`barvy/${base}-${zoneFile(zone.zone)}.stl`,stl=encodeSTL(zone.mesh,'InsertCreator | mm | '+zone.zone+' '+module.id+' '+index);bytes+=stl.byteLength;files.push({name,data:stl});colorFiles[zone.zone]=name;}
       }else data=encodeSTL(local,'InsertCreator | mm | cut '+module.id+' '+index);
@@ -197,9 +198,14 @@ export async function preparePrintBatch(project,{moduleIds,signal,onProgress}={}
   }
   if(!parts.length)throw i18nError('Vybrané moduly neobsahují žádnou tisknutelnou geometrii.');
   const manifest={schemaVersion:2,units:'mm',bed:{width:bedWidth,height:bedHeight},coordinates:'physical-world',coordinateFrames:{assembly:{origin:'drawer lower-left',axes:'X right, Y up, Z up'},layout:{origin:'drawer upper-left',axes:'X right, Y down, Z up'},stl:{origin:'part print-bed lower-left',axes:'X right, Y up, Z up'}},layoutHeightMm:source.height,layoutSize:{width:source.width,height:source.height},layoutFields:['parts.offset','parts.clip','parts.row','parts.column','joints'],transform:'row-major 4x4: assemblyTransform maps STL vertices to physical drawer world; layoutTransform maps STL vertices to original 2D drawer layout',parts,...(slots?{colors:{filaments:slots.colors,zones:slots.zones,floorThickness:colors.floor?colors.floorThickness:0}}:{}),...(jointPlan?{joints:{count:jointPlan.joints.length,moduleCount:jointPlan.moduleCount,cutCount:jointPlan.cutCount,skipped:jointPlan.skipped,clearance:jointPlan.clearance,seams:jointPlan.seams,unjoined:jointPlan.unjoined,connections:jointPlan.joints}}:{})};
+  // LIC-02: third-party outline provenance travels with the parts (assembly.json + ATTRIBUTION.txt).
+  const attributions=collectAttributions(source.tools),credits=attributionText(source.tools);
+  if(attributions.length)manifest.attribution=attributions.map(({attribution,tools})=>({...attribution,tools}));
   const assembly=JSON.stringify(manifest,null,2);bytes+=new TextEncoder().encode(assembly).byteLength;
+  if(credits)bytes+=new TextEncoder().encode(credits).byteLength;
   if(bytes>MAX_BYTES)throw i18nError('Tiskové díly přesahují limit 128 MB. Vyberte méně modulů a export zopakujte.');
   files.push({name:'assembly.json',data:assembly});
+  if(credits)files.push({name:'ATTRIBUTION.txt',data:credits});
   progress({stage:'complete',progress:1,completed:total,total});await pause();
   return{files,parts,manifest,moduleIds:source.modules.map(module=>module.id),splitSummary,joints:jointPlan?.joints.length??0};
 }

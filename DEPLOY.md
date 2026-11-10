@@ -171,4 +171,4 @@ Otevřete veřejnou HTTPS adresu a zkontrolujte, že:
 4. Service worker se registruje. Offline rozpoznávání vyžaduje, aby se model a
    runtime předtím úspěšně načetly online.
 
-Fotografie zůstávají v prohlížeči uživatele; aplikace je neposílá na server.
+Fotografie se běžně zpracovávají v prohlížeči uživatele a statický web je neposílá na server. Výjimkou je volitelná služba pro odstranění pozadí na stejném původu (`LOCAL-BACKGROUND-SERVICE.md`), která není součástí statického nasazení.

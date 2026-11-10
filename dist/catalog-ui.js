@@ -8,6 +8,7 @@ import {scaleTool} from './set-module.js';
 import {automaticFingerGrips,validateFingerGrips} from './finger-grip.js';
 import {CATEGORIES,toolCategory} from './tool-categories.js';
 import {loadingMarkup,updateLoading} from './loading-ui.js';
+import {catalogAttribution} from './asset-attribution.js';
 
 const defaultSource=async()=>{const m=await import('./catalog/index.js');return{categories:m.CATEGORIES,items:m.catalogItems(),sets:typeof m.catalogSets==='function'?m.catalogSets():[]};};
 let source=defaultSource,loaded=null;
@@ -67,6 +68,8 @@ function haystack(item){
 export function catalogTool(item){
   const name=localName(item),code=name.match(/\b(PH|PZ|TX|T)\s*(\d+)\b/i),nonMetricCode=code&&/^(PH|PZ)$/i.test(code[1]);
   const tool={name,points:item.points.map(p=>({x:Number(p.x),y:Number(p.y)})),depth:Number(item.depth)||12,...(item.unit==='mm'||item.unit==='in'?{unit:item.unit}:{}),...(code?{sizeLabel:code[1].toUpperCase()+code[2]}:{}),...(item.category?{category:item.category}:{}),...(!nonMetricCode&&typeof item.size==='number'&&Number.isFinite(item.size)&&item.size>0&&item.size<=3000&&['mm','in'].includes(item.unit)?{nominalSize:{value:item.size,unit:item.unit}}:{}),x:0,y:0,rotation:0};
+  // Third-party outlines keep author/source/licence (LIC-02); own and parametric items carry none.
+  const attribution=catalogAttribution(item);if(attribution)tool.attribution=attribution;
   tool.fingerGrips=Object.hasOwn(item,'fingerGrips')?validateFingerGrips(item.fingerGrips):automaticFingerGrips({...tool,id:item.id});
   return tool;
 }

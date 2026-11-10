@@ -27,4 +27,4 @@ CI používá mobilní snímek uložený v repozitáři. K jeho kontrole ani nas
 
 Nasazuje se **celý obsah `dist/` včetně `dist/mobil/`** stávajícím Git a hostingovým postupem popsaným v [DEPLOY.md](DEPLOY.md). Nevytvářejte pro mobil další Site ani jiné nezávislé nasazení. Úspěšný push sám nepotvrzuje dostupnost nové verze na hostingu; ověřte dokončení stávajícího deploymentu a obě webové cesty.
 
-Fotografie i projekty zůstávají v zařízení. Instalace PWA a offline provoz na telefonu vyžadují HTTPS; běžné LAN HTTP slouží k online zkoušce. Při finálním předání uvádějte konkrétní provedené kontroly a skutečně otestované platformy.
+Projekty zůstávají v zařízení a fotografie se běžně zpracují v prohlížeči; jen volitelné odstranění pozadí pošle pixely fotky službě na stejném původu (např. PC v LAN, viz `LOCAL-BACKGROUND-SERVICE.md`). Instalace PWA a offline provoz na telefonu vyžadují HTTPS; běžné LAN HTTP slouží k online zkoušce. Při finálním předání uvádějte konkrétní provedené kontroly a skutečně otestované platformy.

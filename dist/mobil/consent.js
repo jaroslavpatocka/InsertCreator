@@ -4,8 +4,8 @@
   'use strict';
   const ID='G-6CMM882CWH',KEY='insertcreator-mobile:analytics-consent',MAX_AGE=365*24*60*60*1000;
   const text={
-    cs:{label:'Souhlas s měřením návštěvnosti',body:'Pomocí Google Analytics chceme vidět, kolik lidí aplikaci používá. Spustí se jen s vaším souhlasem. Fotky ani návrhy se neodesílají.',accept:'Přijmout',reject:'Odmítnout',more:'Zásady ochrany soukromí',page:'./privacy.html'},
-    en:{label:'Consent to visitor measurement',body:'We would like to use Google Analytics to see how many people use the app. It only starts with your consent. Photos and designs are never sent.',accept:'Accept',reject:'Decline',more:'Privacy policy',page:'./privacy-en.html'}
+    cs:{label:'Souhlas s měřením návštěvnosti',body:'Pomocí Google Analytics chceme vidět, kolik lidí aplikaci používá. Spustí se jen s vaším souhlasem. Fotky ani návrhy se do Google Analytics neodesílají.',accept:'Přijmout',reject:'Odmítnout',more:'Zásady ochrany soukromí',page:'./privacy.html'},
+    en:{label:'Consent to visitor measurement',body:'We would like to use Google Analytics to see how many people use the app. It only starts with your consent. Photos and designs are never sent to Google Analytics.',accept:'Accept',reject:'Decline',more:'Privacy policy',page:'./privacy-en.html'}
   };
   const copy=()=>text[document.documentElement.lang==='en'?'en':'cs'];
   const read=()=>{

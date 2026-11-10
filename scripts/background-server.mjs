@@ -161,6 +161,8 @@ async function main(){
  if(!['127.0.0.1','0.0.0.0','::1'].includes(host)||!Number.isInteger(port)||port<1||port>65535)throw new Error('Použijte platný port a --host127.0.0.1 nebo0.0.0.0 pro důvěryhodnou LAN.');
  const config=await resolveBackgroundConfig(),server=createBackgroundServer({config,onStatistics:stats=>process.stderr.write(stats.endsWith('\n')?stats:stats+'\n')});
  server.listen(port,host,()=>console.log(JSON.stringify({url:`http://${host==='0.0.0.0'?'localhost':host}:${port}`,available:config.available,execution:'local-computer',model:BACKGROUND_MODEL,reason:config.reason,threads:config.threads,scope:'Images stay on this computer; mobile uses this computer over trusted LAN. Native model needs approximately5.34GiB peak RAM on measured original.'})));
+ // SEC-02: 0.0.0.0 is meant only for an operator-controlled trusted LAN. The service has no authentication and plain HTTP.
+ if(host==='0.0.0.0')process.stderr.write('UPOZORNĚNÍ: Služba naslouchá na všech rozhraních bez přihlášení a bez šifrování (HTTP). Používejte jen v důvěryhodné domácí síti s firewallem, nikdy ji nepřesměrovávejte do internetu ani nespouštějte ve sdílené/veřejné Wi-Fi. Viz LOCAL-BACKGROUND-SERVICE.md.\n');
  for(const name of ['SIGINT','SIGTERM'])process.on(name,()=>{server.close();server.closeAllConnections();});
 }
 if(process.argv[1]&&path.resolve(process.argv[1])===fileURLToPath(import.meta.url))main().catch(error=>{console.error(error.message);process.exitCode=1;});

@@ -241,4 +241,9 @@ export default {
   'Povolený rozsah {min} až {max}.':'Allowed range {min} to {max}.',
   'Rozměr tvaru stěny kapsy musí být od {min} do {max}.':'The pocket wall shape size must be between {min} and {max}.',
   'Řez stěnou kapsy: {shape}':'Pocket wall cross-section: {shape}',
+  'Kontura se kříží sama se sebou nebo je příliš složitá. Upravte ji před výpočtem kapsy.':'The contour crosses itself or is too complex. Fix it before the pocket is calculated.',
+  'Projekt má příliš mnoho bodů kontur. Limit je {max} bodů.':'The project has too many contour points. The limit is {max} points.',
+  'Kontura nástroje „{name}“ se kříží sama se sebou.':'The contour of tool “{name}” crosses itself.',
+  'Kontura nástroje „{name}“ nemá platnou plochu.':'The contour of tool “{name}” has no valid area.',
+  'Kontura nástroje „{name}“ je příliš složitá na bezpečné otevření.':'The contour of tool “{name}” is too complex to open safely.',
 };

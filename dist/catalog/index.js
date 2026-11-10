@@ -10,7 +10,8 @@
 //   size:13,                                  // optional nominal size for sorting/filtering (in the native unit)
 //   tags:['13 mm','DIN 3113'],               // optional search keywords (any language)
 //   accuracy:'standard'|'typical'|'measured', // standard = from a published norm, typical = representative shape, measured = from an open dataset
-//   source:{name,license,url}                 // provenance; license must allow redistribution
+//   source:{name,license,url,title?,author?,revision?,licenseUrl?,changes?} // provenance; license must allow redistribution.
+//                                             // An external url makes the tool carry `attribution` (asset-attribution.js) into exports.
 // }
 import parametric from './parametric.js';
 import imported from './imported.js';
