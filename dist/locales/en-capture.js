@@ -2,6 +2,18 @@
 // Keep {placeholders} identical in both languages.
 // Worker progress messages, quality reasons and worker errors travel as Czech text and are translated in capture.js.
 export default {
+  "Naměřený obrys není platný. Vyberte jej znovu nebo upravte jeho body.":"The measured outline is invalid. Select it again or edit its points.",
+  "Některé kapsy se nepodařilo připravit. Označené obrysy zkontrolujte nebo znovu vyberte.":"Some pockets could not be prepared. Check or reselect the marked outlines.",
+  "{n} obrysů nelze bezpečně převést na kapsu. Ostatní nástroje můžete použít.":"{n} outlines cannot be converted safely into pockets. You can use the other tools.",
+  "Zpracování fotografie se nepodařilo dokončit.":"Photo processing could not finish.",
+  "Pozadí je odstraněné. Při přípravě obrysů nebo kapes došlo k technické chybě.":"The background is removed. A technical error occurred while preparing outlines or pockets.",
+  "Došlo k technické chybě zpracování. Původní fotografie a měřítko zůstaly zachované.":"A technical processing error occurred. The original photo and calibration are retained.",
+  "Fotografie a měřítko zůstávají zachované.":"The photo and calibration are retained.",
+  "Připravené obrysy se nepodařilo zobrazit.":"The prepared outlines could not be displayed.",
+  "Fotografie, maska a {n} nalezených obrysů zůstaly zachované.":"The photo, mask and {n} detected outlines are retained.",
+  "Znovu zobrazit obrysy":"Show outlines again",
+  "Zobrazen je naměřený obrys bez 2% rezervy. Zkontrolujte ho a pro přidání jej výslovně zaškrtněte.":"The measured outline is shown without the 2% reserve. Check it and explicitly select it to add it.",
+  "Kapsa uzavírá drobný vnitřní výřez. Zkontrolujte její tvar v náhledu.":"The pocket closes a small internal cutout. Check its shape in the preview.",
   "Původní rozlišení {width} × {height} px. Celá fotografie se zpracuje po částech bez zmenšení.":"Original resolution: {width} × {height} px. The entire photo is processed in sections without downscaling.",
   "Fotografie přesahuje 64 megapixelů. Vyberte menší oblast; rozlišení se automaticky nesnižuje.":"The photo exceeds 64 megapixels. Select a smaller region; resolution is never reduced automatically.",
   "Zařízení nedokáže otevřít tuto fotografii v plném rozlišení. Použijte počítač nebo menší výřez.":"This device cannot open the photo at full resolution. Use a computer or a smaller crop.",

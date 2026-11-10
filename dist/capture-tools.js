@@ -6,6 +6,7 @@ import {fitFunctionalPocket,fitHybridPocket} from './functional-pocket.js';
 import {fitIdealPocket} from './ideal-pocket.js';
 import {pocketFitSignature} from './pocket-fit-meta.js';
 import {effectivePocketMargin,optionalPocketMargin} from './pocket-margin.js';
+import {simple} from './contour-smoothing.js';
 
 const categories=new Set(CATEGORIES.map(category=>category.id));
 const geometryCache=new WeakMap();
@@ -64,6 +65,33 @@ export function captureItemDimensions(item,scale){
 export function capturePocketDimensions(item,scale,{pocketMargin=0}={}){
   const geometry=capturePhotoGeometry(item,scale,{includeMargin:true,pocketMargin});
   return getToolDimensions({points:geometry.points.map(point=>({x:point.x/scale,y:point.y/scale}))});
+}
+
+/** Check each proposal before the shared preview. A failed fit cannot discard
+ * another tool, silently remove its reserve, or mutate the measured source. */
+export function prepareCaptureFit(item,scale,{pocketMargin=0,geometry=capturePocketDimensions}={}){
+  const raw=item?.editedPoints||item?.contour?.points;
+  if(!Array.isArray(raw)||raw.length<3||!Number.isFinite(scale)||scale<=0||raw.some(p=>!p||!Number.isFinite(p.x)||!Number.isFinite(p.y))||!simple(raw))throw i18nError('Naměřený obrys není platný. Vyberte jej znovu nebo upravte jeho body.');
+  const origin=raw[0];let rawArea=0;for(let i=0;i<raw.length;i++){const p=raw[i],q=raw[(i+1)%raw.length];rawArea+=(p.x-origin.x)*(q.y-origin.y)-(q.x-origin.x)*(p.y-origin.y);}
+  if(!(Math.abs(rawArea)>1e-12))throw i18nError('Naměřený obrys není platný. Vyberte jej znovu nebo upravte jeho body.');
+  const next={...item};delete next.pocketFitIssue;delete next.pocketFitNotice;
+  try{
+    geometry(next,scale,{pocketMargin});
+    const fitted=capturePocketGeometry(next,scale);
+    if(fitted.fallback==='source-offset')next.pocketFitNotice={type:'source-offset',filledOffsetHoles:fitted.filledOffsetHoles||0,filledOffsetHoleAreaRatio:fitted.filledOffsetHoleAreaRatio||0};
+    return next;
+  }catch(error){
+    const requestedShape=next.pocketShape||'measured';
+    if(requestedShape==='measured')throw error;
+    const source=sourcePoints(next,scale),dimensions=captureItemDimensions(next,scale);
+    if(!simple(source)||!(dimensions.length>0&&dimensions.width>0))throw error;
+    next.pocketShape='measured';next.checked=false;
+    // The measured alternative is checked independently, never through a
+    // failing or externally supplied fitting callback.
+    capturePocketDimensions(next,scale,{pocketMargin});
+    next.pocketFitIssue={requestedShape,reason:String(error?.message||error)};
+    return next;
+  }
 }
 
 /** Commit only a valid resize to this item, without changing photo calibration. */

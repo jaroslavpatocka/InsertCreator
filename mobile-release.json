@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "sourceCommit": "8cc897f90c8755fe6034e4dc1a70a48258242445",
+  "sourceCommit": "2fcf7b20c4ceb4e8d60356d78db8fbd6b3f59e8e",
   "files": [
     {
       "path": "app.js",
@@ -74,8 +74,8 @@
     },
     {
       "path": "capture-tools.js",
-      "sha256": "1FBE9069229626F72B171C721D108B918C4A58DFB0B40AB6AB553250F185D952",
-      "bytes": 6407
+      "sha256": "8B6246EC4CA044FBBD88B41FBEE30D74EA73BCF81EB5AD3ACB9EB1E5BEB85D6C",
+      "bytes": 8364
     },
     {
       "path": "capture-view.js",
@@ -84,8 +84,8 @@
     },
     {
       "path": "capture.js",
-      "sha256": "F6BF7517A1EC83B68ADFC66A19E5B13FA6CAC5F2CA9E976D0E88D86463B8829A",
-      "bytes": 74096
+      "sha256": "B62B15E2073FE7737F616BD176C6D37BFD86C6202D26C18C038F9F3EB9FE6B45",
+      "bytes": 78644
     },
     {
       "path": "catalog-ui.js",
@@ -419,8 +419,8 @@
     },
     {
       "path": "ideal-pocket.js",
-      "sha256": "4CE9A0996585801539500E98C4F0D097D123CA211B2D31349BBFAC417F6F7B54",
-      "bytes": 8361
+      "sha256": "E9FB82DD8C6F50CD35A18A8B137B1FC0270C31E3D549B51D37693CB114272511",
+      "bytes": 9702
     },
     {
       "path": "index.html",
@@ -469,8 +469,8 @@
     },
     {
       "path": "locales/en-capture.js",
-      "sha256": "D5006B54964D44209BB586515F718C3FA5532002C4859805501F083D00FCC07A",
-      "bytes": 40274
+      "sha256": "C3EA26224E04B5DB737628CE693BC3C7FF81180ACB8FD50CA25943315244399B",
+      "bytes": 41994
     },
     {
       "path": "locales/en-core.js",
@@ -849,8 +849,8 @@
     },
     {
       "path": "sw.js",
-      "sha256": "3DDB2FE01203AD1294ADDBAAFD11A8F39B5BBE43E5A29D2FBEB4C7C1C9BDCF2A",
-      "bytes": 5492
+      "sha256": "1803CCFEAD1CB7324CE68365278CC4D31F1D74CF4EFA987E7BE4A393F78871CE",
+      "bytes": 5490
     },
     {
       "path": "three-mf.js",

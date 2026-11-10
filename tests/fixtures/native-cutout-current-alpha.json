@@ -1,0 +1,53 @@
+{
+  "scope": "Exact cached current native2tile alpha from real original-tools prediction. This grayscale fixture stores alpha in RGB with A255. No userRGB is included.28proposals is NOT28physicaltools or lossless mask truth. Test uploadRGB is a separate synthetic opaque transport frame; no inference is run.",
+  "width": 1261,
+  "height": 860,
+  "alphaSha256": "e71386eb4ea5cc97cc8d768b81c6ed2ee3d56d849b45a3e6bf18d03c96020ccc",
+  "fixturePngSha256": "a3b2ea62cc49042e1b2949d5668ed25109d792dbc44274842e49477be732f5e0",
+  "cachedActualNativePngSha256": "919eac0a26e53d37bb2ec847808c0e9b35749ced9a8e499ecd79d9de230db374",
+  "actualSourceFileSha256": "e2719d93a04ccbec41e7bfb339466bcdfd25e48ced59c86598d707a65e71f575",
+  "method": "native-tiles",
+  "actualNativeTiles": 2,
+  "expectedProposalCount": 28,
+  "independentlyAnnotatedPhysicalAssemblies": 27,
+  "knownProbes": [
+    {
+      "part": "upper black knife rail",
+      "x": 228,
+      "y": 116,
+      "alpha": 253
+    },
+    {
+      "part": "caulking gun rod",
+      "x": 312,
+      "y": 399,
+      "alpha": 0
+    },
+    {
+      "part": "tape cord",
+      "x": 558,
+      "y": 461,
+      "alpha": 16
+    },
+    {
+      "part": "first screw head",
+      "x": 375,
+      "y": 676,
+      "alpha": 43
+    }
+  ],
+  "calibration": {
+    "points": [
+      {
+        "x": 941.5,
+        "y": 377.2
+      },
+      {
+        "x": 947,
+        "y": 659.6
+      }
+    ],
+    "distanceMm": 180,
+    "approximate": true
+  }
+}

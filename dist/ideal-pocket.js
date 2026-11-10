@@ -72,7 +72,9 @@ function smoothBoundary(points,reach){
 /** A smooth, asymmetric manufacturing silhouette in the original mm/world frame.
  * Reserve is total dimensional growth: .02 means approximately 100 -> 102 mm.
  * Small measured teeth are simplified before rounding; raw edges are never
- * unioned back into the pocket. Important openings remain concave. */
+ * unioned back into the pocket. Important openings remain concave. If bounded
+ * smoothing cannot retain all material, a diagnosed final source-offset uses
+ * the same reserve and rounded corners without the boundary smoothing step. */
 export function fitIdealPocket(input,{reserveRatio=.02}={}){
   if(!Array.isArray(input)||input.length<3||input.length>6000||input.some(p=>!p||typeof p.x!=='number'||typeof p.y!=='number'||!Number.isFinite(p.x)||!Number.isFinite(p.y)||Math.abs(p.x)>1e6||Math.abs(p.y)>1e6))throw new Error('Nástroj nemá platnou konturu pro hladkou kapsu.');
   if(typeof reserveRatio!=='number'||!Number.isFinite(reserveRatio)||reserveRatio<0||reserveRatio>.2)throw new Error('Rezerva hladké kapsy musí být od 0 do 20 %.');
@@ -91,6 +93,7 @@ export function fitIdealPocket(input,{reserveRatio=.02}={}){
   // A narrow real neck must not be erased by smoothing. In that case the
   // simplified outline itself is the base and the reserve rounds its outside.
   const reduced=clean.length===1?offset(clean[0],-rounding):[];
+  let fallback,filledOffsetHoles=0,filledOffsetHoleAreaRatio=0;
   let base=reduced.length===1?reduced[0]:clean.length===1?clean[0]:simple[0],amount=reserve+(reduced.length===1?rounding:0),result=offset(base,amount);
   const contains=shape=>shape.length===1&&operation([source],shape,Clipper.ClipType.ctDifference).reduce((sum,p)=>sum+area(p),0)<1e-9;
   if(!contains(result)){
@@ -103,7 +106,23 @@ export function fitIdealPocket(input,{reserveRatio=.02}={}){
     result=offset(base,amount);
     for(let step=1;step<=4&&!contains(result);step++)result=offset(base,amount+tolerance*step/2);
   }
+  if(!contains(result)){
+    // Last attempt: offset the already validated source with the requested
+    // reserve exactly once. This changes no successful smoothed candidate.
+    fallback='source-offset';result=offset(simple[0],reserve);
+    if(result.length>1){
+      const outers=result.filter(points=>signedArea(points)>0);
+      if(outers.length===1){
+        const outer=outers[0],holes=result.filter(points=>points!==outer);
+        // A positive offset can close a narrow opening and leave an enclosed
+        // hole. A manufacturing pocket uses its exterior. Never discard another
+        // outer component, an uncontained path, or any measured source material.
+        const holesInside=holes.every(points=>signedArea(points)<0&&operation([points],[outer],Clipper.ClipType.ctDifference).reduce((sum,path)=>sum+area(path),0)<1e-9);
+        if(holesInside&&contains([outer])){filledOffsetHoles=holes.length;filledOffsetHoleAreaRatio=holes.reduce((sum,points)=>sum+area(points),0)/area(source);result=[outer];}
+      }
+    }
+  }
   if(!contains(result))throw new Error('Hladká kapsa nemůže bezpečně obepnout tuto konturu.');
   const world=p=>{const x=b.x0+p.x*length,y=b.y0+p.y*width;return{x:frame.origin.x+x*frame.ax-y*frame.ay,y:frame.origin.y+x*frame.ay+y*frame.ax};};
-  return{points:result[0].map(world),axis:{start:world({x:0,y:-b.y0/width}),end:world({x:1,y:-b.y0/width})},primitives:[],kind:'ideal',reserveRatio};
+  return{points:result[0].map(world),axis:{start:world({x:0,y:-b.y0/width}),end:world({x:1,y:-b.y0/width})},primitives:[],kind:'ideal',reserveRatio,...(fallback?{fallback,filledOffsetHoles,filledOffsetHoleAreaRatio}:{})};
 }
