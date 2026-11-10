@@ -1,6 +1,7 @@
 // Atomic whole-module edits. Printer dimensions are checked only by final STL export.
 import {clone,uid,validateProject} from './model.js';
-import {bounds,validateLayout,transformedPoints,pocketOutline} from './geometry.js';
+import {bounds,validateLayout,transformedPoints} from './geometry.js';
+import {pocketLayoutOutline} from './pocket-wall.js';
 import {moduleIntersects,moduleOutline,modulePadding,steppedModuleFootprint} from './module-footprint.js';
 import {mergeOverlappingModules} from './module-merge.js';
 import {i18nError,t} from './i18n.js';
@@ -97,7 +98,7 @@ export function rotateModuleFree(project,moduleId,degrees,{validate=true,keepIns
       tool.rotation=angle((tool.rotation||0)+turn);
       tool.x=rotated.minX;tool.y=rotated.minY;
     }
-    extent=envelope(tools.map(tool=>pocketOutline(tool,next)));
+    extent=envelope(tools.map(tool=>pocketLayoutOutline(tool,next)));
     extent.minX-=padding;extent.minY-=padding;extent.maxX+=padding;extent.maxY+=padding;
   }else{
     extent=envelope([moduleOutline(module,next.grid).map(rotate)]);

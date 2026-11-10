@@ -8,6 +8,7 @@ import {pocketOutline} from './finger-grip.js';
 import {effectivePocketMargin} from './pocket-margin.js';
 import {releaseSoloMargins,restoreSoloMargins} from './module-margin.js';
 export {pocketOutline} from './finger-grip.js';
+import {pocketFloorOutlines,pocketLayoutOutline,pocketWallInset,pocketWallOutset,validatePocketWall} from './pocket-wall.js';
 import {t as tr,i18nError} from './i18n.js';
 import {fmtLen} from './units.js';
 import {orderTools} from './tool-size.js';
@@ -22,6 +23,8 @@ const close = (a,b) => Math.hypot(a.x-b.x,a.y-b.y)<EPS;
 // Layout issues keep the Czech source + params so the UI can re-translate them later (errorText).
 const issue = (type,ids,cs,params) => ({type,ids,message:tr(cs,params),i18n:{cs,params}});
 const issueError = item => Object.assign(Error(item.message),{i18n:item.i18n});
+// A thrown i18nError as a layout issue; its own Czech source stays re-translatable.
+const thrownIssue = (type,ids,error) => ({type,ids,message:error.message,...(error.i18n?{i18n:error.i18n}:{})});
 function clean(points) {
   let result = points.map(p => ({x:n(p.x),y:n(p.y)})).filter((p,i,a) => !i || !close(p,a[i-1]));
   if (result.length > 2 && close(result[0],result.at(-1))) result.pop();
@@ -114,7 +117,7 @@ export function resizeModule(project,moduleId,{width,height,mode='manual'}={}) {
   const next=copy(project),module=(next.modules||[]).find(m=>m.id===moduleId);
   if(!module)throw i18nError('Vybraný modul neexistuje.');
   const tools=(next.tools||[]).filter(t=>t.moduleId===moduleId);
-  const points=tools.flatMap(t=>pocketOutline(t,next)),content=points.length?box(points):null;
+  const points=tools.flatMap(t=>pocketLayoutOutline(t,next)),content=points.length?box(points):null;
   if(mode==='auto'){
     if(!tools.length)throw i18nError('Automatickou velikost prázdného modulu nelze určit. Zadejte jeho rozměry.');
     if(!content)throw i18nError('Nástroj nemá platnou konturu pro určení velikosti modulu.');
@@ -156,7 +159,7 @@ export function refitModules(project,{includeManual=false,moduleIds=null}={}) {
     if(selected&&!selected.has(module.id)||module.locked||module.pocketMargin!=null||!own.length||own.some(tool=>tool.locked)||module.cells||module.sizeMode==='manual'&&!includeManual)continue;
     if(module.sizeMode==='manual'&&[module.x,module.y,module.width,module.height].some(value=>Math.abs(value/grid-Math.round(value/grid))>.0001))continue;
     if(module.setLayout==='uniform'&&(next.toolSets||[]).some(set=>set.layout==='uniform'&&(set.id===module.setId||own.some(tool=>set.toolIds?.includes(tool.id)))))continue;
-    let content;try{content=box(own.flatMap(tool=>pocketOutline(tool,next)));}catch{continue;}
+    let content;try{content=box(own.flatMap(tool=>pocketLayoutOutline(tool,next)));}catch{continue;}
     const width=Math.ceil((content.width+2*padding-EPS)/grid)*grid,height=Math.ceil((content.height+2*padding-EPS)/grid)*grid;
     if(![width,height].every(value=>Number.isFinite(value)&&value>=5&&value<=3000)||width>module.width+EPS||height>module.height+EPS||width>=module.width-EPS&&height>=module.height-EPS)continue;
     const dx=module.x+(width-content.width)/2-content.x,dy=module.y+(height-content.height)/2-content.y;
@@ -187,7 +190,7 @@ function packModules(project,{preserveLocked=true,moduleShape,preserveOrientatio
   const footprints=new Map(),invalid=new Set(),unplaced=[];
   const markUnplaced=id=>{if(!unplaced.includes(id))unplaced.push(id);};
   for(const tool of tools){
-    try{const poly=pocketOutline(tool,minimized);if(poly.length<3)throw new Error('Prázdná kapsa.');footprints.set(tool.id,box(poly));}
+    try{const poly=pocketLayoutOutline(tool,minimized);if(poly.length<3)throw new Error('Prázdná kapsa.');footprints.set(tool.id,box(poly));}
     catch{invalid.add(tool.id);markUnplaced(tool.id);}
   }
   // Fillers are explicit user-created parts, so packing must never discard them.
@@ -255,7 +258,7 @@ function packModules(project,{preserveLocked=true,moduleShape,preserveOrientatio
     const candidates=[];
     // Insertion can request the source angle while an explicit Auto action still considers quarter turns.
     for(const rotation of fixedOrientations.has(tool.id)?[n(tool.rotation)]:[n(tool.rotation),n(tool.rotation)+90]){
-      let b;try{b=box(pocketOutline({...tool,x:0,y:0,rotation},minimized));}catch{continue;}
+      let b;try{b=box(pocketLayoutOutline({...tool,x:0,y:0,rotation},minimized));}catch{continue;}
       const width=Math.ceil((b.width+2*padding)/grid)*grid,height=Math.ceil((b.height+2*padding)/grid)*grid;
       if(width>n(project.width)||height>n(project.height))continue;
       for(let y=0;y+height<=n(project.height)+EPS;y+=grid){
@@ -317,16 +320,24 @@ export function validateLayout(project,{affectedIds}={}) {
     const self=!scoped||affected.has(t.id);
     let poly=[],pocketError=null;
     try{poly=pocketOutline(t,project);}catch(error){pocketError=error;if(self)issues.push(issue('overlap',[t.id],t.fingerGrips?.length?'Výřezy pro prsty nástroje „{name}“ nejsou platné: {error}':'Kontura „{name}“ není platná: {error}',{name:t.name,error:error.message}));}
-    polygons.set(t.id,poly);if(!self)continue;
+    // Walls, spacing and containment use the widest (top) pocket section; magnets sit on the floor.
+    let layout=poly,floors=[poly];
+    if(!pocketError){
+      let wallValid=true;
+      try{validatePocketWall(t.pocketWall,n(t.depth,10));}catch(error){wallValid=false;if(self)issues.push(thrownIssue('depth',[t.id],error));}
+      if(wallValid&&pocketWallOutset(t)>0)try{layout=pocketLayoutOutline(t,project);}catch(error){if(self)issues.push(thrownIssue('overlap',[t.id],error));}
+      if(wallValid&&pocketWallInset(t)>0)try{floors=pocketFloorOutlines(t,project);}catch(error){floors=null;if(self)issues.push(thrownIssue('depth',[t.id],error));}
+    }
+    polygons.set(t.id,layout);if(!self)continue;
     const m=modules.find(m=>m.id===t.moduleId);
     const raw=transformedPoints(t);
     if(!pocketError&&(poly.length<3||Math.abs(area(poly))<EPS||selfIntersects(raw)||selfIntersects(poly)))issues.push(issue('overlap',[t.id],'Kontura „{name}“ se kříží nebo není platná. Upravte konturu či zmenšete vůli.',{name:t.name}));
     if(!m)issues.push(issue('outside',[t.id],'Nástroj „{name}“ zatím nemá umístěný modul.',{name:t.name}));
-    else {let contained=false;try{contained=m.cells?containsPocketWalls(m,poly,wall,n(project.grid,42)):!poly.some(p=>p.x<m.x+wall+.25-.001||p.y<m.y+wall+.25-.001||p.x>m.x+m.width-wall-.25+.001||p.y>m.y+m.height-wall-.25+.001);}catch{}if(!contained)issues.push(issue('outside',[t.id,m.id],'Kolem „{name}“ není dost místa na stěnu. Zvětšete modul nebo spusťte rozvržení.',{name:t.name}));}
+    else {let contained=false;try{contained=m.cells?containsPocketWalls(m,layout,wall,n(project.grid,42)):!layout.some(p=>p.x<m.x+wall+.25-.001||p.y<m.y+wall+.25-.001||p.x>m.x+m.width-wall-.25+.001||p.y>m.y+m.height-wall-.25+.001);}catch{}if(!contained)issues.push(issue('outside',[t.id,m.id],'Kolem „{name}“ není dost místa na stěnu. Zvětšete modul nebo spusťte rozvržení.',{name:t.name}));}
     if(!(n(t.depth,10)>0&&n(t.depth,10)<=height-base+.001))issues.push(issue('depth',[t.id],'Hloubka kapsy „{name}“ musí být větší než 0 a nejvýše {max}.',{name:t.name,max:fmtLen(height-base)}));
     else if(!pocketError&&limits?.affected(t)&&n(t.depth,10)>limits.maxDepth(t)+.001)issues.push(issue('depth',[t.id],'Kapsa „{name}“ v modulu s magnetem potřebuje výšku vložky alespoň {height}.',{name:t.name,height:fmtLen(limits.requiredHeight(t),{digits:2})}));
-    if(!pocketError&&hasPocketMagnets(t)){
-      const problem=pocketMagnetProblem(t,poly);
+    if(!pocketError&&floors&&hasPocketMagnets(t)){
+      const problem=pocketMagnetProblem(t,floors);
       if(problem==='wall')issues.push(issue('overlap',[t.id],'Magnet v kapse „{name}“ je příliš blízko stěny nebo mimo dno kapsy.',{name:t.name}));
       if(problem==='spacing')issues.push(issue('overlap',[t.id],'Magnety v kapse „{name}“ jsou příliš blízko sebe.',{name:t.name}));
     }
@@ -436,7 +447,7 @@ export function createDemoProject() {
   const layout=[[0,0,84,168],[84,0,84,168],[168,0,42,168],[210,0,42,168],[252,0,84,126],[0,168,168,84]];
   tools.forEach((t,i)=>{
     const [x,y,width,height]=layout[i],m={id:`mod-${t.id}`,name:t.name,x,y,width,height,locked:false,sizeMode:'auto'};
-    const b=box(pocketOutline(t,project));
+    const b=box(pocketLayoutOutline(t,project));
     t.moduleId=m.id;t.x=x+(width-b.width)/2-b.x;t.y=y+(height-b.height)/2-b.y;
     project.modules.push(m);
   });

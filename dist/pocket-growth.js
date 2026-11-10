@@ -1,5 +1,6 @@
 import Clipper from './vendor/clipper.js';
-import {bounds,pocketOutline,validateLayout} from './geometry.js';
+import {bounds,validateLayout} from './geometry.js';
+import {pocketLayoutOutline} from './pocket-wall.js';
 import {containsPocketWalls,moduleIntersects,modulePadding} from './module-footprint.js';
 import {clone} from './model.js';
 import {i18nError} from './i18n.js';
@@ -27,7 +28,7 @@ export function spacePocketCenters(project,tools){
   if(!pairIssue)return tools.map(tool=>({...tool}));
   const entries=tools.map(tool=>{
     const b=bounds(tool),cx=b.x+b.width/2,cy=b.y+b.height/2;
-    const path=pocketOutline(tool,project).map(p=>({X:Math.round((p.x-cx)*SCALE),Y:Math.round((p.y-cy)*SCALE)}));
+    const path=pocketLayoutOutline(tool,project).map(p=>({X:Math.round((p.x-cx)*SCALE),Y:Math.round((p.y-cy)*SCALE)}));
     if(!Clipper.Clipper.Orientation(path))path.reverse();
     const offset=new Clipper.ClipperOffset(2,.002*SCALE),grown=[];
     offset.AddPath(path,Clipper.JoinType.jtRound,Clipper.EndType.etClosedPolygon);
@@ -82,7 +83,7 @@ export function growModuleForMargins(project,moduleId){
   if(module.locked)throw i18nError('Nejprve odemkněte polohu modulu.');
   if(!own.length)return next;
   const reservesFit=tools=>next.connectors!==true||next.bottomMode==='grid'||tools.every(tool=>{
-    const pocket=pocketOutline(tool,next),padding=modulePadding(next);
+    const pocket=pocketLayoutOutline(tool,next),padding=modulePadding(next);
     if(module.cells)return containsPocketWalls(module,pocket,padding-.25,next.grid);
     return pocket.every(p=>p.x>=module.x+padding-EPS&&p.y>=module.y+padding-EPS&&
       p.x<=module.x+module.width-padding+EPS&&p.y<=module.y+module.height-padding+EPS);
@@ -90,7 +91,7 @@ export function growModuleForMargins(project,moduleId){
   const isolated={...next,width:Math.max(next.width,module.x+module.width),height:Math.max(next.height,module.y+module.height),modules:[module],tools:own};
   if(!validateLayout(isolated).length&&reservesFit(own))return next;
   if(own.some(tool=>tool.locked))throw i18nError('Nejprve odemkněte polohu modulu.');
-  const spaced=spacePocketCenters(next,own),content=extent(spaced.flatMap(tool=>pocketOutline(tool,next))),padding=modulePadding(next),grid=next.grid;
+  const spaced=spacePocketCenters(next,own),content=extent(spaced.flatMap(tool=>pocketLayoutOutline(tool,next))),padding=modulePadding(next),grid=next.grid;
   // A stepped module may already have enough room once its centres are spread.
   // Keep its notch, especially when another module occupies that empty corner.
   if(!validateLayout({...isolated,tools:spaced}).length&&reservesFit(spaced)){

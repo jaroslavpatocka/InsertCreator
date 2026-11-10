@@ -41,5 +41,6 @@ export default {
   'Návrh má upozornění k vyřešení: {count}.':'Warnings to resolve in the design: {count}.',
   'Než vytisknete celou vložku, ověřte rozměry na PDF v měřítku 1:1.':'Before you print the whole insert, check the dimensions on a 1:1 PDF.',
   'Exportovat':'Export',
-  'Průvodce kdykoli spustíte v nápovědě.':'You can start the guide again from Help at any time.'
+  'Průvodce kdykoli spustíte v nápovědě.':'You can start the guide again from Help at any time.',
+  'Katalog a vlastní moduly':'Catalog and custom modules'
 };

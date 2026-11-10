@@ -405,4 +405,7 @@ export default {
   'Bod: kliknutím na hranu přidáte bod, tažením ho přesunete. Vyberte bod a použijte Křivka, Rovný bod nebo Smazat. Čtverečky mění zakřivení.':'Point: click an edge to add a point, then drag it to move it. Select a point and choose Curve, Straight point or Delete point. Drag the square handles to adjust the curve.',
   'Tah je příliš dlouhý. Nakreslete obrys znovu.':'The stroke is too long. Draw the outline again.',
   'Nástroj vyberte v paletě nad fotografií. Kolečko přibližuje; mezerník a tažení posouvají náhled.':'Choose a tool in the palette above the photo. Use the wheel to zoom; hold Space and drag to pan.',
+  'Hloubka, vůle a stěny kapsy':'Pocket depth, clearance and walls',
+  'Označení a kategorie':'Size label and category',
+  'Hloubka {depth} · vůle {margin}':'Depth {depth} · clearance {margin}',
 };

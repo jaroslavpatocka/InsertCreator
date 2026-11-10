@@ -1,3 +1,4 @@
+import {normalizePocketWall,validatePocketWall} from './pocket-wall.js';
 import {materialConfig} from './print-material.js';
 import {validateFingerGrips} from './finger-grip.js';
 import {optionalPocketMargin} from './pocket-margin.js';
@@ -63,6 +64,8 @@ export function validateProject(input){
       if(!size||typeof size.value!=='number'||!Number.isFinite(size.value)||size.value<=0||size.value>3000||!['mm','in'].includes(size.unit))throw i18nError('Zadejte platnou jmenovitou velikost nástroje.');
       sizeFields.nominalSize={value:size.value,unit:size.unit};
     }
+    if(t.customPocket===true)sizeFields.customPocket=true;
+    const pocketWall=normalizePocketWall(t.pocketWall);if(pocketWall){validatePocketWall(pocketWall,finite(t.depth??12,.5,99,'hloubka kapsy'));sizeFields.pocketWall=pocketWall;}
     const category=metaText(t.category,40);if(category)sizeFields.category=category;
     if(t.pocketFit&&['ideal','hybrid','functional'].includes(t.pocketFit.mode)&&typeof t.pocketFit.signature==='string'&&/^[a-f0-9]{8}$/.test(t.pocketFit.signature))sizeFields.pocketFit={mode:t.pocketFit.mode,signature:t.pocketFit.signature};
     if(Array.isArray(t.setNames)){const setNames=[...new Set(t.setNames.map(s=>metaText(s,100)).filter(Boolean))].slice(0,12);if(setNames.length)sizeFields.setNames=setNames;}

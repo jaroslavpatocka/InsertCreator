@@ -197,9 +197,9 @@ test('visible drawer dimensions control restores millimetre fields without resiz
     assert.ok($('#app [data-scope=project][data-field=width]')===null);
     assert.match($('.drawer-dimensions').textContent,/Rozměry šuplíku/);
     win.happyDOM.setWindowSize({width:390,height:844});
-    win.HTMLElement.prototype.scrollIntoView=function(options){scrolls.push({id:this.id,options});};
+    win.HTMLElement.prototype.scrollIntoView=function(options){scrolls.push({id:this.id,field:this.dataset.field,options});};
     click('.drawer-dimensions');
-    assert.equal(scrolls.length,1);assert.equal(scrolls[0].id,'drawer-settings');
+    assert.equal(scrolls.length,1);assert.equal(scrolls[0].field,'width');assert.ok($('[data-inspector-section=drawer-dimensions]').open);assert.equal(win.document.activeElement,$('#app [data-scope=project][data-field=width]'));
     assert.equal($('#app [data-scope=project][data-field=width]').value,String(before.width));
     assert.equal($('#app [data-scope=project][data-field=height]').value,String(before.height));
     change('#app [data-scope=project][data-field=width]',535);
@@ -293,10 +293,10 @@ test('saved status recovers after browser storage becomes writable again',()=>{
 const czech=/[ěščřžýáíéůúňťďĚŠČŘŽÝÁÍÉŮÚŇŤĎ]/;
 test('language switch in the top bar translates the interface, persists and updates document metadata',()=>{
   try{
-    action('drawer-tab');assert.match($('#drawer-settings .panel-title').textContent,/Rozměry šuplíku/);
+    action('drawer-tab');assert.match($('#drawer-settings .panel-title').textContent,/Nastavení šuplíku/);
     click('#app .topbar [data-action=set-lang][data-value=en]');
     assert.equal(localStorage.getItem('suplik-studio-lang'),'"en"');assert.equal(win.document.documentElement.lang,'en');
-    assert.match($('#drawer-settings .panel-title').textContent,/Drawer dimensions/);
+    assert.match($('#drawer-settings .panel-title').textContent,/Drawer settings/);
     assert.ok($('#app [data-action=set-lang][data-value=en]').classList.contains('active'));
     assert.match(win.document.title,/a place for every tool/);assert.match($('meta[name=description]').getAttribute('content'),/drawer insert/);
     for(const selector of ['.topbar','.page-heading .subtitle','.steps','.board-toolbar','.board-footer','.metrics','#drawer-settings','.export-card','.footer-line','.mobile-nav','.sidebar-nav'])
@@ -305,7 +305,7 @@ test('language switch in the top bar translates the interface, persists and upda
     action('export');assert.match($('.modal-head h2').textContent,/Ready to make/);click('[data-modal-close]');
     action('projects');assert.match($('.modal-head h2').textContent,/My drawers/);click('[data-modal-close]');
   }finally{click('#app [data-action=set-lang][data-value=cs]');}
-  assert.equal(localStorage.getItem('suplik-studio-lang'),'"cs"');assert.match($('#drawer-settings .panel-title').textContent,/Rozměry šuplíku/);assert.match(win.document.title,/místo pro každý nástroj/);
+  assert.equal(localStorage.getItem('suplik-studio-lang'),'"cs"');assert.match($('#drawer-settings .panel-title').textContent,/Nastavení šuplíku/);assert.match(win.document.title,/místo pro každý nástroj/);
 });
 
 test('inch units display, typed lengths accept any unit and drawers can override the app unit',()=>{

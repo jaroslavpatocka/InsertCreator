@@ -6,6 +6,7 @@ import {fitFunctionalPocket,fitHybridPocket} from './functional-pocket.js';
 import {fitIdealPocket} from './ideal-pocket.js';
 import {pocketFitSignature} from './pocket-fit-meta.js';
 import {effectivePocketMargin,optionalPocketMargin} from './pocket-margin.js';
+import {validatePocketWall} from './pocket-wall.js';
 import {simple} from './contour-smoothing.js';
 import {checkCaptureContourSafety} from './capture-contour-safety.js';
 
@@ -129,6 +130,8 @@ export function toolFromCaptureItem(item,{scale,depth,id,preservePosition=false}
   if(item.editedPoints)requireCaptureToolSpace(item,scale);
   const metadata={};
   const margin=optionalPocketMargin(item.pocketMargin);if(margin!==undefined)metadata.pocketMargin=margin;
+  // Pocket wall profile chosen in the guide; a vertical wall is omitted.
+  const wall=validatePocketWall(item.pocketWall??null,depth);if(wall)metadata.pocketWall=wall;
   if(item.category!=null&&item.category!==''){
     if(!categories.has(item.category))throw i18nError('Vyberte platnou kategorii nástroje.');
     metadata.category=item.category;

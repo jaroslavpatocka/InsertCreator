@@ -1,3 +1,4 @@
+import {pocketLayoutOutline,pocketWallOutset} from './pocket-wall.js';
 // Local 5×7 block font and a conservative, shared plan for actual engraved size labels.
 import Clipper from './vendor/clipper.js';
 import {pocketOutline} from './finger-grip.js';
@@ -140,7 +141,7 @@ function planModuleLabels(project,module,own){
   const effectiveBase=project.bottomMode==='magnet'?Math.max(base,number(project.magnetDepth,2.2)+1.2):base;
   const foot=project.bottomMode==='grid'?4.75:0,lift=moduleMagnetLift(project,own),baseTop=foot+effectiveBase+lift,top=light?baseTop+Math.min(1,height-base-lift):foot+height+effectiveBase-base;
   const available=height-base-lift,obstacles=[];let invalid=false;
-  for(const tool of own){try{const poly=tool.poly||pocketOutline(tool,project);if(poly.length<3)throw Error();obstacles.push(...offset(poly,wall+CLEAR));}catch{invalid=true;}}
+  for(const tool of own){try{const poly=pocketWallOutset(tool)>0?pocketLayoutOutline(tool,project):tool.poly||pocketOutline(tool,project);if(poly.length<3)throw Error();obstacles.push(...offset(poly,wall+CLEAR));}catch{invalid=true;}}
   const blocked=obstacles.map(poly=>({poly,bounds:box(poly)})),margin=Math.max(wall+.25,project.bottomMode==='grid'?4.1:1.25),inner={x:module.x+margin,y:module.y+margin,maxX:module.x+module.width-margin,maxY:module.y+module.height-margin};
   const fits=(x,y,width,depth,rotation,size)=>{
     if(x<inner.x-1e-6||x+width>inner.maxX+1e-6||y<inner.y-1e-6||y+depth>inner.maxY+1e-6)return null;
@@ -157,7 +158,7 @@ function planModuleLabels(project,module,own){
     const glyphs=sizeLabelGlyphs(text,style.size);if(!glyphs){failure('unsupported-character');continue;}
     if(available<.8){failure('insufficient-height');continue;}
     if(invalid){failure('invalid-pocket');continue;}
-    const pocket=box(tool.poly||pocketOutline(tool,project)),candidates=[],anchor={x:(pocket.x+pocket.maxX)/2,y:(pocket.y+pocket.maxY)/2};
+    const pocket=box(pocketWallOutset(tool)>0?pocketLayoutOutline(tool,project):tool.poly||pocketOutline(tool,project)),candidates=[],anchor={x:(pocket.x+pocket.maxX)/2,y:(pocket.y+pocket.maxY)/2};
     const size={width:glyphs.width+2*PAD,height:glyphs.height+2*PAD};
     let chosen=null;
     if(style.position){

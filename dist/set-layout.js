@@ -1,4 +1,5 @@
 import {autoArrange,pocketOutline,transformedPoints,validateLayout,exportSTL} from './geometry.js';
+import {pocketLayoutOutline} from './pocket-wall.js';
 import {automaticFingerGrips} from './finger-grip.js';
 import {analyzeToolShape,findToolSets,setCoherence} from './tool-sets.js';
 import {orderTools} from './tool-size.js';
@@ -54,7 +55,7 @@ function planOptions(project,set,allocate){
       }
     }
     for(const heading of [0,90]){
-      const items=tools.map(t=>{const rotation=analyzeToolShape(t).rotation+heading,b=bounds(pocketOutline({...t,x:0,y:0,rotation},project));return{tool:t,rotation,b};});
+      const items=tools.map(t=>{const rotation=analyzeToolShape(t).rotation+heading,b=bounds(pocketLayoutOutline({...t,x:0,y:0,rotation},project));return{tool:t,rotation,b};});
       const maxW=Math.max(...items.map(i=>i.b.width)),maxH=Math.max(...items.map(i=>i.b.height));
       const cellW=layout==='uniform'?Math.ceil((maxW+2*padding-EPS)/grid)*grid:maxW+gap;
       const cellH=layout==='uniform'?Math.ceil((maxH+2*padding-EPS)/grid)*grid:maxH+gap;
@@ -115,7 +116,7 @@ export async function arrangeToolSets(project,{onProgress,signal,compactArrange,
   sets=findToolSets(source).sets;before=metric(source,sets);best=source;bestMetric=before;
   const placedModules=source.modules.filter(m=>inside(m,source)),placedIds=new Set(placedModules.map(m=>m.id));
   const issue=validateLayout({...source,modules:placedModules,tools:source.tools.filter(t=>placedIds.has(t.moduleId))})[0];if(issue)throw Error(issue.message);
-  for(const tool of source.tools)pocketOutline(tool,source);
+  for(const tool of source.tools)pocketLayoutOutline(tool,source);
   const own=m=>source.tools.filter(t=>t.moduleId===m.id),protectedIds=new Set(source.modules.filter(m=>m.locked||m.sizeMode==='manual'||m.pocketMargin!=null||!own(m).length||own(m).some(t=>t.locked)||(!m.grouped&&m.setLayout!=='uniform'&&own(m).length>1)).map(m=>m.id));
   const blocked=new Set();for(const set of sets)if(set.toolIds.some(id=>protectedIds.has(source.tools.find(t=>t.id===id)?.moduleId))){blocked.add(set.id);warnings.push(`${set.name}: zamčené nebo ručně rozměrované moduly zůstaly zachované.`);}
   const usedIds=new Set(source.modules.map(m=>m.id)),allocate=id=>{let next=id,n=2;while(usedIds.has(next))next=`${id}-${n++}`;usedIds.add(next);return next;};

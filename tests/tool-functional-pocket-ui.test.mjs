@@ -29,7 +29,7 @@ const $=selector=>win.document.querySelector(selector);
 const state=()=>{const project=JSON.parse(localStorage.getItem('suplik-studio-projects-v1')).find(p=>p.id==='functional-ui');delete project.updatedAt;return project;};
 const click=element=>{assert.ok(element,'expected UI control');if(typeof element.click==='function')element.click();else element.dispatchEvent(new win.MouseEvent('click',{bubbles:true,cancelable:true}));};
 const action=name=>click($(`#app [data-action="${name}"]`));
-function select(id){click($(`#board-svg [data-tool="${id}"]`));const section=$('[data-inspector-section="tool-shape"]');section.open=true;return section.querySelector('[data-action="functional-pocket"]');}
+function select(id){click($(`#board-svg [data-tool="${id}"]`));const section=$('[data-inspector-section="pocket-settings"]');assert.ok(section,'pocket shape belongs with pocket settings');section.open=true;assert.equal($('[data-inspector-section="tool-shape"] [data-action="functional-pocket"]'),null);return section.querySelector('[data-action="functional-pocket"]');}
 
 test('geometric pocket preview is read-only; apply persists one undoable valid geometry change',()=>{
   const before=state();click(select('rough'));

@@ -1,5 +1,6 @@
 // One module from calibrated photo coordinates. No packing or scaling of contours.
-import {pocketOutline,validateLayout} from './geometry.js';
+import {validateLayout} from './geometry.js';
+import {pocketLayoutOutline} from './pocket-wall.js';
 import {moduleIntersects,modulePadding} from './module-footprint.js';
 import {clone,uid,validateProject} from './model.js';
 import {t,i18nError} from './i18n.js';
@@ -33,7 +34,7 @@ export function addPhotoModule(project,tools,{name,moduleId,growMargins=false}={
   let id=base;for(let suffix=2;usedModules.has(id);suffix++)id=`${base}-${suffix}`;
   const grid=validated.grid,padding=modulePadding(validated);
   let minX=Infinity,minY=Infinity,maxX=-Infinity,maxY=-Infinity;
-  for(const tool of own)for(const point of pocketOutline(tool,validated)){
+  for(const tool of own)for(const point of pocketLayoutOutline(tool,validated)){
     minX=Math.min(minX,point.x);minY=Math.min(minY,point.y);maxX=Math.max(maxX,point.x);maxY=Math.max(maxY,point.y);
   }
   const width=Math.ceil((maxX-minX+2*padding-EPS)/grid)*grid,height=Math.ceil((maxY-minY+2*padding-EPS)/grid)*grid;

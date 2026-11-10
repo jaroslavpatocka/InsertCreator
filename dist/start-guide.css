@@ -66,3 +66,15 @@ html:has(.start-coach) #toast{top:16px;bottom:auto}
   .start-coach-actions .btn{flex:1;justify-content:center}
 }
 @media(prefers-reduced-motion:reduce){.start-guide,.start-coach{animation:none}.start-guide-choice{transition:none}}
+.start-guide-options{min-width:0;border:1px solid var(--line);border-radius:9px;background:#fff}
+.start-guide-options>summary,.start-coach-details>summary{min-height:44px;box-sizing:border-box;padding:12px 14px;cursor:pointer;color:var(--ink);font-size:14px;font-weight:650;line-height:1.5}
+.start-guide-options>summary:focus-visible,.start-coach-details>summary:focus-visible{outline:2px solid var(--green);outline-offset:2px;border-radius:7px}
+.start-guide-options>.start-guide-choices{padding:0 12px 12px}
+.start-guide-options .start-guide-choice{border-color:var(--line)}
+.start-coach-details{margin:0 28px 10px 0;border:0;background:transparent}
+.start-coach-details>summary{padding:4px 0;min-height:44px;display:flex;align-items:center;gap:8px}
+.start-coach-details>summary h2{font-size:14px;line-height:1.5;margin:0}
+.start-coach-details>.ui-disclosure-body{padding:0}
+.start-coach-details .start-guide-progress{margin:8px 0 12px}
+.start-coach .start-coach-close{width:44px;height:44px;top:8px;right:6px}
+@media(max-width:560px){.start-guide-options>summary{font-size:14px}.start-coach{padding:12px}.start-coach-details{margin-right:36px}}

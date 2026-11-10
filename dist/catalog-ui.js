@@ -362,7 +362,7 @@ export function mountLibraryFolders(modal,{mine,onAdd,onSave}){
       +`<span class="catalog-meta">${/\(\d+\s*(?:ks|pcs)\.?\)/i.test(name)?'':`<span class="catalog-set-count">${esc(plural(total,['{n} kus','{n} kusy','{n} kusů']))}</span>`}${range?`<span class="catalog-set-range">${esc(range)}</span>`:''}<span class="unit-badge">${unit}</span><span class="accuracy-badge accuracy-${acc}" title="${esc(tip)}" tabindex="0" role="note" aria-label="${esc(t(ACCURACY[acc])+' · '+tip)}">${esc(t(ACCURACY[acc]))}</span></span>`
       +`<button type="button" class="catalog-set-toggle" data-set-toggle="${esc(id)}" aria-expanded="${open}" aria-controls="${domId(id)}">${icon('chevron')}<span>${esc(t(open?'Skrýt obsah':'Zobrazit obsah'))}</span><small data-set-picked>${n<total?esc(t('{n} z {total} vybráno',{n,total})):''}</small></button>`
       +(open?membersHTML(set):'')
-      +`<div class="catalog-set-options">${layoutHTML(set)}${scaleHTML('s:'+set.id)}</div>`
+      +`<div class="catalog-set-options">${set.tools.length>1?`<details class="ui-disclosure catalog-layout"><summary>${esc(t('Rozložení sady'))}</summary><div class="ui-disclosure-body">${layoutHTML(set)}</div></details>`:''}${scaleHTML('s:'+set.id)}</div>`
       +`<span class="catalog-actions"><button type="button" class="btn btn-light" data-set-add="${esc(id)}" ${n?'':'disabled'} aria-label="${esc(addAria(set,n))}">${icon('plus')}<span data-set-add-label>${esc(addLabel(set))}</span></button><button type="button" class="icon-btn" data-set-save="${esc(id)}" ${n?'':'disabled'} title="${esc(t('Uložit sadu do mých nástrojů'))}" aria-label="${esc(t('Uložit sadu {name} do mých nástrojů',{name}))}">${icon('save')}</button></span></div>`;
   }
   function membersHTML(set){

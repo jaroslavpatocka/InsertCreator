@@ -1,3 +1,4 @@
+import enMenus from './locales/en-menus.js';
 // Lightweight i18n. The Czech source text is the message key (gettext style);
 // English translations live in ./locales/en-*.js, split per area so they can be
 // maintained independently. Missing translations fall back to the Czech text.
@@ -6,11 +7,12 @@ import enCapture from './locales/en-capture.js';
 import enCore from './locales/en-core.js';
 import enMagnet from './locales/en-magnet.js';
 import enGuide from './locales/en-guide.js';
+import enCustomModule from './locales/en-custom-module.js';
 
 export const LANGS=['cs','en'];
 export const LANG_NAMES={cs:'Čeština',en:'English'};
 const LANG_KEY='suplik-studio-lang';
-const dictionaries={cs:null,en:{...enCore,...enCapture,...enApp,...enMagnet,...enGuide}};
+const dictionaries={cs:null,en:{...enCore,...enCapture,...enApp,...enMagnet,...enGuide,...enCustomModule,...enMenus}};
 const listeners=new Set();
 
 function storage(){try{return typeof document==='undefined'?null:globalThis.localStorage||null;}catch{return null;}}

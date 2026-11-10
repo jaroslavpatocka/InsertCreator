@@ -1,5 +1,6 @@
 import Clipper from './vendor/clipper.js';
 import {pocketOutline} from './finger-grip.js';
+import {pocketLayoutOutline,pocketWallOutset} from './pocket-wall.js';
 import {i18nError} from './i18n.js';
 
 const SCALE=10000,EPS=1e-7,MAX_CELLS=4096;
@@ -7,6 +8,8 @@ const key=(x,y)=>`${x},${y}`;
 const directions=[[1,0],[0,1],[-1,0],[0,-1]];
 const area=poly=>poly.reduce((sum,p,i)=>{const q=poly[(i+1)%poly.length];return sum+p.x*q.y-q.x*p.y;},0)/2;
 const rectangle=(x,y,w,h)=>[{x,y},{x:x+w,y},{x:x+w,y:y+h},{x,y:y+h}];
+// Widest (top) pocket section. A precomputed tool.poly is the plain pocket, so a widened top edge always wins.
+const layoutPocket=(tool,project)=>pocketWallOutset(tool)>0?pocketLayoutOutline(tool,project):tool.poly||pocketOutline(tool,project);
 const invalid=()=>i18nError('Schodový modul musí tvořit souvislé buňky rastru bez otvorů.');
 const toInt=paths=>paths.map(poly=>poly.map(p=>({X:Math.round(p.x*SCALE),Y:Math.round(p.y*SCALE)})));
 const fromInt=paths=>paths.map(poly=>poly.map(p=>({x:p.X/SCALE,y:p.Y/SCALE})));
@@ -139,7 +142,7 @@ export function steppedModuleFootprint(project,module){
   if(!(grid>0&&cols>0&&rows>0)||cols*rows>MAX_CELLS||Math.abs(cols*grid-next.width)>EPS||Math.abs(rows*grid-next.height)>EPS||[next.x,next.y].some(value=>!Number.isFinite(value)||Math.abs(value/grid-Math.round(value/grid))>EPS))return next;
   const own=(project.tools||[]).filter(tool=>tool.moduleId===module.id);if(!own.length)return next;
   try{
-    const wall=Number(project.wall??2.4),pockets=own.map(tool=>tool.poly||pocketOutline(tool,project));
+    const wall=Number(project.wall??2.4),pockets=own.map(tool=>layoutPocket(tool,project));
     if(pockets.some(poly=>!containsPocketWalls(next,poly,wall,grid)))return next;
     const grown=pockets.flatMap(poly=>offset(poly,modulePadding(project))),occupied=new Set();
     // Rasterize each small pocket only over its own bounding cells. A large set must not

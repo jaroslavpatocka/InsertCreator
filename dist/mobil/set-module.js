@@ -1,6 +1,7 @@
 // Tool sets as ONE shared module (or as few print-bed sized modules), and uniform tool scaling. Pure geometry, no DOM.
 import Clipper from './vendor/clipper.js';
 import {pocketOutline,automaticFingerGrips} from './finger-grip.js';
+import {pocketLayoutOutline} from './pocket-wall.js';
 import {effectivePocketMargin} from './pocket-margin.js';
 import {autoArrange,validateLayout,exportSTL} from './geometry.js';
 import {analyzeToolShape} from './tool-sets.js';
@@ -75,7 +76,7 @@ const invalidPocket=(tool,error)=>i18nError('Nástroj „{name}“ nemá platnou
  *  shape = pocket grown by the wall, so the next pocket stays a full wall away (finger grips included). */
 function orient(tool,rotation,clearance,separation){
   let polygon;
-  try{polygon=pocketOutline({...tool,x:0,y:0,rotation},clearance);}catch(error){throw invalidPocket(tool,error.message);}
+  try{polygon=pocketLayoutOutline({...tool,x:0,y:0,rotation},clearance);}catch(error){throw invalidPocket(tool,error.message);}
   if(!Array.isArray(polygon)||polygon.length<3)throw invalidPocket(tool,'');
   const expanded=expand(polygon,separation);if(!expanded)throw invalidPocket(tool,'');
   const bounds=box(polygon),grown={minX:bounds.minX-separation,minY:bounds.minY-separation,maxX:bounds.maxX+separation,maxY:bounds.maxY+separation};
@@ -89,7 +90,7 @@ function prepareOne(tool,index,ctx,{heading=null,rotation=null}={}){
   if(rotation!=null)base=rotation;
   else if(heading===null){
     const r=num(tool.rotation);let a,b;
-    try{a=box(pocketOutline({...tool,x:0,y:0,rotation:r},clearance));b=box(pocketOutline({...tool,x:0,y:0,rotation:r+90},clearance));}catch(error){throw invalidPocket(tool,error.message);}
+    try{a=box(pocketLayoutOutline({...tool,x:0,y:0,rotation:r},clearance));b=box(pocketLayoutOutline({...tool,x:0,y:0,rotation:r+90},clearance));}catch(error){throw invalidPocket(tool,error.message);}
     base=a.width>=a.height-EPS||b.width<b.height?r:r+90;
   }else{let shape;try{shape=analyzeToolShape(tool);}catch(error){throw invalidPocket(tool,error.message);}base=shape.rotation+heading;}
   const normal=orient(tool,base,clearance,ctx.separation);
@@ -409,7 +410,7 @@ export function splitForBed(project,tools,opts={}){
     let turned=false;
     if(opts.diagonal!==false&&!opts.preserveOrientation){
       const base=heads.get(tool.id)[0].normal.rotation;let outline=null,bestTurn=null;
-      try{outline=pocketOutline({...tool,x:0,y:0,rotation:base},ctx.next);}catch{}
+      try{outline=pocketLayoutOutline({...tool,x:0,y:0,rotation:base},ctx.next);}catch{}
       for(let a=1;outline&&a<180;a++){
         if(a===90)continue;
         const r=a*Math.PI/180,c=Math.cos(r),s=Math.sin(r),d=ctx.size(box(outline.map(p=>({x:p.x*c-p.y*s,y:p.x*s+p.y*c}))));

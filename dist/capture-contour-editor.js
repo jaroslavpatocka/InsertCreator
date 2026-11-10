@@ -43,7 +43,8 @@ export function bindCaptureContourEditor(canvas,{getItems,getActiveIndex,onSelec
   }
   const mainPalette=makePalette(toolbar),hint=mainPalette.hint;canvas.setAttribute('aria-describedby',[previousDescription,hint.id].filter(Boolean).join(' '));
   const details=document.createElement('div');details.className='capture-contour-details';area.append(details);
-  const numeric=document.createElement('div');numeric.className='capture-contour-fields';details.append(numeric);
+  const numericDisclosure=document.createElement('details'),numericSummary=document.createElement('summary');numericDisclosure.className='ui-disclosure editor-disclosure capture-contour-numeric';numericDisclosure.dataset.contourSection='dimensions';numericSummary.textContent=t('Rozměry a poloha bodu');numericDisclosure.append(numericSummary);details.append(numericDisclosure);
+  const numeric=document.createElement('div');numeric.className='ui-disclosure-body capture-contour-fields';numericDisclosure.append(numeric);
   const inputs={};
   for(const [key,label] of [['length','Délka'],['width','Šířka'],['x','X bodu'],['y','Y bodu']]){
     const wrap=document.createElement('label'),text=document.createElement('span'),input=document.createElement('input');wrap.className='field';text.textContent=t(label);input.type='text';input.inputMode='decimal';input.autocomplete='off';input.spellcheck=false;input.dataset.contourField=key;input.setAttribute('aria-label',t(label));wrap.append(text,input);numeric.append(wrap);inputs[key]=input;
@@ -98,7 +99,7 @@ export function bindCaptureContourEditor(canvas,{getItems,getActiveIndex,onSelec
           if(action==='curve')commit(curveContourNode(modelOf(active.item),selected));
           else if(action==='straight')commit(straightContourNode(modelOf(active.item),selected));
           else if(action==='delete'){commit(deleteContourNode(modelOf(active.item),selected));selected=null;notify(active.index);}
-          else if(action==='width'||action==='length'){inputs[action].focus();inputs[action].select();return;}
+          else if(action==='width'||action==='length'){numericDisclosure.open=true;inputs[action].focus();inputs[action].select();return;}
           focusSurface.focus({preventScroll:true});
         }catch(error){fail(error);}
       }});menu.menu.classList.add('capture-contour-menu');
@@ -277,7 +278,7 @@ export function bindCaptureContourEditor(canvas,{getItems,getActiveIndex,onSelec
       onSelect(owner.index);selectedItem=owner.item;selected=owner.node;refresh();
     }
   }
-  function focusField(key){if(ownField(key)){activateFieldOwner(key);if(document.activeElement!==inputs[key])inputs[key].focus({preventScroll:true});}}
+  function focusField(key){if(ownField(key)){numericDisclosure.open=true;activateFieldOwner(key);if(document.activeElement!==inputs[key])inputs[key].focus({preventScroll:true});}}
   function applyField(key){
     const input=inputs[key],owner=fieldOwners.get(key)||ownField(key);if(!owner||isBusy())return false;
     // A browser may dispatch change only when focus leaves, after another tool
@@ -294,7 +295,7 @@ export function bindCaptureContourEditor(canvas,{getItems,getActiveIndex,onSelec
   }
   function validateFields(){
     for(const key of [...new Set([...dirtyFields,...invalidFields])])if(!applyField(key))break;
-    if(invalidFields.size){const key=[...invalidFields][0],input=inputs[key];activateFieldOwner(key);input.focus();onError(t('Opravte neplatnou hodnotu úpravy obrysu.'));return false;}return true;
+    if(invalidFields.size){const key=[...invalidFields][0],input=inputs[key];numericDisclosure.open=true;activateFieldOwner(key);input.focus();onError(t('Opravte neplatnou hodnotu úpravy obrysu.'));return false;}return true;
   }
   for(const [key,input] of Object.entries(inputs)){input.addEventListener('focus',()=>focusField(key));input.addEventListener('input',()=>{ownField(key);dirtyFields.add(key);});input.addEventListener('change',()=>applyField(key));}
   const cancelEvent=event=>{if(drag&&event.pointerId===drag.id){stop(event);cancel();}};

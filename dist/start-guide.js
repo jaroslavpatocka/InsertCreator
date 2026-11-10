@@ -61,7 +61,7 @@ function drawerStep(project){
 }
 function toolsStep(project){
   const more=contentCount(project)>0;
-  return `<div class="start-guide-body">${progress('tools')}${heading(more?'Přidejte další nástroje':'Jak chcete přidat nástroje?',more?'Vyberte, odkud další nástroje přijdou.':'Vyberte jednu možnost. Ostatní můžete použít později a kombinovat je.')}<div class="start-guide-choices">${choice('add-photo','camera','Vyfotit nářadí','Položte ho na A4 nebo k pravítku a obrysy najdeme automaticky.',true)}${choice('add-catalog','folder','Vybrat z katalogu','Hotové obrysy běžného nářadí, bez focení.')}${choice('add-module','grid','Vytvořit modul','Prázdný modul, přihrádka nebo kapsa se známým rozměrem.')}</div></div><div class="start-guide-foot"><button type="button" class="btn btn-light" data-guide="${more?'arrange':'back'}">${esc(tr('Zpět'))}</button>${skipButton()}</div>`;
+  return `<div class="start-guide-body">${progress('tools')}${heading(more?'Přidejte další nástroje':'Jak chcete přidat nástroje?',more?'Vyberte, odkud další nástroje přijdou.':'Vyberte jednu možnost. Ostatní můžete použít později a kombinovat je.')}<div class="start-guide-choices">${choice('add-photo','camera','Vyfotit nářadí','Položte ho na A4 nebo k pravítku a obrysy najdeme automaticky.',true)}<details class="ui-disclosure start-guide-options" data-start-guide-section="sources"><summary>${esc(tr('Katalog a vlastní moduly'))}</summary><div class="ui-disclosure-body start-guide-choices">${choice('add-catalog','folder','Vybrat z katalogu','Hotové obrysy běžného nářadí, bez focení.')}${choice('add-module','grid','Vytvořit modul','Prázdný modul, přihrádka nebo kapsa se známým rozměrem.')}</div></details></div></div><div class="start-guide-foot"><button type="button" class="btn btn-light" data-guide="${more?'arrange':'back'}">${esc(tr('Zpět'))}</button>${skipButton()}</div>`;
 }
 function coachContent(step,project,issues){
   const tools=project.tools.length,summary=tools?plural(tools,['{n} nástroj','{n} nástroje','{n} nástrojů']):plural(project.modules.length,['{n} modul','{n} moduly','{n} modulů']);
@@ -98,7 +98,7 @@ export function createStartGuide(host){
       return;
     }
     const {title,text,actions}=coachContent(state.step,project,issues);
-    target.innerHTML=`<section class="start-coach" aria-labelledby="start-coach-title"><button type="button" class="icon-btn start-coach-close" data-guide="skip" aria-label="${esc(tr('Přeskočit průvodce'))}">${icon('close')}</button>${progress(state.step)}<h2 id="start-coach-title">${esc(tr(title))}</h2><p>${esc(text)}</p><div class="start-coach-actions">${actions}</div></section>`;
+    target.innerHTML=`<section class="start-coach" aria-labelledby="start-coach-title"><button type="button" class="icon-btn start-coach-close" data-guide="skip" aria-label="${esc(tr('Přeskočit průvodce'))}">${icon('close')}</button><details class="start-coach-details ui-disclosure" data-start-guide-section="coach"><summary><h2 id="start-coach-title">${esc(tr(title))}</h2></summary><div class="ui-disclosure-body">${progress(state.step)}<p>${esc(text)}</p></div></details><div class="start-coach-actions">${actions}</div></section>`;
   }
   function go(step){const project=host.project();state={status:'active',step,baseline:contentCount(project),projectId:project.id};save();paint();}
   function finish({skipped=false}={}){state={status:'done'};save();paint();if(skipped)toast(tr('Průvodce kdykoli spustíte v nápovědě.'));}
@@ -145,7 +145,7 @@ export function createStartGuide(host){
     if(!isOpen()||modalOpen()||event.defaultPrevented)return;
     if(event.key==='Escape'){event.preventDefault();finish({skipped:true});return;}
     if(event.key!=='Tab')return;
-    const targets=[...root.querySelectorAll('button,input'),...document.querySelectorAll('.consent-bar a,.consent-bar button')].filter(item=>!item.disabled&&item.getClientRects().length);if(!targets.length)return;
+    const targets=[...root.querySelectorAll('button,input,summary'),...document.querySelectorAll('.consent-bar a,.consent-bar button')].filter(item=>!item.disabled&&item.getClientRects().length);if(!targets.length)return;
     const inside=root.contains(document.activeElement)||targets.includes(document.activeElement);
     if(!inside){event.preventDefault();targets[0].focus();}
     else if(event.shiftKey&&document.activeElement===targets[0]){event.preventDefault();targets.at(-1).focus();}

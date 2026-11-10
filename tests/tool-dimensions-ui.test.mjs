@@ -51,11 +51,12 @@ const closeReview=()=>{if($('.modal'))click('[data-modal-close]');};
 function open(id){action('projects');click(`[data-open="${id}"]`);}
 after(()=>win.happyDOM.abort());
 
-test('a selected set member exposes length and width immediately and length changes only that tool',()=>{
+test('a selected set member groups length and width and length changes only that tool',()=>{
   const before=state();click('#board-svg [data-module="shared"] > rect');
   click('.module-members [data-select="two"]');
   assert.equal($('[data-field="name"]').value,'Šroubovák PH2');
-  for(const field of ['toolLength','toolBreadth']){const el=$(`[data-field="${field}"]`);assert.ok(el);assert.ok(visible(el),field+' is visible without opening advanced settings');}
+  const group=$('[data-inspector-section=tool-shape]');assert.ok(group);assert.equal(group.open,false,'dimension settings start collapsed');group.open=true;
+  for(const field of ['toolLength','toolBreadth']){const el=$(`[data-field="${field}"]`);assert.ok(el);assert.ok(visible(el),field+' is visible in its expanded settings group');}
   near(Number($('[data-field="toolLength"]').value),120,'initial length');near(Number($('[data-field="toolBreadth"]').value),20,'initial width');
   const oldBounds=bounds(before.tools[1]);change('[data-field="toolLength"]','160 mm');
   const next=state(),tool=next.tools[1],box=bounds(tool);near(span(tool,'y'),160,'new actual length');near(span(tool,'x'),20,'width remains unchanged');

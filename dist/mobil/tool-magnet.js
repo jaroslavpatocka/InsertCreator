@@ -1,7 +1,8 @@
 // Holding magnets in a pocket floor: blind holes opening upwards under the tool.
 // A stored entry describes the real magnet in the same raw local millimetres as
 // tool.points. The printed hole adds a fixed fit allowance to that size.
-import {pocketOutline,toolWorldPoint} from './finger-grip.js';
+import {toolWorldPoint} from './finger-grip.js';
+import {pocketFloorOutlines} from './pocket-wall.js';
 import {t,i18nError} from './i18n.js';
 import {fmtLen} from './units.js';
 
@@ -62,11 +63,14 @@ function inside(point,polygon){
   return result;
 }
 const fitsPocket=(hole,pocket)=>inside(hole,pocket)&&boundaryDistance(hole,pocket)>=hole.radius+MAGNET_RIM-1e-6;
+// One polygon, or a list of floor polygons (a rounded floor edge may split the floor).
+const floorList=pocket=>Array.isArray(pocket?.[0])?pocket:[pocket];
 
-/** 'wall' when a hole leaves the pocket floor, 'spacing' when two holes merge, otherwise null. */
+/** 'wall' when a hole leaves the pocket floor, 'spacing' when two holes merge, otherwise null.
+ *  `pocket` is the floor polygon or a list of floor polygons (pocketFloorOutlines). */
 export function pocketMagnetProblem(tool,pocket){
-  const holes=pocketMagnetHoles(tool);
-  if(holes.some(hole=>!fitsPocket(hole,pocket)))return'wall';
+  const holes=pocketMagnetHoles(tool),floors=floorList(pocket);
+  if(holes.some(hole=>!floors.some(floor=>fitsPocket(hole,floor))))return'wall';
   for(let i=0;i<holes.length;i++)for(let j=0;j<i;j++)if(Math.hypot(holes[i].x-holes[j].x,holes[i].y-holes[j].y)<holes[i].radius+holes[j].radius+MAGNET_RIM-1e-6)return'spacing';
   return null;
 }
@@ -76,13 +80,14 @@ export function automaticPocketMagnets(tool,{diameter=POCKET_MAGNET_DEFAULT.diam
   const [magnet]=validatePocketMagnets([{id:'size',x:0,y:0,diameter,height}]),wanted=Math.round(numeric(count,1,POCKET_MAGNET_LIMITS.count,'počet magnetů',false));
   // Placing the unrotated outline at its own minimum keeps the pocket in tool.points coordinates.
   const raw=tool.points,minX=Math.min(...raw.map(p=>p.x)),minY=Math.min(...raw.map(p=>p.y));
-  const pocket=pocketOutline({...tool,x:minX,y:minY,rotation:0,fingerGrips:[]},clearance);
+  // The floor, not the top edge: a rounded floor edge leaves less flat room for a hole.
+  const floors=pocketFloorOutlines({...tool,x:minX,y:minY,rotation:0,fingerGrips:[]},clearance);
   const maxX=Math.max(...raw.map(p=>p.x)),maxY=Math.max(...raw.map(p=>p.y)),radius=magnetHoleDiameter(magnet)/2,reach=radius+MAGNET_RIM;
   // About 3000 samples bound the cost for dense traced outlines; .25 mm is finer than any hole.
   const step=Math.max(.25,Math.sqrt((maxX-minX)*(maxY-minY)/3000)),candidates=[];
   for(let y=minY+step/2;y<maxY;y+=step)for(let x=minX+step/2;x<maxX;x+=step){
-    const point={x,y};if(!inside(point,raw)||!inside(point,pocket))continue;
-    const room=boundaryDistance(point,pocket);
+    const point={x,y},floor=inside(point,raw)&&floors.find(pocket=>inside(point,pocket));if(!floor)continue;
+    const room=boundaryDistance(point,floor);
     if(room>=reach-1e-6)candidates.push({x,y,room});
   }
   const failure=()=>i18nError('Magnety Ø {diameter} se do této kapsy nevejdou ({count} ks). Zvolte menší magnet nebo menší počet.',{diameter:fmtLen(magnet.diameter),count:wanted});

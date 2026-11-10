@@ -46,6 +46,13 @@ const paths={
 export const esc=value=>String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 export const icon=(name)=>`<svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="${paths[name]||paths.grid}"/></svg>`;
 let activeModal=null;
+// Navigation may target a field inside a closed settings group.
+export function revealControl(target,{focus=false,scroll=false}={}){
+  if(!target)return;
+  for(let parent=target.parentElement;parent;parent=parent.parentElement)if(parent.tagName==='DETAILS')parent.open=true;
+  if(scroll)target.scrollIntoView?.({block:'nearest',behavior:'smooth'});
+  if(focus)target.focus({preventScroll:true});
+}
 export function closeModal(){activeModal?.close();}
 export function openModal({title,subtitle='',body='',footer='',wide=false,onClose}){
   closeModal();
@@ -54,11 +61,18 @@ export function openModal({title,subtitle='',body='',footer='',wide=false,onClos
   root.innerHTML=`<div class="modal-backdrop"><section class="modal ${wide?'wide':''}" role="dialog" aria-modal="true" aria-labelledby="modal-title" tabindex="-1"><div class="modal-head"><div><h2 id="modal-title">${esc(title)}</h2><p>${esc(subtitle)}</p></div><button class="icon-btn" data-modal-close aria-label="${esc(t('Zavřít'))}">${icon('close')}</button></div><div class="modal-body">${body}</div><div class="modal-foot">${footer}</div></section></div>`;
   document.body.style.overflow='hidden';
   const el=root.querySelector('.modal');
-  const close=()=>{if(activeModal?.el!==el)return;moveFileTray(document.body);root.innerHTML='';document.body.style.overflow='';document.removeEventListener('keydown',handleKey);activeModal=null;onClose?.();if(previousFocus?.isConnected)previousFocus.focus();};
+  const close=()=>{if(activeModal?.el!==el)return;moveFileTray(document.body);root.innerHTML='';document.body.style.overflow='';document.removeEventListener('keydown',handleKey);activeModal=null;onClose?.();if(previousFocus?.isConnected){let destination=previousFocus;for(let parent=previousFocus.parentElement;parent;parent=parent.parentElement)if(parent.tagName==='DETAILS'&&!parent.open)destination=parent.querySelector(':scope > summary');destination?.focus();}};
   const handleKey=e=>{
     if(e.key==='Escape'){e.preventDefault();close();}
     if(e.key==='Tab'){
-      const targets=[...el.querySelectorAll('button,input,select,textarea,a[href],[tabindex="0"]')].filter(x=>!x.disabled&&x.getClientRects().length);
+      const targets=[...el.querySelectorAll('button,input,select,textarea,a[href],summary,[tabindex="0"]')].filter(x=>{
+        if(x.disabled||x.hidden||!x.getClientRects().length)return false;
+        for(let parent=x.parentElement;parent&&parent!==el;parent=parent.parentElement){
+          if(parent.hidden)return false;
+          if(parent.tagName==='DETAILS'&&!parent.open&&parent.querySelector(':scope > summary')!==x)return false;
+        }
+        return true;
+      });
       if(!targets.length){e.preventDefault();el.focus();return;}
       if(e.shiftKey&&document.activeElement===targets[0]){e.preventDefault();targets.at(-1).focus();}
       else if(!e.shiftKey&&document.activeElement===targets.at(-1)){e.preventDefault();targets[0].focus();}
@@ -67,6 +81,7 @@ export function openModal({title,subtitle='',body='',footer='',wide=false,onClos
   root.querySelector('[data-modal-close]').onclick=close;
   root.querySelector('.modal-backdrop').onclick=e=>{if(e.target.classList.contains('modal-backdrop'))close();};
   document.addEventListener('keydown',handleKey);
+  el.addEventListener('invalid',event=>revealControl(event.target,{focus:true,scroll:true}),true);
   activeModal={el,body:el.querySelector('.modal-body'),footer:el.querySelector('.modal-foot'),close};
   moveFileTray(el);
   requestAnimationFrame(()=>el.focus());return activeModal;

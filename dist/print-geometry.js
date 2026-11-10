@@ -7,6 +7,7 @@ import {moduleOutline,validateModuleFootprint,containsPocketWalls} from './modul
 import {FLOOR_RESERVE,floorInlay,labelColors,magnetFloorNeed,materialConfig,moduleMagnetLift,textZone} from './print-material.js';
 import {pocketMagnetHoles} from './tool-magnet.js';
 import {magnetPocketCenters} from './magnet-pockets.js';
+import {pocketWallBands,pocketWallOutset,validatePocketWall} from './pocket-wall.js';
 
 // A memory guard for one module: its binary STL stays around 25 MB.
 const MAX_MESH_TRIANGLES=500000,MAX_CONTOUR_POINTS=80000;
@@ -115,7 +116,7 @@ export function buildPrintTriangles(project,modules,tools,origin={x:0,y:0},{fit=
   const clipped=paths=>clip?boolean(paths,[clipPolygon],Clipper.ClipType.ctIntersection):paths;
   const touchesClip=(poly,padding=0)=>!clip||(Math.max(...poly.map(p=>p.x))+padding>clip.x-EPS&&Math.min(...poly.map(p=>p.x))-padding<clip.x+clip.width+EPS&&Math.max(...poly.map(p=>p.y))+padding>clip.y-EPS&&Math.min(...poly.map(p=>p.y))-padding<clip.y+clip.height+EPS);
   const labelPlan=fit?{labels:[],skipped:[]}:providedLabelPlan||planSizeLabels(project,modules,tools);
-  const relevantTools=clip?tools.filter(tool=>touchesClip(tool.poly,Math.max(1.2,cfg.wall))):tools;
+  const relevantTools=clip?tools.filter(tool=>touchesClip(tool.poly,Math.max(1.2,cfg.wall)+pocketWallOutset(tool))):tools;
   const cellInClip=(m,x,y)=>!clip||(m.x+x+21>=clip.x-EPS&&m.x+x+21<clip.x+clip.width-EPS&&m.y+y+21>=clip.y-EPS&&m.y+y+21<clip.y+clip.height-EPS);
   const cellCount=cfg.bottomMode==='grid'&&!fit?modules.reduce((sum,m)=>{
     const cells=validateModuleFootprint(m,number(project.grid,42)).cells;
@@ -167,6 +168,22 @@ export function buildPrintTriangles(project,modules,tools,origin={x:0,y:0},{fit=
     face(diff(below,topCuts),levels.at(-1),true);
     for(const {a,b,ranges} of walls.values())for(const [z0,z1] of ranges){add(v(a,z0),v(b,z0),v(b,z1));add(v(a,z0),v(b,z1),v(a,z1));}
   }
+  /** Terraced wall profile of one pocket, or null for a vertical wall. Heights run from the carved
+   *  floor; a carved floor inlay keeps the floor section, so the profile starts at the visible floor. */
+  function pocketProfile(tool){
+    if(tool.pocketWall==null)return null;
+    const depth=number(tool.depth,10),inlayDepth=Math.max(0,Math.min(depth,number(tool.floorInlay,0))),visible=depth-inlayDepth;
+    const wall=validatePocketWall(tool.pocketWall,visible);if(!wall)return null;
+    const bands=pocketWallBands(wall,visible).map(band=>({h0:band.h0+inlayDepth,h1:band.h1+inlayDepth,offset:band.offset}));bands[0].h0=0;
+    for(const band of bands){
+      band.paths=band.offset?offset(tool.poly,band.offset):[tool.poly];
+      if(!band.paths.length)throw i18nError('Zaoblené dno je pro kapsu „{name}“ příliš velké. Zmenšete poloměr zaoblení.',{name:tool.name||''});
+    }
+    const widest=Math.max(0,...bands.map(band=>band.offset));
+    return{bands,widest,outline:widest>0?offset(tool.poly,widest):[tool.poly]};
+  }
+  /** Pocket cross-section at height h above its carved floor. */
+  const pocketCut=(tool,h)=>tool.profile?(tool.profile.bands.find(band=>h<band.h1)||tool.profile.bands.at(-1)).paths:[tool.poly];
   function loft(a,b,z0,z1){
     for(let i=0;i<a.length;i++){const j=(i+1)%a.length;add(v(a[i],z0),v(a[j],z0),v(b[j],z1));add(v(a[i],z0),v(b[j],z1),v(b[i],z1));}
   }
@@ -212,7 +229,9 @@ export function buildPrintTriangles(project,modules,tools,origin={x:0,y:0},{fit=
     if(cfg.bottomMode==='grid'&&!fit&&[m.x,m.y,m.width,m.height].some(value=>Math.abs(value/42-Math.round(value/42))>.0001))throw i18nError('Modul „{name}“ musí mít rozměry i polohu v násobcích 42 mm pro Gridfinity patky.',{name:m.name||m.id});
     const own=relevantTools.filter(t=>t.moduleId===m.id),outer=footprint.cells?moduleOutline(m,number(project.grid,42),{inset:.25}):cfg.bottomMode==='grid'&&!fit?roundedRect(m.x+.25,m.y+.25,m.width-.5,m.height-.5,3.75):rect(m.x+.25,m.y+.25,m.width-.5,m.height-.5);
     const pockets=own.map(t=>({...t,poly:signedArea(t.poly)>0?t.poly:[...t.poly].reverse()}));
-    if(footprint.cells&&pockets.some(tool=>!containsPocketWalls(m,tool.poly,cfg.wall,number(project.grid,42))))throw i18nError('Kapsa nástroje nemá uvnitř schodového modulu dost místa na stěnu.');
+    for(const tool of pockets)tool.profile=pocketProfile(tool);
+    const profiled=pockets.some(tool=>tool.profile);
+    if(footprint.cells&&pockets.some(tool=>!(tool.profile?tool.profile.outline:[tool.poly]).every(poly=>containsPocketWalls(m,poly,cfg.wall,number(project.grid,42)))))throw i18nError('Kapsa nástroje nemá uvnitř schodového modulu dost místa na stěnu.');
     const rings=union(pockets.flatMap(t=>subtract(offset(t.poly,Math.max(1.2,cfg.wall)),[t.poly])));
     if(fit){if(rings.length)slabs([0,1],[rings]);continue;}
     let feet=[];
@@ -252,27 +271,31 @@ export function buildPrintTriangles(project,modules,tools,origin={x:0,y:0},{fit=
           const keep=magnets.length&&boolean([tool.poly],magnets,Clipper.ClipType.ctIntersection).length?cfg.magnetDepth+FLOOR_RESERVE:FLOOR_RESERVE;
           const depth=number(tool.depth,10),light=cfg.printMode==='light',top=light?baseTop+thickness:H-depth;
           if(light?baseTop+depth+thickness>H+EPS:top-thickness<bottom+keep-EPS)throw i18nError('Kapsa „{name}“ je pro vložku dna příliš hluboká. Zmenšete hloubku kapsy nebo tloušťku vložky.',{name:tool.name});
-          solid(subtract([tool.poly],pocketHoles.filter(hole=>hole.toolId===tool.id).map(hole=>hole.poly)),top-thickness,top);
+          solid(subtract(tool.profile?tool.profile.bands[0].paths:[tool.poly],pocketHoles.filter(hole=>hole.toolId===tool.id).map(hole=>hole.poly)),top-thickness,top);
         }
       }
       const closed=stitchBoundaryEdges(triangles.splice(start),{canonical:!!clip});for(const triangle of closed)triangles.push(triangle);
       continue;
     }
     const bodyHoles=pocketHoles.filter(hole=>hole.floor<hole.top-EPS);
-    if(bodyHoles.length||joint||(clip&&cfg.printMode!=='light')||!disjointComponents(outer,pockets,labels,bottom,baseTop,H,magnets,feet)){
+    if(bodyHoles.length||joint||(clip&&cfg.printMode!=='light')||profiled||!disjointComponents(outer,pockets,labels,bottom,baseTop,H,magnets,feet)){
     const levels=[bottom,baseTop,...pockets.map(t=>cfg.printMode==='light'?baseTop+number(t.depth,10):H-number(t.depth,10)),cfg.printMode==='solid'?H:baseTop];
     if(magnets.length)levels.push(cfg.magnetDepth);
     levels.push(...bodyHoles.map(hole=>hole.floor));
-    const barriers=labels.length?new Set(levels.map(round)):null;
+    // Terrace levels of a profiled wall merge the unchanged vertical walls of all other contours.
+    const barriers=labels.length||profiled?new Set(levels.map(round)):null;
+    for(const tool of pockets)if(tool.profile){const floor=cfg.printMode==='light'?baseTop:H-number(tool.depth,10);levels.push(...tool.profile.bands.slice(1).map(band=>floor+band.h0));}
     levels.push(...labels.flatMap(label=>[label.top-label.depth,label.top]));
     const z=[...new Set(levels.map(round))].sort((a,b)=>a-b),sections=[];
     for(let i=0;i<z.length-1;i++){
       const middle=(z[i]+z[i+1])/2;let section;
       if(cfg.printMode==='light'){
-        const active=[...pockets.filter(t=>middle<baseTop+number(t.depth,10)-EPS).flatMap(t=>subtract(offset(t.poly,cfg.wall),[t.poly])),...labels.filter(label=>middle<label.top-EPS).flatMap(label=>label.raised?omitRaised?[]:label.polygons:[label.plate])];
+        const active=[...pockets.filter(t=>middle<baseTop+number(t.depth,10)-EPS).flatMap(t=>t.profile?subtract(offset(t.poly,t.profile.widest+cfg.wall),pocketCut(t,middle-baseTop)):subtract(offset(t.poly,cfg.wall),[t.poly])),...labels.filter(label=>middle<label.top-EPS).flatMap(label=>label.raised?omitRaised?[]:label.polygons:[label.plate])];
         section=middle<baseTop-EPS?[outer]:clip?active:union(active);
+        // A widened ring may reach a neighbouring pocket; keep every open pocket section clear.
+        if(profiled&&middle>=baseTop-EPS)section=subtract(section,pockets.filter(t=>middle<baseTop+number(t.depth,10)-EPS).flatMap(t=>pocketCut(t,middle-baseTop)));
       }
-      else section=subtract([outer],pockets.filter(t=>middle>=H-number(t.depth,10)-EPS).map(t=>t.poly));
+      else section=subtract([outer],pockets.filter(t=>middle>=H-number(t.depth,10)-EPS).flatMap(t=>pocketCut(t,middle-(H-number(t.depth,10)))));
       // Cut the original material first. Base-layer tabs then extend beyond the
       // cut rectangle, while the socket and all higher material keep their true cut.
       if(joint&&clip)section=clipped(union(section));
@@ -284,6 +307,7 @@ export function buildPrintTriangles(project,modules,tools,origin={x:0,y:0},{fit=
       if(lettering.length)section=subtract(section,lettering);
       sections.push(section);
     }
+    if(profiled&&!clip)nodeSections(sections);
     slabs(z,sections,feet,barriers,[],!!(joint&&clip));
     }
     const stitched=stitchBoundaryEdges(triangles.splice(start),{canonical:!!clip});for(const triangle of stitched)triangles.push(triangle);
@@ -345,6 +369,34 @@ function canonicalCutVertices(triangles){
     if(!found){const id=cell.join(',');if(!buckets.has(id))buckets.set(id,[]);buckets.get(id).push(point);found=point;}
     exact.set(token,found);return found;
   }));
+}
+
+/** Insert into each section edge the vertices of the neighbouring sections that lie on it within
+ * one rounding step. A Boolean crossing of two contours is rounded up to 0.71 grid units off the
+ * straight edge that continues past a level where one contour ends; terraced pocket walls create
+ * many such levels. With the vertex in both sections the cap and the walls share it exactly. */
+function nodeSections(sections,scale=SCALE){
+  const limit=.75/scale,keyOf=p=>p.x+','+p.y;
+  const node=(paths,source)=>{
+    const own=new Set(paths.flatMap(poly=>poly.map(keyOf))),extra=[];
+    for(const poly of source)for(const p of poly)if(!own.has(keyOf(p)))extra.push(p);
+    if(!extra.length)return paths;
+    return paths.map(poly=>{
+      const out=[];
+      for(let i=0;i<poly.length;i++){
+        const a=poly[i],b=poly[(i+1)%poly.length],dx=b.x-a.x,dy=b.y-a.y,length=dx*dx+dy*dy;out.push(a);if(!length)continue;
+        const minX=Math.min(a.x,b.x)-limit,maxX=Math.max(a.x,b.x)+limit,minY=Math.min(a.y,b.y)-limit,maxY=Math.max(a.y,b.y)+limit,on=[];
+        for(const p of extra){
+          if(p.x<minX||p.x>maxX||p.y<minY||p.y>maxY)continue;
+          const t=((p.x-a.x)*dx+(p.y-a.y)*dy)/length;if(t<=1e-6||t>=1-1e-6)continue;
+          if(Math.abs((p.x-a.x)*dy-(p.y-a.y)*dx)/Math.sqrt(length)<limit)on.push({p,t});
+        }
+        on.sort((u,w)=>u.t-w.t);for(const {p} of on)if(keyOf(p)!==keyOf(out.at(-1)))out.push(p);
+      }
+      return out;
+    });
+  };
+  for(let i=1;i<sections.length;i++){sections[i]=node(sections[i],sections[i-1]);sections[i-1]=node(sections[i-1],sections[i]);}
 }
 
 /** Split polygon-Boolean T-junctions without dropping collinear boundary vertices. */

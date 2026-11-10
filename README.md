@@ -131,6 +131,16 @@ Novým nástrojům se automaticky připraví dva boční výřezy pro snazší v
 
 Výřezy mají stejnou hloubku jako kapsa nástroje. Jejich prostor se započítává do automatické velikosti modulu a výrobních exportů STL, SVG, DXF i zkušebního PDF. Skutečný naměřený obrys a rozměry nástroje se nemění. U ručně zmenšeného nebo zamčeného modulu musí zbýt dost místa na stěnu; neplatné výřezy je potřeba upravit nebo modul zvětšit.
 
+## Vlastní modul a univerzální kapsa
+
+Tlačítko **Vlastní modul** otevře návrh bez fotografie. Zadejte rozměry modulu, rozměry a hloubku kapsy, vůli na každé straně, názvy a tiskový popisek. Nula znamená přesný obrys bez další vůle. Modul pro Gridfinity musí mít rozměry v násobcích 42 mm.
+
+Kapsa může být obdélníková, zaoblená, oválná nebo mít vlastní obrys. U vlastního obrysu lze body přesouvat myší, perem či dotykem, zadat přesné souřadnice, přidávat a mazat body. Šipky posouvají vybraný bod, Shift zvětšuje krok. Chybný nebo křížící se obrys nelze uložit.
+
+Společné nastavení stěn nabízí kolmou stěnu, šikmou stěnu s úhlem od svislice, horní zkosení s šířkou nebo horní/dolní zaoblení s poloměrem. Náhled ukazuje horní otvor, dno a řez stěnou. Širší otvor se započítává do stěn a rozložení; zaoblené dno zmenšuje místo pro předmět i magnety. Výrobní model používá stupně do 0,2 mm.
+
+Uložený modul otevřete tlačítkem **Upravit vlastní modul a kapsu** ve vlastnostech. Stěny libovolného vloženého nástroje lze změnit také v části **Stěny kapsy**. Popisky používají stejné výrobní nastavení jako ostatní nástroje; editor upozorní na nepodporované znaky nebo nedostatek místa. Změny lze vrátit tlačítkem Zpět, Zrušit zavře neuložený návrh.
+
 ## Popisky velikostí v modelu
 
 U vybraného nástroje upravte **Popisek velikosti**, například `13 mm`, `1/2 in` nebo `PH2`. Katalog předává jmenovité velikosti; u fotografie zadejte skutečnou velikost sami. Změna měřítka obrysu jmenovitou velikost nemění. Vlastní text má přednost a ukládá se do JSON.
