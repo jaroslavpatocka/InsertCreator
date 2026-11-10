@@ -36,9 +36,10 @@ export function rectifyRulers(image, points, distancesMm, maxSize = 1400) {
   if(!image?.data||image.data.length!==image.width*image.height*4)throw new Error('Obrázek nemá platná pixelová data.');
   const result=calibrateRulers(image,points,distancesMm,maxSize),{width,height,inverse}=result;
   const data=new Uint8ClampedArray(width*height*4),sw=image.width,sh=image.height,source=image.data;
+  let transparent=false;for(let p=3;p<source.length;p+=4)if(source[p]<250){transparent=true;break;}
   for(let y=0;y<height;y++)for(let x=0;x<width;x++){
     const sx=inverse.a*x+inverse.c*y+inverse.e,sy=inverse.b*x+inverse.d*y+inverse.f,out=(y*width+x)*4;
-    if(sx<-.000001||sy<-.000001||sx>sw-1+.000001||sy>sh-1+.000001){data.fill(255,out,out+4);continue;}
+    if(sx<-.000001||sy<-.000001||sx>sw-1+.000001||sy>sh-1+.000001){data.fill(255,out,out+4);if(transparent)data[out+3]=0;continue;}
     const cx=Math.max(0,Math.min(sw-1,sx)),cy=Math.max(0,Math.min(sh-1,sy)),x0=Math.floor(cx),y0=Math.floor(cy),x1=Math.min(x0+1,sw-1),y1=Math.min(y0+1,sh-1),fx=cx-x0,fy=cy-y0;
     for(let k=0;k<4;k++)data[out+k]=source[(y0*sw+x0)*4+k]*(1-fx)*(1-fy)+source[(y0*sw+x1)*4+k]*fx*(1-fy)+source[(y1*sw+x0)*4+k]*(1-fx)*fy+source[(y1*sw+x1)*4+k]*fx*fy;
   }

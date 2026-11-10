@@ -1,5 +1,31 @@
 # Lokální rozpoznávání fyzických nástrojů
 
+## Automatická maska před obrysem – lokální server
+
+`npm.cmd run dev:background` spustí na portu 5180 statickou aplikaci i vlastní API. `/mobil/` používá stejnou službu a samostatné mobilní úložiště. Při dostupném modelu server vloží pevný capability marker do HTML; dialog potom před nahráním zvolí odstranění pozadí a vysvětlí přenos fotografie na vlastní PC. Běžný statický server zůstává s původním chováním. Nový port má nové origin úložiště; staré projekty se nemažou a lze je přenést JSON souborem.
+
+`scripts/background-server.mjs` a `background-worker.py` používají BiRefNet Lite 1024 FP32 v izolovaném nativním CPU procesu. Pinned model: 224005088 B, SHA256 `5600024376f572a557870a5eb0afb1e5961636bef4e1e22132025467d0f03333`. Model a Python závislosti jsou v sousedních `artifacts/background-model-bench`; nejsou commitované do statického webu. Current-PC Python 3.12, ONNX Runtime 1.20.1, NumPy 1.26.4, Pillow 10.4.0 byly připravené v izolovaném `--target`, nikoli globálně. Pro jiný checkout nastav `INSERTCREATOR_BG_PYTHON`, `INSERTCREATOR_BG_MODEL`, `INSERTCREATOR_BG_DEPS`; `.background/` je ignorované lokální místo. Žádný vzdálený placený endpoint ani klíč není potřeba.
+
+API přijímá raw RGBA pouze ve vlastním origin, do 4 milionů pixelů, vrací pouze source-sized alpha. Originální RGB zůstává na klientovi. Jedna aktivní úloha, 429 při souběhu, timeout a ukončení vlastního procesu při zrušení. Obrázky se nezapisují do logů ani neposílají externí službě. Nativní jednovláknový benchmark měl peak 5.34 GiB a 37 s inference; skutečný celý čtyřvláknový HTTP průchod trval přibližně 18 s. Telefon je klient tohoto PC; model neběží v mobilním WASM. Pro veřejné nasazení je nutný vlastní výpočetní backend, samotné SFTP statických souborů nestačí. Zde se nic nepublikuje.
+
+Původní 27 nástrojová fotografie má po native masce 27 obrysů, ale jen 118/122 přesných alpha kontrol. Neopravená kapsa hlavy prvního šroubu neprošla: 26/27 STL. Jedna deklarovaná uživatelská RGB oprava hlavy zachovala ostatních 26 obrysů a dala 27/27 platných funkčních STL se 122/122 body, bez zaplnění chráněných mezer/dřeva. Neúspěšná obecná RGB refinace je archivovaná; není součástí runtime. Doklady `../artifacts/background-model-bench/http-result.json` a `../artifacts/non-ai-recognition/newnative/`. Nejde o fyzickou zkoušku tisku ani záruku libovolné fotografie.
+
+Celé integrační sady prošly 1602/1602 desktop a 1660/1660 mobil. Poslední oprava převzetí aktuálního typu kapsy při RAW reselection má vlastní 78/78 finální běh v každé aplikaci a skutečný 27-STL důkaz; šest změněných zdrojových/testových souborů proti původnímu freeze je explicitně odděleno od 1027 nezměněných souborů v `background-final-delta.json`. Tím se plný běh nepřipisuje nepravdivě homogennímu finálnímu stromu. Finální source/test freeze má 1033 souborů, backend/config dalších osm. Pět dalších actual HTTP fotografií zachovalo 7/7 celých identit a 41/41 materiálových bodů, bez vyplnění 1589 chráněných pixelů mezer; všechny zůstávají review. Galerie `../artifacts/background-corpus/` uvádí i nejistou vnitřní dutinu kleští.
+
+## 10. 11. 2026 – odstranění pozadí, kontrolovatelná maska a vlastní výběr
+
+Uživatel potvrdil běžné fotografie z mobilu i internetu, opravy Přidat/Ubrat/body a později dovolil neuronovou síť. Automatický návrh zůstává dostupný. Nový vlastní výběr funguje samostatně bez modelu; jeho pořadí je zdrojová fotografie → korekce pracovní kopie → skutečná maska popředí → průhledné PNG → vnější obrys → kalibrovaná kapsa. Žádný nový serverový upload ani publikace.
+
+1. V nahrávání lze vybrat **Známý rozměr nástroje · i fotka z internetu** a **Vyberu nástroj přímo ve fotce**. Dva body označí skutečně známou délku, nikoli odhad podle názvu velikosti klíče.
+2. Rámeček ohraničí celý nástroj. Souvislý zelený tah označí jeho materiál přes barevné přechody; červený tah označí pozadí nebo stín. Korekce světla a mírné doostření jsou jen analytická kopie. Originální RGBA a souřadnice se nemění.
+3. **Určit obrys** vypočte pevný barevný minimax watershed, bez trénování nebo generování pixelů. **Bez pozadí** ukáže skutečnou masku na šachovnici, nikoli bíle přemalovanou fotografii. **Stáhnout PNG bez pozadí** zachová rozlišení, originální RGB a průhledné otvory. PNG obsahuje celou masku výběru; do kapsy se použije jeden zvolený obrys.
+4. Slabou hranu lze určit magnetickými nebo rovnými body. Následná původní editace bodů/Bézier, výřezy, hloubka, vůle, rozložení a STL zůstávají k dispozici. Měřený zdroj, 2% tvarová rezerva a mm vůle jsou oddělené.
+5. Skutečně průhledný PNG se importuje přímo z alpha kanálu před spuštěním NN. I jednopixelové části a materiál u rámu se zachovají; oříznutí je výslovně hlášené. Obyčejný screenshot šachovnice není průhledná fotografie.
+
+Doklady v `../artifacts/non-ai-recognition/` obsahují přesně uložené uživatelské tahy, tři skutečné fotografie s jedním vybraným nástrojem v každé, před/po pracovní kopii, průhledné PNG a roundtrip alpha→obrys bez workeru/modelu. Nejde o nové automatické vyřešení celého 30fotkového korpusu. Neviditelná hrana, silné rozmazání nebo chybějící skutečný rozměr nemají z fotografie zaručenou rekonstrukci. Platné STL a digitální kontrolní rozměry nejsou zkouška fyzického usazení.
+
+Výzkum Liftu je v `../artifacts/lift-research/`: veřejný klient volá vlastní cloudový `/v2/image-services/remove-bg`, konkrétní serverový model neodhaluje. Průhledné PNG je použitelný mezivýsledek; generativní přemalování nástroje není měřicí podklad. Samostatný nový BiRefNet Lite 1024 WASM benchmark v `../artifacts/background-model-bench/` skončil bez výstupu při téměř 4 GiB RSS, proto není součástí runtime.
+
 Práce je autorizovaná pouze lokálně, pro desktop i samostatný mobilní runtime. Push a nasazení čekají na uživatelův vlastní test. Postup testu je v [ROZPOZNAVANI-LOKALNI-TEST.md](../ROZPOZNAVANI-LOKALNI-TEST.md).
 
 ## Runtime

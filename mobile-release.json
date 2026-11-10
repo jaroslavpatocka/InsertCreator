@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "sourceCommit": "db79fcf1d4d76a9512c174b47b181f02b5348214",
+  "sourceCommit": "042f78e1ca8322338c1679f2a87cf0a58d117787",
   "files": [
     {
       "path": "app.js",
@@ -11,6 +11,11 @@
       "path": "auto-trace.js",
       "sha256": "CD60D010112A681D1E570DD2CE574162158FDEB0DD2FB2DC09F1CFEDEDB85F67",
       "bytes": 40282
+    },
+    {
+      "path": "background-client.js",
+      "sha256": "AD747334345F8D0B20F950E336D333061CEDA7FC2F2A5408A8B184A4151DBBA5",
+      "bytes": 7580
     },
     {
       "path": "bulk-edit.js",
@@ -53,6 +58,21 @@
       "bytes": 5007
     },
     {
+      "path": "capture-selection-result.js",
+      "sha256": "E642A578A1F226B4F9D043DD61C33A73B3EFDA2DA26C71B6375DA6612DBD5E7D",
+      "bytes": 3946
+    },
+    {
+      "path": "capture-selection.css",
+      "sha256": "0CF4422FA94971D87EFF94EBEE71671A2E3F007BF9C843E7E66445D7C975B226",
+      "bytes": 3644
+    },
+    {
+      "path": "capture-selection.js",
+      "sha256": "E58C1AD50A61836993994347C13E733A2487924D6416C1727521B7E25F5422CB",
+      "bytes": 41657
+    },
+    {
       "path": "capture-tools.js",
       "sha256": "1FBE9069229626F72B171C721D108B918C4A58DFB0B40AB6AB553250F185D952",
       "bytes": 6407
@@ -64,8 +84,8 @@
     },
     {
       "path": "capture.js",
-      "sha256": "174947048D12FC4E207F0F864DA67AA870D93B26A45DFE2FBE82087F0E6B2030",
-      "bytes": 63574
+      "sha256": "EE27285A8AFF2CA405BCEAB070E505883854EDE69BB80DCAD5FDFA9598CA958E",
+      "bytes": 72074
     },
     {
       "path": "catalog-ui.js",
@@ -419,8 +439,8 @@
     },
     {
       "path": "licenses-en.html",
-      "sha256": "B5029CE0A203FFD595B19876FFBEE39473D7D003963F6FC58883F6DB30ECCD40",
-      "bytes": 12975
+      "sha256": "11292ED7F975F697DC22ED30A537C34A1818F22EB72FFE3C4C242D1FD67A8C33",
+      "bytes": 13565
     },
     {
       "path": "licenses.css",
@@ -429,8 +449,8 @@
     },
     {
       "path": "licenses.html",
-      "sha256": "D1C7A4DAB244952EA108C4B4CE89243658435392E534D2EBC3BCFB93919D5434",
-      "bytes": 13232
+      "sha256": "F70C4B05687ABE6BB3D14126CEE6B8C36F46154B8CBEDB59DD2C223FB4D00ECE",
+      "bytes": 13834
     },
     {
       "path": "loading-ui.css",
@@ -449,8 +469,8 @@
     },
     {
       "path": "locales/en-capture.js",
-      "sha256": "0E7A4A3701E171FBF2B5371FECC19415084E58EDBD2D0B83909CA1150CD8A3E1",
-      "bytes": 34592
+      "sha256": "1C705DA3FB41BD645252CB4E8CE6F71790C0A5FB1C4FB426308C0A2005ADE13F",
+      "bytes": 39267
     },
     {
       "path": "locales/en-core.js",
@@ -623,6 +643,11 @@
       "bytes": 3119
     },
     {
+      "path": "photo-alpha.js",
+      "sha256": "7465EB82ABB5DB7396487CD3B145B6DDC71A94A894E4710CBA0470B7023AED4F",
+      "bytes": 1733
+    },
+    {
       "path": "photo-background-model.js",
       "sha256": "D03224266AD2F02DDA5F1D7B10C2BE5B00858980293FDC276EE38F75DF6C6177",
       "bytes": 2583
@@ -656,6 +681,16 @@
       "path": "photo-recovery.js",
       "sha256": "909032ACF906DBAA9E26C9FB7700220163225C420291BFEEAF4BADC867A2E258",
       "bytes": 14817
+    },
+    {
+      "path": "photo-selection-light.js",
+      "sha256": "9BA763F57C1EF7EDEECAB8603D0E2401479917ACB72824C897268B89591E4729",
+      "bytes": 4875
+    },
+    {
+      "path": "photo-selection.js",
+      "sha256": "96DF3B5253476931AA83B24A97A4A4C738528E196C2174E6416A979520D4F430",
+      "bytes": 21902
     },
     {
       "path": "pocket-fit-meta.js",
@@ -714,13 +749,13 @@
     },
     {
       "path": "privacy-en.html",
-      "sha256": "A94B8D8E60595890E2FC3FAC4049311D152AF5E648112C41CBF0FC9144CDD809",
-      "bytes": 2577
+      "sha256": "F39D2DC6C4BBCF7079180F8E353DF5225CC2557C8CF59317FC522AD5DE7B7A8F",
+      "bytes": 3191
     },
     {
       "path": "privacy.html",
-      "sha256": "DFEADF100BACB3CAEF901884DFC0EC7B4C4CE1A2505C871F89814EA79CD66E8C",
-      "bytes": 2649
+      "sha256": "C19A56AA64E01ABFCD8CBF306C5DEC820AB8FD1EEDA6FAEE0BA7435C41C7DC0F",
+      "bytes": 3273
     },
     {
       "path": "recognition-foreground.js",
@@ -733,19 +768,24 @@
       "bytes": 10369
     },
     {
+      "path": "recognize-classical.js",
+      "sha256": "D81546A97F4AE0B5AB15810974CC9AA943D9C85B4DCD22C2EE36EC6D0001F078",
+      "bytes": 3197
+    },
+    {
       "path": "recognize-worker.js",
-      "sha256": "5BDD95D971B774871E8D7105DCD6DD1FC2A93D84B0DAC2875987809581F2B7CE",
-      "bytes": 400
+      "sha256": "2F9427CE49396D98B0990F3B9FAF26D7C9E9A7F711A7A0AD12B1329A62B1029D",
+      "bytes": 517
     },
     {
       "path": "recognize.js",
-      "sha256": "C502502F73A33D550C1ED9ECFAAED859A985E7AF562429A4ABF1016BE9F887BA",
-      "bytes": 5679
+      "sha256": "43137F75FB75F67C5B03F49FC0615AAAB73FC872AECC0339D55304C41623E4C7",
+      "bytes": 6603
     },
     {
       "path": "ruler-calibration.js",
-      "sha256": "2CD5BE81325B3F051C6E4CE4EC86892C9D43C8437D6481AAABE3A3EEC6D9F2F8",
-      "bytes": 4571
+      "sha256": "EDAF0C06300FCC21F9523B82CF41770E4FF3C33A6E67F0CC5AC3716DD89AB2D0",
+      "bytes": 4700
     },
     {
       "path": "seo.css",
@@ -809,8 +849,8 @@
     },
     {
       "path": "sw.js",
-      "sha256": "808DAE6F7FB2BC557191D8D2B6E0CDA01141EDCD8825C566E70A13F09829F876",
-      "bytes": 5289
+      "sha256": "B3BFA46581D025117EB16FBC086864209DFA79CF102D08B8EA4D25D9030D4814",
+      "bytes": 5493
     },
     {
       "path": "three-mf.js",
@@ -879,8 +919,8 @@
     },
     {
       "path": "trace.js",
-      "sha256": "E38BC471F1BD611E0702A5ABB21A09961F5C49C31EAD48D0D604246F1D4E73CE",
-      "bytes": 23232
+      "sha256": "C03252FA3DF80F8F20EAED6F7CF764460BA01BEB5D8BDBF536729B36B87FBF3C",
+      "bytes": 23453
     },
     {
       "path": "ui.js",

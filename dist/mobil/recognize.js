@@ -1,4 +1,6 @@
 import { recognizeToolRegions } from './tool-recognition.js';
+import {recognizeClassical} from './recognize-classical.js';
+import {traceAlphaPhoto} from './photo-alpha.js';
 import { segmentToolInstances } from './tool-neural.js';
 import { validateInstanceImage } from './tool-neural-core.js';
 
@@ -6,7 +8,7 @@ const aborted = () => new DOMException('Rozpoznávání bylo zrušeno.', 'AbortE
 
 function measureRegions(image, options, signal) {
   if (signal?.aborted) return Promise.reject(aborted());
-  if (typeof Worker !== 'function') return Promise.resolve(recognizeToolRegions(image, options));
+  if (typeof Worker !== 'function') return Promise.resolve((options.engine==='classical'?recognizeClassical:recognizeToolRegions)(image,{...options,signal}));
   return new Promise((resolve, reject) => {
     let worker, timer, finished = false;
     const finish = (error, result) => {
@@ -53,18 +55,20 @@ function measureRegions(image, options, signal) {
 }
 
 /** Source-coordinate physical objects. Calibration, editing and pocket fitting remain downstream. */
-export async function recognizeTools(image, { pxPerMm = 1, kind = 'paper', signal, onProgress } = {}) {
+export async function recognizeTools(image, { pxPerMm = 1, kind = 'paper', signal, onProgress, useNeural = true } = {}) {
   validateInstanceImage(image);
   if (signal?.aborted) throw aborted();
+  const alpha=traceAlphaPhoto(image);if(alpha){try{onProgress?.({stage:'done',progress:1,message:'Používám průhlednost obrázku…'});}catch{}if(signal?.aborted)throw aborted();return alpha;}
   let completed = 0;
   const progress = event => {
     if (signal?.aborted) return;
     if (Number.isFinite(event.progress)) { completed = Math.max(completed, Math.min(1, Math.max(0, event.progress))); event = { ...event, progress: completed }; }
-    try { onProgress?.(event); } catch {}
+    try { onProgress?.(useNeural?event:{...event,phase:'classical'}); } catch {}
   };
   const hasWorker = typeof Worker === 'function';
-  let neural = null, neuralUnavailable = !hasWorker;
-  if (typeof Worker === 'function') {
+  let neural = null, neuralUnavailable = useNeural&&!hasWorker;
+  const neuralAttempted=useNeural&&hasWorker;
+  if (neuralAttempted) {
     try { neural = await segmentToolInstances(image, { signal, onProgress: progress }); }
     catch (error) {
       if (signal?.aborted || error.name === 'AbortError') throw aborted();
@@ -72,14 +76,19 @@ export async function recognizeTools(image, { pxPerMm = 1, kind = 'paper', signa
     }
   }
   if (signal?.aborted) throw aborted();
-  progress({ stage: 'refine', progress: hasWorker ? .91 : .05, message: 'Skládám části nástrojů a měřím jejich obrysy…' });
+  progress({ stage: 'refine', progress: neuralAttempted ? .91 : .05, message: 'Skládám části nástrojů a měřím jejich obrysy…' });
   const result = await measureRegions(image, {
-    pxPerMm, kind, onProgress: event => progress({ ...event, progress: (hasWorker ? .91 : .05) + (hasWorker ? .08 : .94) * Math.max(0, Math.min(1, event.progress || 0)) }),
+    pxPerMm, kind, engine:useNeural?'physical':'classical', onProgress: event => progress({ ...event, progress: (neuralAttempted ? .91 : .05) + (neuralAttempted ? .08 : .94) * Math.max(0, Math.min(1, event.progress || 0)) }),
     ...(neural ? { instances: neural.instances, weakProposals: neural.weakProposals, prototypes: neural.prototypes, transform: neural.transform } : {})
   }, signal);
   if (signal?.aborted) throw aborted();
+  result.engine=useNeural?'physical':'classical';result.neuralDisabled=!useNeural;
   result.neuralModel = neural?.model || null;
   result.neuralUnavailable = neuralUnavailable;
+  if(!useNeural&&kind==='reference'&&result.quality.status!=='retake'){
+    result.quality.status='review';result.requiresReview=true;
+    result.quality.reasons=['Návrh z běžné fotografie zkontrolujte podle originálu. Stíny, odlesky a nejasné hrany lze opravit výběrem.',...result.quality.reasons];
+  }
   if (!hasWorker) result.diagnostics = { ...result.diagnostics, neuralSkipped: 'worker-unavailable' };
   if (hasWorker && neuralUnavailable && result.quality.status !== 'retake') {
     result.requiresReview = true;

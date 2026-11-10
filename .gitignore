@@ -6,3 +6,6 @@ node_modules/
 Thumbs.db
 tmp/
 __pycache__/
+
+# Local native background-removal model and Python dependencies
+.background/

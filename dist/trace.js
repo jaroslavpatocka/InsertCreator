@@ -192,14 +192,14 @@ export function traceImage(imageData, { threshold = null, invert = false, minAre
 }
 
 /** Trace measured binary pixel edges without blurring away gaps or closing thin shafts. */
-export function traceMask(mask, width, height, { minArea = .001, smoothing = 1.3, barriers = null, includeLabels = false } = {}) {
+export function traceMask(mask, width, height, { minArea = .001, smoothing = 1.3, barriers = null, includeLabels = false, minComponentPixels = 12, keepBorder = false } = {}) {
   if (!Number.isInteger(width) || !Number.isInteger(height) || width < 2 || height < 2 || width * height > 16000000 || mask?.length !== width * height) throw new Error('Maska nemá platná pixelová data.');
   if (barriers && barriers.length !== mask.length) throw new Error('Mapa hran má jiný rozměr než maska.');
   const count = width * height;
   const { labels, components } = labelComponents(mask, width, height, barriers);
-  const minimum = Math.max(12, minArea < 1 ? count * Math.max(0, minArea) : minArea), contours = [], clean = new Uint8Array(count), accepted = new Set();
+  const minimum = Math.max(Math.max(1,Number(minComponentPixels)||12), minArea < 1 ? count * Math.max(0, minArea) : minArea), contours = [], clean = new Uint8Array(count), accepted = new Set();
   for (const c of components) {
-    if (c.area < minimum || c.minX <= 1 || c.minY <= 1 || c.maxX >= width - 2 || c.maxY >= height - 2) continue;
+    if (c.area < minimum || (!keepBorder&&(c.minX <= 1 || c.minY <= 1 || c.maxX >= width - 2 || c.maxY >= height - 2))) continue;
     const points = simplifyContour(exteriorContour(labels, c, width, height), Math.max(0, Number(smoothing) || 0));
     if (points.length < 3) continue;
     accepted.add(c.id);
@@ -352,10 +352,11 @@ export function rectifyImage(imageData, corners, widthMm = 210, heightMm = 297, 
   const transform = quadTransform(corners), pxPerMm = maxSize / Math.max(widthMm, heightMm);
   const width = Math.max(2, Math.round(widthMm * pxPerMm)), height = Math.max(2, Math.round(heightMm * pxPerMm));
   const data = new Uint8ClampedArray(width * height * 4), source = imageData.data, sw = imageData.width, sh = imageData.height;
+  let transparent=false;for(let p=3;p<source.length;p+=4)if(source[p]<250){transparent=true;break;}
   for (let y = 0; y < height; y++) for (let x = 0; x < width; x++) {
     const u = x / (width - 1), v = y / (height - 1), den = transform.g * u + transform.h * v + 1;
     const sx = (transform.a * u + transform.b * v + transform.c) / den, sy = (transform.d * u + transform.e * v + transform.f) / den, out = (y * width + x) * 4;
-    if (sx < 0 || sy < 0 || sx > sw - 1 || sy > sh - 1) { data[out] = data[out + 1] = data[out + 2] = data[out + 3] = 255; continue; }
+    if (sx < 0 || sy < 0 || sx > sw - 1 || sy > sh - 1) { data[out] = data[out + 1] = data[out + 2] = 255; data[out + 3] = transparent?0:255; continue; }
     const x0 = Math.floor(sx), y0 = Math.floor(sy), x1 = Math.min(x0 + 1, sw - 1), y1 = Math.min(y0 + 1, sh - 1), fx = sx - x0, fy = sy - y0;
     for (let k = 0; k < 4; k++) data[out + k] = source[(y0 * sw + x0) * 4 + k] * (1 - fx) * (1 - fy) + source[(y0 * sw + x1) * 4 + k] * fx * (1 - fy) + source[(y1 * sw + x0) * 4 + k] * (1 - fx) * fy + source[(y1 * sw + x1) * 4 + k] * fx * fy;
   }
