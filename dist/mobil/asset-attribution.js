@@ -78,10 +78,27 @@ export function attributionText(tools){
   return lines.join('\n');
 }
 
+// Match the manufacturing worker: moduleIds first selects a set, moduleId can narrow it further.
+function exportTools(project,{moduleId=null,moduleIds=null}={}){
+  const ids=Array.isArray(moduleIds)?new Set(moduleIds):null;
+  return(Array.isArray(project?.tools)?project.tools:[]).filter(tool=>(!ids||ids.has(tool.moduleId))&&(!moduleId||tool.moduleId===moduleId));
+}
+
 /** Export notice for the tools of the exported modules (options.moduleId / options.moduleIds; none = whole project). */
-export function exportAttributionNotice(project,{moduleId=null,moduleIds=null}={}){
-  const ids=Array.isArray(moduleIds)?new Set(moduleIds):moduleId?new Set([moduleId]):null;
-  return attributionNotice((project?.tools||[]).filter(tool=>!ids||ids.has(tool.moduleId)));
+export function exportAttributionNotice(project,options={}){
+  return attributionNotice(exportTools(project,options));
+}
+
+/**
+ * One download containing an unchanged standalone DXF/STL and its readable attribution sidecar.
+ * Returns a ZIP plan for the existing manufacturing worker, or null when no accompaniment is needed.
+ * Call only for outline DXF / thin fit STL tasks; ordinary packages and embedded-credit formats stay intact.
+ */
+export function standaloneAttributionPackage(project,file,options={}){
+  if(typeof file?.name!=='string'||!/\.(?:dxf|stl)$/i.test(file.name))return null;
+  const tools=exportTools(project,options);
+  if(!collectAttributions(tools).some(group=>!isPublicDomain(group.attribution)))return null;
+  return{name:file.name.replace(/\.(?:dxf|stl)$/i,'.zip'),files:[{name:file.name,data:file.data},{name:'ATTRIBUTION.txt',data:attributionText(tools)}]};
 }
 
 /** Short export notice for attributions that are required (non-CC0); '' when none. */

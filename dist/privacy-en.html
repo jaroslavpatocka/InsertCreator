@@ -13,16 +13,16 @@
   <a class="skip" href="#content">Skip to content</a>
   <main id="content">
     <h1>Privacy policy</h1>
-    <p>Effective from: <time datetime="2026-11-05">5 November 2026</time>. <a href="./privacy.html">Česky</a></p>
+    <p>Effective from: <time datetime="2026-11-11">11 November 2026</time>. <a href="./privacy.html">Česky</a></p>
 
     <h2>Operator</h2>
     <p>Jaroslav Patočka, contact: admin@insertcreator.com. You can use this contact for questions and to exercise your rights.</p>
 
     <h2>Photos and designs</h2>
     <ul>
-      <li>Photos are processed on your device. They are not sent to our server or to anyone else.</li>
+      <li>Photos are normally processed right in your browser. The exception is the optional background-removal mode, which sends image data to a service at the same origin as the app (see below).</li>
       <li>The app only receives the photo you choose. It cannot see your gallery or camera and does not read the location from the photo.</li>
-      <li>The photo is not stored after processing. Only the resulting outline and design settings are kept.</li>
+      <li>The photo file is not saved in projects or the tool library; outlines and design settings are saved instead. The image may remain in browser memory while capture, editing or recovery after a cancelled calculation is open.</li>
       <li>Designs and your library stay in your browser's storage. Clearing the site data deletes them. We do not back them up.</li>
     </ul>
 
@@ -35,7 +35,13 @@
 
     <h2>Your rights</h2>
     <p>You have the right to access, rectify and erase your personal data, to restrict processing, to data portability and to object. You can lodge a complaint with the Czech Office for Personal Data Protection (uoou.gov.cz).</p>
-  <section id="local-background-service"><h2>Optional background removal on a local PC</h2><p>The “Remove background and shadows first” mode sends the selected photo to this app’s server. In the local version, that server runs on your PC; a phone can send its photo over your local network. A disposable process performs the calculation, without sending the image to Lift or another external service or writing it to application logs. This mode is identified before upload. Other selection and editing tools, and importing an already transparent PNG, can run in the browser without this service.</p></section>
+  <section id="local-background-service">
+    <h2>Optional background removal by a same-origin service</h2>
+    <p>When “Remove background and shadows first” is selected, the app sends decoded RGBA pixels from the chosen photo, its width, height and a job ID to <code>/api/background/remove</code> at the same origin as the app. This route does not send the original file, its metadata/EXIF or the project. The server also receives ordinary network-request information. The photo dialog identifies this mode before file selection; it may be preselected when the local service is used.</p>
+    <p>The same origin means the same protocol, host and port. It does not prove that the server runs on your device. With the supplied local service, computation takes place on the computer where the service was started. A phone connected to that service sends pixels over the network to that computer. The supplied local server uses HTTP without login; the transfer from the phone is therefore not encrypted. Use it only on a trusted network you control.</p>
+    <p>The supplied local service code uses image data in memory during computation in a disposable process; it does not create photo files or write their contents to application logs. This is not a guarantee of immediate secure memory erasure and does not describe possible operating-system logs, swap files or the configuration of another server.</p>
+    <p>The static app files alone do not provide this service. This mode cannot work without an available service; selecting it can nevertheless cause the app to attempt to send image data to the same origin even if the server later rejects the request. For processing without this transfer, use ordinary browser selection and editing. An already transparent PNG can also be processed without the service. This description does not confirm that such an API is available on the public website.</p>
+  </section>
 </main>
   <footer class="site-foot"><p><a href="./">Back to InsertCreator</a></p></footer>
 </body>

@@ -1,0 +1,46 @@
+FastSAM-s — model Corresponding Source and licence
+Prepared 11 November 2026
+
+This model is distributed under GNU Affero General Public License version 3.
+Full terms: FASTSAM-UPSTREAM-LICENSE.txt in this same directory.
+FastSAM contributors: CASIA-LMC-Lab / CASIA-IVA-Lab.
+Ultralytics code and export: Ultralytics and contributors.
+Received ONNX conversion: anakhiu/fastsam-onnx; the unchanged original card,
+README and provenance are retained with their original notices.
+
+Download the complete machine-readable Corresponding Source at no extra charge:
+    fastsam-source.zip
+The archive is in this same directory beside fastsam_s.onnx and this notice.
+The application's FastSAM licence entry also links directly to that download.
+No login, special password or licence purchase is required to copy the source.
+The distributor maintains equivalent source access as required by AGPL 6(d).
+
+Source archive: 24669172 bytes
+SHA-256: ceaf10e8b1889c749eba51473fc85152e5188454cd42ac95165607618c600a32
+Unchanged runtime ONNX: 47,637,745 bytes
+SHA-256: 8663b25472f06d36fc90f9b6262318292b760403c69c240360da5d1a3509f1ea
+Preferred checkpoint: FastSAM-s.pt, 23,851,578 bytes
+SHA-256: c9f78716a81c7aff0d608ccc73e1b82ab3aaad86005049f6a92106a0be6d0844
+
+The archive supplies the preferred checkpoint/configuration, full pinned
+Ultralytics 8.4.107 model/export sources, the actually executed export.py,
+pinned tools/portable instructions, original notices, full AGPL and recorded
+source verification. Export source commit:
+efacaada0f20c5dc8d4fec6d2412f742a5233d21.
+
+The computation graph and source parameters correspond. This is not a promise
+of bit-identical builds or universal numerical identity: the recorded strict
+test fails on nine low-confidence bounding-box values in one synthetic input;
+the difference and separate source conclusion are preserved inside the archive.
+The application continues to use the unchanged original ONNX identified above.
+
+You may copy, modify and redistribute covered model/source materials under
+their applicable AGPL terms, retaining notices and corresponding source as
+required. The new export wrapper is AGPL-3.0-or-later; original upstream works
+retain their original terms. There is no warranty to the extent permitted by
+law; the complete licence controls. Other independent application components
+retain their own terms; this model notice does not relicense them.
+
+The old exporter card/README Apache statements are retained as provenance.
+This release relies on the existing AGPL route, not an unverified Apache-only
+or private exception grant. See FASTSAM-PROVENANCE.json and the source README.

@@ -43,6 +43,7 @@ export function functionalToolPocket(project,toolId,mode='hybrid'){
   pocketOutline(tool,0);
   const oldIssues=new Set(validateLayout(project).map(issueKey));
   for(const issue of validateLayout(next)){
+    if(issue.code==='layout-complexity')throw Object.assign(Error(issue.message),{i18n:issue.i18n});
     const affected=issue.ids.includes(toolId)||(module&&issue.ids.includes(module.id));
     if((issue.ids.includes(toolId)&&issue.type!=='depth')||(affected&&!oldIssues.has(issueKey(issue))))throw Object.assign(Error(issue.message),{i18n:issue.i18n});
   }

@@ -1,5 +1,5 @@
 import Clipper from './vendor/clipper.js';
-import {bounds,validateLayout} from './geometry.js';
+import {bounds,validateLayout,LAYOUT_PAIR_LIMIT} from './geometry.js';
 import {pocketLayoutOutline} from './pocket-wall.js';
 import {containsPocketWalls,moduleIntersects,modulePadding} from './module-footprint.js';
 import {clone} from './model.js';
@@ -23,8 +23,13 @@ export function spacePocketCenters(project,tools){
   // Give unassigned photo tools one temporary module for the internal-wall check.
   const moduleId=tools[0].moduleId||'pocket-growth-preview',ids=new Set(tools.map(tool=>tool.id));
   const checkTools=tools.map(tool=>({...tool,moduleId}));
-  const pairIssue=validateLayout({...project,modules:project.modules.filter(module=>module.id===moduleId),tools:checkTools})
-    .some(issue=>issue.type==='overlap'&&issue.ids.length===2&&issue.ids.every(id=>ids.has(id)));
+  const issues=validateLayout({...project,modules:project.modules.filter(module=>module.id===moduleId),tools:checkTools});
+  const incomplete=issues.find(issue=>issue.code==='layout-complexity');
+  // Too many diagnostics can hide an overlap in a modest photo group. Let the
+  // existing exact spacing search repair it, bounded to at most 20k pairs and
+  // 24 bisections. A work/point/topology limit must never enter that repair loop.
+  if(incomplete&&(incomplete.limitKind!=='issues'||tools.length*(tools.length-1)/2>LAYOUT_PAIR_LIMIT))throw issueError(incomplete);
+  const pairIssue=!!incomplete||issues.some(issue=>issue.type==='overlap'&&issue.ids.length===2&&issue.ids.every(id=>ids.has(id)));
   if(!pairIssue)return tools.map(tool=>({...tool}));
   const entries=tools.map(tool=>{
     const b=bounds(tool),cx=b.x+b.width/2,cy=b.y+b.height/2;

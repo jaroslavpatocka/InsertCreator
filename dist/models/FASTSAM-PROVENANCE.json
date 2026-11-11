@@ -1,5 +1,5 @@
 {
-  "scope": "Local evaluation integration. No production publication authorized.",
+  "scope": "Model redistribution under the existing GNU AGPL version3 route with the accompanying Corresponding Source. Other independent components retain their own terms.",
   "modelRepo": "anakhiu/fastsam-onnx",
   "revision": "8bb24a5b8339d6494012e5a51b18bb34fbfef07d",
   "filename": "fastsam_s.onnx",
@@ -10,5 +10,18 @@
   "upstreamRevision": "b4ed20c2fed75eadc5aa7d8b09fedd137b873b52",
   "upstreamLicenseUrl": "https://github.com/CASIA-LMC-Lab/FastSAM/blob/b4ed20c2fed75eadc5aa7d8b09fedd137b873b52/LICENSE",
   "licenseIssueUrl": "https://github.com/CASIA-IVA-Lab/FastSAM/issues/228",
-  "licenseStatus": "Exporter card and upstream README claim Apache-2.0; pinned upstream LICENSE is AGPL-3.0. Exact notices retained. No conclusion about the application's license or authorization to publish."
+  "licenseStatus": "AGPL-3.0 distribution route; original contradictory Apache card/README retained unchanged as provenance, not relied on as Apache-only permission. No automatic application-wide grant.",
+  "distributionLicense": "AGPL-3.0",
+  "sourceNotice": "FASTSAM-SOURCE.txt",
+  "correspondingSource": {
+    "file": "fastsam-source.zip",
+    "bytes": 24669172,
+    "sha256": "ceaf10e8b1889c749eba51473fc85152e5188454cd42ac95165607618c600a32",
+    "checkpointSha256": "c9f78716a81c7aff0d608ccc73e1b82ab3aaad86005049f6a92106a0be6d0844",
+    "sourceCommit": "efacaada0f20c5dc8d4fec6d2412f742a5233d21",
+    "preparedDate": "2026-11-11",
+    "sourceCorrespondenceAccepted": true,
+    "strictNumericAllControlsPass": false,
+    "originalRuntimeUnchanged": true
+  }
 }

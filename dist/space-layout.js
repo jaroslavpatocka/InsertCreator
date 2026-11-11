@@ -93,7 +93,9 @@ function fillUnusedSteps(project,state){
 /** Applies the chosen shape where the modules stand. Nothing moves, so switching the option never rearranges a drawer. */
 export function reshapeModules(project,moduleShape){
   const state={tools:project.tools,modules:project.modules},next=moduleShape==='stepped'?cutInPlace(project,state):fillUnusedSteps(project,state),result={...project,modules:next.modules};
-  return validateLayout(result).length>validateLayout(project).length?project:result;
+  const resultIssues=validateLayout(result);
+  if(resultIssues.some(issue=>issue.code==='layout-complexity'))return project;
+  return resultIssues.length>validateLayout(project).length?project:result;
 }
 
 // Raster of one module: 1 = taken. It only proposes a position, the exact contours decide afterwards.

@@ -1,15 +1,14 @@
-FastSAM-s - local physical-object proposals
+FastSAM-s — local physical-object proposals
 
-Authors: FastSAM contributors, CASIA-LMC-Lab / CASIA-IVA-Lab.
-Exporter: anakhiu/fastsam-onnx. Exact revisions, download and checksum:
-FASTSAM-PROVENANCE.json. Model is bundled unchanged (47,637,745 bytes).
+The unchanged model is provided under GNU AGPL version3. Full licence:
+FASTSAM-UPSTREAM-LICENSE.txt. Complete Corresponding Source, rights/no-warranty
+notice and generation directions: FASTSAM-SOURCE.txt and fastsam-source.zip
+in this same directory. Exact runtime/source hashes: FASTSAM-PROVENANCE.json.
 
-The exporter model card and upstream README claim Apache-2.0, while
-the pinned upstream LICENSE contains AGPL-3.0. Both statements and the
-actual license text are retained in FASTSAM-MODEL-CARD.md,
-FASTSAM-UPSTREAM-README.md and FASTSAM-UPSTREAM-LICENSE.txt.
-The discrepancy must be clarified before production publication.
-This notice does not change or determine the application's license.
+Authors: FastSAM contributors, CASIA-LMC-Lab/CASIA-IVA-Lab; Ultralytics and
+contributors. Received ONNX conversion: anakhiu/fastsam-onnx. Original notices
+and contradictory Apache statements are preserved unchanged as provenance.
+This model notice does not change other independent application licences.
 
 Input: RGB/255, pure bilinear top-left letterbox, 1024x1024, pad114.
 One inference; base confidence0.25/NMS0.7, weak confidence0.05/NMS0.7.
@@ -19,5 +18,5 @@ alone are not manufacturing outlines. Coordinates remain source pixels.
 The existing downstream calibration and 2% pocket fit are applied once.
 
 The model and WASM are fetched from this app's origin when first used,
-then cached by its scoped service worker. No photograph is uploaded.
+then cached by its scoped service worker. This inference worker does not upload photographs; see the privacy notice for the separate optional background-removal service.
 Recognition worker and model heap are released before geometry/export.

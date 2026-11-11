@@ -59,6 +59,7 @@ export function smoothToolContour(project,toolId,tolerance=CONTOUR_SMOOTHING_MM)
   pocketOutline(tool,0);
   const oldIssues=new Set(validateLayout(project).map(issueKey));
   for(const issue of validateLayout(next)){
+    if(issue.code==='layout-complexity')throw issueError(issue);
     if(issue.ids.includes(toolId)&&issue.type!=='depth')throw issueError(issue);
     const affected=issue.ids.includes(toolId)||(module&&issue.ids.includes(module.id));
     if(affected&&!oldIssues.has(issueKey(issue)))throw issueError(issue);

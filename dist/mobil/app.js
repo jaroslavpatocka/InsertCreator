@@ -11,7 +11,7 @@ import {validatePrintBed} from './print-geometry.js';
 import {createViewControls,createViewControls2D} from './view-controls.js';
 import {openCapture} from './capture.js';
 import {mountLibraryFolders} from './catalog-ui.js';
-import {exportAttributionNotice} from './asset-attribution.js';
+import {exportAttributionNotice,standaloneAttributionPackage} from './asset-attribution.js';
 import {CATEGORIES,toolCategory} from './tool-categories.js';
 import {addToolGroup,scaleTool} from './set-module.js';
 import {photoLayout} from './photo-layout.js';
@@ -397,7 +397,7 @@ function fingerGripCandidate(id,grips){
     next.tools=result.tools;next.modules=result.modules;
   }
   const changed=next.tools.find(t=>t.id===id),ids=new Set([id,m?.id,changed.moduleId].filter(Boolean));
-  const issue=validateLayout(next).find(issue=>issue.ids.some(id=>ids.has(id)));
+  const issue=validateLayout(next).find(issue=>issue.code==='layout-complexity'||issue.ids.some(id=>ids.has(id)));
   if(issue)throw m&&(m.locked||previous.locked||m.sizeMode==='manual')?i18nError('Výřezy se nevejdou do stávajícího modulu. Zvětšete modul nebo odemkněte jeho polohu. {issue}',{issue:errorText(issue)}):i18nError('Nástroj s výřezy se nevejde. Zvětšete šuplík nebo uvolněte místo. {issue}',{issue:errorText(issue)});
   return next;
 }
@@ -1295,7 +1295,9 @@ async function importProjectFile(file){
     updateLoading(modal.body,{message:tr('Kontroluji rozměry a uložené nástroje…')});await paintOpportunity();if(closed)return;
     const data=JSON.parse(text);if(data.schemaVersion&&data.schemaVersion!==1)throw i18nError('Tato verze projektu zatím není podporovaná.');
     // Staged import: strict contour checks and the full layout geometry run before anything is saved.
-    const imported=validateProject(data,{strict:true});imported.id=uid();validateLayout(imported);
+    const imported=validateProject(data,{strict:true});imported.id=uid();
+    const importIssues=validateLayout(imported);
+    if(importIssues.some(issue=>issue.code==='layout-complexity'))throw i18nError('Projekt je příliš složitý pro bezpečné otevření. Rozdělte jej na menší části.');
     const previous=project;
     try{switchProject(imported);}catch(error){projects=projects.filter(p=>p.id!==imported.id);project=previous;selected=project.tools[0]?.id||null;selectedModule=null;persist();try{renderOpening();}catch{}throw error;}
     toast(tr('Projekt otevřen. Původní projekty zůstaly uložené.'));
@@ -1421,7 +1423,15 @@ async function runFileTask(operation,snapshot,options,title,delivery,success='')
     }});
     if(controller.signal.aborted||!modal.el.isConnected)return null;
     if(same(project)!==key)throw i18nError('Sestava se mezitím změnila. Spusťte export znovu.');
-    const file=delivery(result);download(file.name,file.data,file.type);finished=true;modal.close();if(success)toast([$('.mobile-file-tray')?mobileText('Soubor je připravený. Klepněte na Uložit / sdílet nebo Stáhnout.','Your file is ready. Tap Save / share or Download.'):success,exportAttributionNotice(snapshot,options)].filter(Boolean).join(' '));return result;
+    let file=delivery(result);
+    const attributionPackage=(operation==='dxf'||operation==='fit-stl')?standaloneAttributionPackage(snapshot,file,options):null;
+    if(attributionPackage){
+      const packaged=await fileClient.run('zip',snapshot,{...backgroundOptions(),files:attributionPackage.files,signal:controller.signal});
+      if(controller.signal.aborted||!modal.el.isConnected)return null;
+      if(same(project)!==key)throw i18nError('Sestava se mezitím změnila. Spusťte export znovu.');
+      file={name:attributionPackage.name,data:packaged.zip,type:'application/zip'};
+    }
+    download(file.name,file.data,file.type);finished=true;modal.close();if(success)toast([$('.mobile-file-tray')?mobileText('Soubor je připravený. Klepněte na Uložit / sdílet nebo Stáhnout.','Your file is ready. Tap Save / share or Download.'):success,exportAttributionNotice(snapshot,options)].filter(Boolean).join(' '));return result;
   }catch(error){
     if(controller.signal.aborted||!modal.el.isConnected)return null;
     finished=true;release();modal.body.innerHTML='<div class="issue-box" role="alert"><p>'+esc(errorText(error))+'</p></div>';

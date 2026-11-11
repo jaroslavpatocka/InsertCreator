@@ -13,16 +13,16 @@
   <a class="skip" href="#content">Přejít na obsah</a>
   <main id="content">
     <h1>Zásady ochrany soukromí</h1>
-    <p>Platí od: <time datetime="2026-11-05">5. 11. 2026</time>. <a href="./privacy-en.html">English</a></p>
+    <p>Platí od: <time datetime="2026-11-11">11. 11. 2026</time>. <a href="./privacy-en.html">English</a></p>
 
     <h2>Provozovatel</h2>
     <p>Jaroslav Patočka, kontakt: admin@insertcreator.com. Na tento kontakt můžete posílat dotazy i žádosti o uplatnění práv.</p>
 
     <h2>Fotky a návrhy</h2>
     <ul>
-      <li>Fotky se zpracovávají přímo ve vašem zařízení. Neodesílají se na náš server ani nikomu dalšímu.</li>
+      <li>Fotky se běžně zpracovávají přímo v prohlížeči. Výjimkou je volitelný režim odstranění pozadí, který předává obrazová data službě na stejném původu jako aplikace (viz níže).</li>
       <li>Aplikace dostane jen fotku, kterou sami vyberete. Nevidí vaši galerii ani kameru a nečte z fotky polohu.</li>
-      <li>Fotka se po zpracování neukládá. Ukládá se jen výsledný obrys a nastavení návrhu.</li>
+      <li>Do projektů ani knihovny se neukládá fotografický soubor; ukládají se obrysy a nastavení návrhu. Během otevřeného zpracování, úprav nebo obnovení po zrušeném výpočtu může obraz zůstat v paměti prohlížeče.</li>
       <li>Návrhy a knihovna zůstávají v úložišti vašeho prohlížeče. Smažete je vymazáním dat webu. Nezálohujeme je.</li>
     </ul>
 
@@ -35,7 +35,13 @@
 
     <h2>Vaše práva</h2>
     <p>Máte právo na přístup k osobním údajům, jejich opravu, výmaz, omezení zpracování a přenositelnost a právo vznést námitku. Stížnost můžete podat u Úřadu pro ochranu osobních údajů (uoou.gov.cz).</p>
-  <section id="local-background-service"><h2>Volitelné odstranění pozadí na lokálním PC</h2><p>Režim „Nejdřív odstranit pozadí a stíny“ předá vybranou fotografii serveru této aplikace. V lokální verzi server běží na vašem PC; telefon mu může fotografii předat po vaší místní síti. Výpočet používá vlastní krátkodobý proces, obrázek neodesílá Liftu ani jiné externí službě a neukládá jej do protokolu. Tento režim je v dialogu označen před nahráním. Ostatní výběr, úpravy a import již průhledného PNG mohou probíhat v prohlížeči bez této služby.</p></section>
+  <section id="local-background-service">
+    <h2>Volitelné odstranění pozadí službou na stejném původu</h2>
+    <p>Pokud je zvolen režim „Nejdřív odstranit pozadí a stíny“, aplikace odesílá dekódované RGBA pixely vybrané fotky, její šířku, výšku a ID úlohy na <code>/api/background/remove</code> na stejném původu jako aplikace. Původní soubor, jeho metadata/EXIF ani projekt se touto cestou neposílají. Server také obdrží běžné údaje síťového požadavku. Tento režim je v dialogu označen před výběrem fotky; při použití lokální služby může být předvolen.</p>
+    <p>Stejný původ znamená stejný protokol, hostitele a port. Neprokazuje, že server běží na vašem zařízení. Při použití přiložené lokální služby probíhá výpočet na počítači, kde byla služba spuštěna. Telefon připojený k této službě předává pixely po síti na tento počítač. Přiložený lokální server běží přes HTTP bez přihlášení; přenos z telefonu proto není šifrovaný. Používejte jej jen ve vlastní důvěryhodné síti.</p>
+    <p>Kód přiložené lokální služby používá obrazová data v paměti při výpočtu v krátkodobém procesu; nevytváří soubory fotografií ani nezapisuje jejich obsah do aplikačních protokolů. To není záruka okamžitého bezpečného smazání paměti a nepopisuje případné systémové protokoly, odkládací soubory nebo nastavení jiného serveru.</p>
+    <p>Samotné statické soubory aplikace tuto službu neposkytují. Bez dostupné služby tento režim nefunguje; jeho zvolením se však aplikace může pokusit o přenos obrazových dat na stejný původ i tehdy, když server požadavek následně odmítne. Pro zpracování bez tohoto přenosu použijte běžný výběr a úpravy v prohlížeči. Také již průhledný PNG může být zpracován bez služby. Tento popis nepotvrzuje dostupnost takového API na veřejném webu.</p>
+  </section>
 </main>
   <footer class="site-foot"><p><a href="./">Zpět do InsertCreator</a></p></footer>
 </body>

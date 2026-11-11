@@ -47,6 +47,7 @@ function checked(before,next,ids,modules,{geometry=false,depth=false}={}){
   validateProject(next);
   const touched=affected(next,ids,modules),old=new Set(validateLayout(before,{affectedIds:touched}).map(issueKey));
   for(const issue of validateLayout(next,{affectedIds:touched})){
+    if(issue.code==='layout-complexity')throw issueError(issue);
     if(!issue.ids.some(id=>touched.has(id)))continue;
     if((geometry&&issue.type!=='depth')||(depth&&issue.type==='depth'&&issue.ids.some(id=>ids.has(id)))||!old.has(issueKey(issue)))throw issueError(issue);
   }

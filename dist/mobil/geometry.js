@@ -71,9 +71,10 @@ export function bounds(tool) {
 }
 const intersectsRect=(a,b,epsilon=EPS)=>a.x<b.x+b.width-epsilon&&a.x+a.width>b.x+epsilon&&a.y<b.y+b.height-epsilon&&a.y+a.height>b.y+epsilon;
 const intersectsModules=(a,b,grid,epsilon=.001)=>intersectsRect(a,b,epsilon)&&((a.cells||b.cells)?moduleIntersects(a,b,grid):true);
-function pointInside(p,poly) {
+function pointInside(p,poly,meter) {
   let inside=false;
   for(let i=0,j=poly.length-1;i<poly.length;j=i++) {
+    spendLayoutWork(meter);
     const a=poly[i],b=poly[j];
     if(Math.abs(cross(a,b,p))<EPS && p.x>=Math.min(a.x,b.x)-EPS && p.x<=Math.max(a.x,b.x)+EPS && p.y>=Math.min(a.y,b.y)-EPS && p.y<=Math.max(a.y,b.y)+EPS) return true;
     if((a.y>p.y)!==(b.y>p.y) && p.x<(b.x-a.x)*(p.y-a.y)/(b.y-a.y)+a.x) inside=!inside;
@@ -82,78 +83,105 @@ function pointInside(p,poly) {
 }
 // Pairwise pocket checks are O(edges a x edges b); above this product the same predicates
 // run only on candidates from a conservative edge grid (two 6000-point pockets: 36M pairs).
-const INDEXED_PAIRS=65536,GRID_PAD=Math.sqrt(EPS)+EPS,edgeGrids=new WeakMap();
+// Catalogue pockets with curved clearance/grips already benefit from indexing;
+// keeping them in the quadratic branch wastes the shared validation budget.
+const INDEXED_PAIRS=4096,GRID_PAD=Math.sqrt(EPS)+EPS,edgeGrids=new WeakMap();
 /** Uniform grid of polygon edges, each registered along its own path widened by pad, so a point
  * within pad of an edge finds that edge in the point's cell. Cached per polygon array and pad. */
-function edgeGrid(poly,pad) {
+function edgeGrid(poly,pad,meter) {
   let byPad=edgeGrids.get(poly);if(!byPad)edgeGrids.set(poly,byPad=new Map());
   if(byPad.has(pad))return byPad.get(pad);
   const n=poly.length,frame=box(poly),cells=Math.max(1,Math.min(512,Math.ceil(2*Math.sqrt(n)))),size=Math.max(frame.width,frame.height,EPS)/cells;
   const col=x=>Math.min(cells-1,Math.max(0,Math.floor((x-frame.x)/size))),row=y=>Math.min(cells-1,Math.max(0,Math.floor((y-frame.y)/size)));
-  const visit=(a,b,fn)=>{
+  const visit=(a,b,fn,work=meter)=>{
     const lx=Math.min(a.x,b.x),hx=Math.max(a.x,b.x),dx=b.x-a.x,slope=Math.abs(dx)>EPS?(b.y-a.y)/dx:null;
     for(let c=col(lx-pad),c1=col(hx+pad);c<=c1;c++){
       let ylo=Math.min(a.y,b.y),yhi=Math.max(a.y,b.y);
       if(slope!==null){const ya=a.y+(Math.min(hx,Math.max(lx,frame.x+c*size-pad))-a.x)*slope,yb=a.y+(Math.min(hx,Math.max(lx,frame.x+(c+1)*size+pad))-a.x)*slope;ylo=Math.min(ya,yb);yhi=Math.max(ya,yb);}
-      for(let r=row(ylo-pad),r1=row(yhi+pad);r<=r1;r++)fn(r*cells+c);
+      for(let r=row(ylo-pad),r1=row(yhi+pad);r<=r1;r++){spendLayoutWork(work);fn(r*cells+c);}
     }
   };
   const buckets=new Map(),slabs=Array.from({length:cells},()=>[]),none=[];
   for(let i=0;i<n;i++){
     const a=poly[i],b=poly[(i+1)%n];visit(a,b,key=>{const list=buckets.get(key);if(list)list.push(i);else buckets.set(key,[i]);});
-    for(let r=row(Math.min(a.y,b.y)-GRID_PAD),r1=row(Math.max(a.y,b.y)+GRID_PAD);r<=r1;r++)slabs[r].push(i);
+    for(let r=row(Math.min(a.y,b.y)-GRID_PAD),r1=row(Math.max(a.y,b.y)+GRID_PAD);r<=r1;r++){spendLayoutWork(meter);slabs[r].push(i);}
   }
-  const grid={near:p=>buckets.get(row(p.y)*cells+col(p.x))||none,along:(a,b,fn)=>visit(a,b,key=>{const list=buckets.get(key);if(list)for(const i of list)fn(i);}),slab:p=>slabs[row(p.y)]};
+  const grid={near:p=>buckets.get(row(p.y)*cells+col(p.x))||none,along:(a,b,fn,work)=>visit(a,b,key=>{const list=buckets.get(key);if(list)for(const i of list){spendLayoutWork(work);fn(i);}},work),slab:p=>slabs[row(p.y)]};
   byPad.set(pad,grid);return grid;
 }
 /** pointInside restricted to the edges whose y-range (+-GRID_PAD) contains p.y; same result. */
-function pointInsideIndexed(p,poly) {
+function pointInsideIndexed(p,poly,meter) {
   let inside=false;
-  for(const j of edgeGrid(poly,GRID_PAD).slab(p)) {
+  for(const j of edgeGrid(poly,GRID_PAD,meter).slab(p)) {
+    spendLayoutWork(meter);
     const b=poly[j],a=poly[(j+1)%poly.length];
     if(Math.abs(cross(a,b,p))<EPS && p.x>=Math.min(a.x,b.x)-EPS && p.x<=Math.max(a.x,b.x)+EPS && p.y>=Math.min(a.y,b.y)-EPS && p.y<=Math.max(a.y,b.y)+EPS) return true;
     if((a.y>p.y)!==(b.y>p.y) && p.x<(b.x-a.x)*(p.y-a.y)/(b.y-a.y)+a.x) inside=!inside;
   }
   return inside;
 }
-function polygonsOverlap(a,b) {
+function polygonsOverlap(a,b,meter) {
   // A shared edge or vertex also makes separate pocket meshes invalid.
   if(!a.length||!b.length||!intersectsRect(box(a),box(b),-EPS))return false;
   if(a.length*b.length>INDEXED_PAIRS){
-    const grid=edgeGrid(b,GRID_PAD),seen=new Int32Array(b.length);
+    const grid=edgeGrid(b,GRID_PAD,meter),seen=new Int32Array(b.length);
     for(let i=0;i<a.length;i++){
       const p=a[i],q=a[(i+1)%a.length];let hit=false;
-      grid.along(p,q,j=>{if(hit||seen[j]===i+1)return;seen[j]=i+1;const r=b[j],s=b[(j+1)%b.length];if(cross(p,q,r)*cross(p,q,s)<-EPS&&cross(r,s,p)*cross(r,s,q)<-EPS)hit=true;});
+      grid.along(p,q,j=>{if(hit||seen[j]===i+1)return;seen[j]=i+1;const r=b[j],s=b[(j+1)%b.length];if(cross(p,q,r)*cross(p,q,s)<-EPS&&cross(r,s,p)*cross(r,s,q)<-EPS)hit=true;},meter);
       if(hit)return true;
     }
-    return a.some(p=>pointInsideIndexed(p,b))||b.some(p=>pointInsideIndexed(p,a));
+    return a.some(p=>pointInsideIndexed(p,b,meter))||b.some(p=>pointInsideIndexed(p,a,meter));
   }
   for(let i=0;i<a.length;i++)for(let j=0;j<b.length;j++){
+    spendLayoutWork(meter);
     const p=a[i],q=a[(i+1)%a.length],r=b[j],s=b[(j+1)%b.length];
     if(cross(p,q,r)*cross(p,q,s)<-EPS && cross(r,s,p)*cross(r,s,q)<-EPS)return true;
   }
-  return a.some(p=>pointInside(p,b))||b.some(p=>pointInside(p,a));
+  return a.some(p=>pointInside(p,b,meter))||b.some(p=>pointInside(p,a,meter));
 }
 function pointSegmentDistanceSquared(p,a,b) {
   const dx=b.x-a.x,dy=b.y-a.y,length=dx*dx+dy*dy;
   const t=length?Math.max(0,Math.min(1,((p.x-a.x)*dx+(p.y-a.y)*dy)/length)):0;
   return (p.x-a.x-t*dx)**2+(p.y-a.y-t*dy)**2;
 }
-function polygonsTooClose(a,b,distance) {
+function polygonsTooClose(a,b,distance,meter) {
   if(distance<=0||!a.length||!b.length||!intersectsRect(box(a),box(b),-distance))return false;
   const limit=distance*distance;
   if(a.length*b.length>INDEXED_PAIRS){
-    const nearEdge=(points,poly)=>{const grid=edgeGrid(poly,distance+GRID_PAD);return points.some(p=>grid.near(p).some(j=>pointSegmentDistanceSquared(p,poly[j],poly[(j+1)%poly.length])<limit));};
+    const nearEdge=(points,poly)=>{const grid=edgeGrid(poly,distance+GRID_PAD,meter);return points.some(p=>{spendLayoutWork(meter);return grid.near(p).some(j=>{spendLayoutWork(meter);return pointSegmentDistanceSquared(p,poly[j],poly[(j+1)%poly.length])<limit;});});};
     return nearEdge(a,b)||nearEdge(b,a);
   }
   for(let i=0;i<a.length;i++)for(let j=0;j<b.length;j++){
+    spendLayoutWork(meter);
     const p=a[i],q=a[(i+1)%a.length],r=b[j],s=b[(j+1)%b.length];
     if(pointSegmentDistanceSquared(p,r,s)<limit||pointSegmentDistanceSquared(r,p,q)<limit)return true;
   }
   return false;
 }
-// Same pair predicate as before, grid-bucketed and work-bounded; an over-budget contour counts as crossing.
-const selfIntersects = p => contourTopology(p) !== 'simple';
+// SEC-01: these bound the whole validation, not just one contour. Reaching a
+// limit is an incomplete, blocking result; it is never permission to manufacture.
+export const LAYOUT_PAIR_LIMIT=20000,LAYOUT_WORK_LIMIT=2000000,LAYOUT_ISSUE_LIMIT=256;
+class LayoutBudgetExceeded extends Error{constructor(kind){super(kind);this.kind=kind;}}
+function spendLayoutWork(meter,amount=1){if(meter&&(meter.left-=amount)<0)throw new LayoutBudgetExceeded('work');}
+function layoutComplexity(kind){return{...issue('complexity',[],'Kontrola sestavy překročila bezpečný limit. Rozdělte projekt nebo odstraňte překrývající se nástroje a kontrolu zopakujte.'),code:'layout-complexity',incomplete:true,limitKind:kind};}
+/** Conservative sweep of cached bounds. Reject dense candidate sets before exact
+ * geometry or issue allocation. Keep original index order for existing callers. */
+function layoutPairs(entries,padding,affected,meter){
+  if(entries.length<2)return[];
+  const span=axis=>{const start=axis==='x'?'x':'y',size=axis==='x'?'width':'height';return(Math.max(...entries.map(e=>e.frame[start]+e.frame[size]))-Math.min(...entries.map(e=>e.frame[start])))/Math.max(EPS,entries.reduce((sum,e)=>sum+e.frame[size],0)/entries.length);};
+  const axis=span('x')>=span('y')?'x':'y',size=axis==='x'?'width':'height';
+  const sorted=[...entries].sort((a,b)=>a.frame[axis]-b.frame[axis]||a.index-b.index),pairs=[];
+  for(let a=0;a<sorted.length;a++)for(let b=a+1;b<sorted.length;b++){
+    spendLayoutWork(meter);
+    const one=sorted[a],two=sorted[b];if(two.frame[axis]>one.frame[axis]+one.frame[size]+padding+EPS)break;
+    if(affected&&!affected.has(one.index)&&!affected.has(two.index))continue;
+    if(!intersectsRect(one.frame,two.frame,-padding-EPS))continue;
+    if(pairs.length>=LAYOUT_PAIR_LIMIT)throw new LayoutBudgetExceeded('pairs');
+    pairs.push(one.index<two.index?[one.index,two.index]:[two.index,one.index]);
+  }
+  return pairs.sort((a,b)=>a[0]-b[0]||a[1]-b[1]);
+}
+
 
 /** Resize the nominal footprint without scaling or rotating any tool contour. */
 export function resizeModule(project,moduleId,{width,height,mode='manual'}={}) {
@@ -342,21 +370,29 @@ function packModules(project,{preserveLocked=true,moduleShape,preserveOrientatio
 /** Optional affectedIds scopes diagnostics and pair generation, not collision partners.
  * A module includes its tools; unplaced/unaffected pockets still participate in cross collisions. */
 export function validateLayout(project,{affectedIds}={}) {
+  const meter={left:LAYOUT_WORK_LIMIT},topologyMeter={left:12000000};
+  try{return validateLayoutBounded(project,{affectedIds},meter,topologyMeter);}
+  catch(error){if(error instanceof LayoutBudgetExceeded)return[layoutComplexity(error.kind)];throw error;}
+}
+function validateLayoutBounded(project,{affectedIds},meter,topologyMeter) {
   const issues=[],modules=project.modules||[],tools=project.tools||[],height=n(project.insertHeight,20),base=n(project.base,2.4),wall=n(project.wall,2.4);
+  const addIssue=item=>{if(issues.length>=LAYOUT_ISSUE_LIMIT)throw new LayoutBudgetExceeded('issues');issues.push(item);};
+  if(tools.reduce((sum,tool)=>sum+(tool.points?.length||0),0)>300000)throw new LayoutBudgetExceeded('points');
+  const validModules=[];
   const scoped=affectedIds!=null,affected=scoped?new Set(affectedIds):null;
   if(scoped)for(const tool of tools)if(affected.has(tool.moduleId))affected.add(tool.id);
   const moduleIndices=scoped?modules.flatMap((module,index)=>affected.has(module.id)?[index]:[]):[];
   const toolIndices=scoped?tools.flatMap((tool,index)=>affected.has(tool.id)?[index]:[]):[];
-  if(!(n(project.width)>0&&n(project.height)>0&&height>base&&base>0&&wall>0))issues.push(issue('depth',[],'Zkontrolujte rozměry šuplíku, výšku inzertu a tloušťku dna i stěny.'));
+  if(!(n(project.width)>0&&n(project.height)>0&&height>base&&base>0&&wall>0))addIssue(issue('depth',[],'Zkontrolujte rozměry šuplíku, výšku inzertu a tloušťku dna i stěny.'));
   for(let i=0;i<modules.length;i++){
     const m=modules[i],self=!scoped||affected.has(m.id);
-    if(!self&&!(i<moduleIndices.at(-1)))continue;
-    try{validateModuleFootprint(m,n(project.grid,42));}catch(error){if(self)issues.push({type:'outside',ids:[m.id],message:error.message,...(error.i18n?{i18n:error.i18n}:{})});continue;}
-    if(self&&(m.width<=0||m.height<=0||m.x<-.001||m.y<-.001||m.x+m.width>n(project.width)+.001||m.y+m.height>n(project.height)+.001))issues.push(issue('outside',[m.id],'Modul „{name}“ přesahuje šuplík.',{name:m.name||m.id}));
-    for(let cursor=self?i+1:0,length=self?modules.length:moduleIndices.length;cursor<length;cursor++){
-      const j=self?cursor:moduleIndices[cursor];if(j<=i)continue;
-      let overlaps=false;try{overlaps=intersectsModules(m,modules[j],n(project.grid,42));}catch{continue;}if(overlaps)issues.push(issue('overlap',[m.id,modules[j].id],'Moduly „{a}“ a „{b}“ se překrývají.',{a:m.name||m.id,b:modules[j].name||modules[j].id}));
-    }
+    try{validateModuleFootprint(m,n(project.grid,42));}catch(error){if(self)addIssue({type:'outside',ids:[m.id],message:error.message,...(error.i18n?{i18n:error.i18n}:{})});continue;}
+    validModules.push({index:i,frame:m});
+    if(self&&(m.width<=0||m.height<=0||m.x<-.001||m.y<-.001||m.x+m.width>n(project.width)+.001||m.y+m.height>n(project.height)+.001))addIssue(issue('outside',[m.id],'Modul „{name}“ přesahuje šuplík.',{name:m.name||m.id}));
+  }
+  for(const[i,j]of layoutPairs(validModules,.001,scoped?new Set(moduleIndices):null,meter)){
+    const m=modules[i];let overlaps=false;try{overlaps=intersectsModules(m,modules[j],n(project.grid,42));}catch{continue;}
+    if(overlaps)addIssue(issue('overlap',[m.id,modules[j].id],'Moduly „{a}“ a „{b}“ se překrývají.',{a:m.name||m.id,b:modules[j].name||modules[j].id}));
   }
   const polygons=new Map(),limits=tools.some(hasPocketMagnets)?pocketHeightLimits(project):null;
   for(const t of tools){
@@ -364,39 +400,39 @@ export function validateLayout(project,{affectedIds}={}) {
     const self=!scoped||affected.has(t.id);
     let poly=[],pocketError=null;
     // The cheap raw-contour topology check runs before the expensive Clipper offset.
-    const raw=transformedPoints(t),crossing=raw.length>=3&&selfIntersects(raw);
-    if(crossing){pocketError=true;if(self)issues.push(issue('overlap',[t.id],'Kontura „{name}“ se kříží nebo není platná. Upravte konturu či zmenšete vůli.',{name:t.name}));}
-    else try{poly=pocketOutline(t,project);}catch(error){pocketError=error;if(self)issues.push(issue('overlap',[t.id],t.fingerGrips?.length?'Výřezy pro prsty nástroje „{name}“ nejsou platné: {error}':'Kontura „{name}“ není platná: {error}',{name:t.name,error:error.message}));}
+    const raw=transformedPoints(t),topology=contourTopology(raw,{meter:topologyMeter});
+    if(topology==='too-complex')throw new LayoutBudgetExceeded('topology');
+    const crossing=raw.length>=3&&topology!=='simple';
+    if(crossing){pocketError=true;if(self)addIssue(issue('overlap',[t.id],'Kontura „{name}“ se kříží nebo není platná. Upravte konturu či zmenšete vůli.',{name:t.name}));}
+    else try{poly=pocketOutline(t,project);}catch(error){pocketError=error;if(self)addIssue(issue('overlap',[t.id],t.fingerGrips?.length?'Výřezy pro prsty nástroje „{name}“ nejsou platné: {error}':'Kontura „{name}“ není platná: {error}',{name:t.name,error:error.message}));}
     // Walls, spacing and containment use the widest (top) pocket section; magnets sit on the floor.
     let layout=poly,floors=[poly];
     if(!pocketError){
       let wallValid=true;
-      try{validatePocketWall(t.pocketWall,n(t.depth,10));}catch(error){wallValid=false;if(self)issues.push(thrownIssue('depth',[t.id],error));}
-      if(wallValid&&pocketWallOutset(t)>0)try{layout=pocketLayoutOutline(t,project);}catch(error){if(self)issues.push(thrownIssue('overlap',[t.id],error));}
-      if(wallValid&&pocketWallInset(t)>0)try{floors=pocketFloorOutlines(t,project);}catch(error){floors=null;if(self)issues.push(thrownIssue('depth',[t.id],error));}
+      try{validatePocketWall(t.pocketWall,n(t.depth,10));}catch(error){wallValid=false;if(self)addIssue(thrownIssue('depth',[t.id],error));}
+      if(wallValid&&pocketWallOutset(t)>0)try{layout=pocketLayoutOutline(t,project);}catch(error){if(self)addIssue(thrownIssue('overlap',[t.id],error));}
+      if(wallValid&&pocketWallInset(t)>0)try{floors=pocketFloorOutlines(t,project);}catch(error){floors=null;if(self)addIssue(thrownIssue('depth',[t.id],error));}
     }
     polygons.set(t.id,layout);if(!self)continue;
     const m=modules.find(m=>m.id===t.moduleId);
-    if(!pocketError&&(poly.length<3||Math.abs(area(poly))<EPS||selfIntersects(poly)))issues.push(issue('overlap',[t.id],'Kontura „{name}“ se kříží nebo není platná. Upravte konturu či zmenšete vůli.',{name:t.name}));
-    if(!m)issues.push(issue('outside',[t.id],'Nástroj „{name}“ zatím nemá umístěný modul.',{name:t.name}));
-    else {let contained=false;try{contained=m.cells?containsPocketWalls(m,layout,wall,n(project.grid,42)):!layout.some(p=>p.x<m.x+wall+.25-.001||p.y<m.y+wall+.25-.001||p.x>m.x+m.width-wall-.25+.001||p.y>m.y+m.height-wall-.25+.001);}catch{}if(!contained)issues.push(issue('outside',[t.id,m.id],'Kolem „{name}“ není dost místa na stěnu. Zvětšete modul nebo spusťte rozvržení.',{name:t.name}));}
-    if(!(n(t.depth,10)>0&&n(t.depth,10)<=height-base+.001))issues.push(issue('depth',[t.id],'Hloubka kapsy „{name}“ musí být větší než 0 a nejvýše {max}.',{name:t.name,max:fmtLen(height-base)}));
-    else if(!pocketError&&limits?.affected(t)&&n(t.depth,10)>limits.maxDepth(t)+.001)issues.push(issue('depth',[t.id],'Kapsa „{name}“ v modulu s magnetem potřebuje výšku vložky alespoň {height}.',{name:t.name,height:fmtLen(limits.requiredHeight(t),{digits:2})}));
+    const pocketTopology=pocketError?'simple':contourTopology(poly,{meter:topologyMeter});
+    if(pocketTopology==='too-complex')throw new LayoutBudgetExceeded('topology');
+    if(!pocketError&&(poly.length<3||Math.abs(area(poly))<EPS||pocketTopology!=='simple'))addIssue(issue('overlap',[t.id],'Kontura „{name}“ se kříží nebo není platná. Upravte konturu či zmenšete vůli.',{name:t.name}));
+    if(!m)addIssue(issue('outside',[t.id],'Nástroj „{name}“ zatím nemá umístěný modul.',{name:t.name}));
+    else {let contained=false;try{contained=m.cells?containsPocketWalls(m,layout,wall,n(project.grid,42)):!layout.some(p=>p.x<m.x+wall+.25-.001||p.y<m.y+wall+.25-.001||p.x>m.x+m.width-wall-.25+.001||p.y>m.y+m.height-wall-.25+.001);}catch{}if(!contained)addIssue(issue('outside',[t.id,m.id],'Kolem „{name}“ není dost místa na stěnu. Zvětšete modul nebo spusťte rozvržení.',{name:t.name}));}
+    if(!(n(t.depth,10)>0&&n(t.depth,10)<=height-base+.001))addIssue(issue('depth',[t.id],'Hloubka kapsy „{name}“ musí být větší než 0 a nejvýše {max}.',{name:t.name,max:fmtLen(height-base)}));
+    else if(!pocketError&&limits?.affected(t)&&n(t.depth,10)>limits.maxDepth(t)+.001)addIssue(issue('depth',[t.id],'Kapsa „{name}“ v modulu s magnetem potřebuje výšku vložky alespoň {height}.',{name:t.name,height:fmtLen(limits.requiredHeight(t),{digits:2})}));
     if(!pocketError&&floors&&hasPocketMagnets(t)){
       const problem=pocketMagnetProblem(t,floors);
-      if(problem==='wall')issues.push(issue('overlap',[t.id],'Magnet v kapse „{name}“ je příliš blízko stěny nebo mimo dno kapsy.',{name:t.name}));
-      if(problem==='spacing')issues.push(issue('overlap',[t.id],'Magnety v kapse „{name}“ jsou příliš blízko sebe.',{name:t.name}));
+      if(problem==='wall')addIssue(issue('overlap',[t.id],'Magnet v kapse „{name}“ je příliš blízko stěny nebo mimo dno kapsy.',{name:t.name}));
+      if(problem==='spacing')addIssue(issue('overlap',[t.id],'Magnety v kapse „{name}“ jsou příliš blízko sebe.',{name:t.name}));
     }
   }
-  for(let i=0;i<tools.length;i++){
-    const self=!scoped||affected.has(tools[i].id);
-    if(!self&&!(i<toolIndices.at(-1)))continue;
-    for(let cursor=self?i+1:0,length=self?tools.length:toolIndices.length;cursor<length;cursor++){
-    const j=self?cursor:toolIndices[cursor];if(j<=i)continue;
+  const entries=tools.flatMap((tool,index)=>{const poly=polygons.get(tool.id);return poly?.length?[{index,frame:box(poly)}]:[];});
+  for(const[i,j]of layoutPairs(entries,Math.max(EPS,wall-.001),scoped?new Set(toolIndices):null,meter)){
     const a=tools[i],b=tools[j],pa=polygons.get(a.id),pb=polygons.get(b.id);
-    if(polygonsOverlap(pa,pb))issues.push(issue('overlap',[a.id,b.id],'Kapsy „{a}“ a „{b}“ se překrývají nebo dotýkají.',{a:a.name,b:b.name}));
-    else if(a.moduleId&&a.moduleId===b.moduleId&&polygonsTooClose(pa,pb,wall-.001))issues.push(issue('overlap',[a.id,b.id],'Mezi kapsami „{a}“ a „{b}“ není dost místa na stěnu {wall}.',{a:a.name,b:b.name,wall:fmtLen(wall)}));
-    }
+    if(polygonsOverlap(pa,pb,meter))addIssue(issue('overlap',[a.id,b.id],'Kapsy „{a}“ a „{b}“ se překrývají nebo dotýkají.',{a:a.name,b:b.name}));
+    else if(a.moduleId&&a.moduleId===b.moduleId&&polygonsTooClose(pa,pb,wall-.001,meter))addIssue(issue('overlap',[a.id,b.id],'Mezi kapsami „{a}“ a „{b}“ není dost místa na stěnu {wall}.',{a:a.name,b:b.name,wall:fmtLen(wall)}));
   }
   return issues;
 }

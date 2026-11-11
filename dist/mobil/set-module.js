@@ -234,7 +234,7 @@ function begin(project,tools,opts,{forceLayout=null,maxModules=1}={}){
   };
   const register=toolIds=>{if(toolSet)next.toolSets=[...(next.toolSets||[]),{id:setId,name:String(toolSet.name||name).slice(0,100),toolIds,layout:toolSet.layout,...preferences}];};
   // Only geometric problems of the module itself count here (pocket depth is the editor's business).
-  const geometryOk=(module,own)=>!validateLayout({...next,width:Math.max(module.width,W),height:Math.max(module.height,H),modules:[{...module,x:0,y:0}],tools:own.map(t=>({...t,x:t.x-module.x,y:t.y-module.y}))}).some(issue=>issue.type==='overlap'||issue.type==='outside');
+  const geometryOk=(module,own)=>!validateLayout({...next,width:Math.max(module.width,W),height:Math.max(module.height,H),modules:[{...module,x:0,y:0}],tools:own.map(t=>({...t,x:t.x-module.x,y:t.y-module.y}))}).some(issue=>issue.code==='layout-complexity'||issue.type==='overlap'||issue.type==='outside');
   const meshCache=new Map(),checkManufacturing=(logicalOrder||next.sizeLabels===true)&&opts.checkManufacturing!==false;
   const candidateOk=(module,own)=>{
     if(!geometryOk(module,own))return false;

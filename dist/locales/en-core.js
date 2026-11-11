@@ -8,6 +8,8 @@ export default {
   'Neplatná hodnota: {label}.':'Invalid value: {label}.',
   'Soubor neobsahuje projekt InsertCreator.':'The file does not contain an InsertCreator project.',
   'Projekt je příliš velký. Limit je 3000 nástrojů a 4000 modulů.':'The project is too large. The limit is 3000 tools and 4000 modules.',
+  'Projekt je příliš složitý pro bezpečné otevření. Rozdělte jej na menší části.':'The project is too complex to open safely. Split it into smaller parts.',
+  'Kontrola sestavy překročila bezpečný limit. Rozdělte projekt nebo odstraňte překrývající se nástroje a kontrolu zopakujte.':'The layout check reached its safe limit. Split the project or remove overlapping tools, then run the check again.',
   'Duplicitní identifikátor modulu.':'Duplicate module identifier.',
   'Duplicitní identifikátor nástroje.':'Duplicate tool identifier.',
   'Kontura musí mít 3 až 6000 bodů.':'A contour must have 3 to 6000 points.',
